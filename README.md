@@ -37,6 +37,14 @@ Open this address in your browser:
 http://127.0.0.1:8000
 ```
 
+Use a different host or port if needed (the `HOST` and `PORT` environment variables also work):
+
+```bash
+python server.py --host 0.0.0.0 --port 8080
+```
+
+The server only serves the game's static assets; source files, dotfiles, and the `.git` folder are never exposed.
+
 The server also provides a health endpoint:
 
 ```text
@@ -45,15 +53,47 @@ http://127.0.0.1:8000/api/health
 
 ## How to Use the Simulator
 
-1. Choose a market case.
-2. Set a virtual practice bankroll.
-3. Choose a position size.
-4. Click **Start Trade**.
-5. Watch the candles, close line, market cap, liquidity, and bonding-curve progress.
-6. Tap or click the chart to simulate entering at that point in the market.
-7. Use the trade controls to complete the scenario.
-8. Review the simulated P&L.
-9. Reset the round and compare your decision with another scenario.
+1. Choose a market case and set a virtual practice bankroll (changing the bankroll starts a new session).
+2. Choose a position size and, optionally, a **stop loss %** and **take profit %**.
+3. Click **Start Trade** to start the market.
+4. Enter by tapping the chart (fills at that candle's price) or with **Buy At Market**, or wait and **Buy The Top** at the peak.
+5. Manage the position:
+   - **Sell All Now** closes it at market while the price is still rising; you can re-enter before the peak.
+   - The **Sell** tab sells 25%, 50% or 100% of the position.
+   - Stop-loss and take-profit orders fill automatically. Gaps such as rug pulls can fill below the stop.
+6. At the peak, choose **Hold To Resolution**, **Sell All At Peak**, or **Skip The Top**, then record the result.
+7. Review the round and session P&L. The portfolio rail tracks session P&L, rounds played, win rate, and best/worst round.
+8. Press **Next Practice Round**. Your practice equity carries over between rounds and across market cases.
+
+Every fill includes estimated slippage (higher for volatile cases and larger sizes) plus a 0.3% fee per side. The open-position line shows size, average entry, unrealized P&L, and active SL/TP levels.
+
+Use the **1m / 5m / 1h** chart tabs to change candle grouping. Settings (motion effects, price precision, risk reminders) are saved in your browser.
+
+## Metyu Prediction Lab (Polymarket-style agent)
+
+Open `polymarket.html` (or **Metyu Lab** in the top navigation). Metyu is a paper-trading agent for binary YES/NO prediction markets:
+
+- **Fair value**: combines the market price and private research by precision (Bayesian, log-odds space), tracking evidence with a time-aware Kalman filter.
+- **Trade filter**: trades only when the edge beats the spread, a minimum edge, and 1.5σ of its own uncertainty. With no information it does not trade.
+- **Sizing**: fractional (¼) Kelly with a per-position cap and a drawdown kill-switch.
+- **Leverage**: a simulated margin account with interest, a liquidation price, and a liquidation penalty. Metyu scales leverage with edge/volatility and never holds leverage into resolution.
+- **Exits**: when the edge is gone, near liquidation, on a broken thesis, or by the kill-switch. There are no blind price stops on unlevered binaries.
+- **Decision log**: every action comes with its reasons. Brier scores compare Metyu with the crowd.
+- **Backtest lab**: compares Metyu's rules with full Kelly, forced 3x/10x leverage, and "trade every signal" over many simulated markets.
+- **Knowledge base**: Polymarket mechanics, EV, Kelly, leverage on binaries, costs, resolution, and calibration.
+
+**Live advisor:** pick a live market, or type a price, then enter **your** probability and how sure you are. Metyu applies its rules and shows:
+
+- whether to trade, and on which side
+- entry price, margin (your maximum loss), leverage and notional
+- liquidation price
+- payout if right, expected profit, and break-even probability
+
+You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings.
+
+**Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, and `/api/polymarket/market?id=<numeric id>` for one market) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
+
+The simulator's hidden probability is a calibrated martingale that resolves to 0 or 1, so results reflect real edge rather than model artifacts. No agent can guarantee profit: real-world edge is rare and small.
 
 ## Market Scenarios
 
@@ -81,7 +121,7 @@ timestamp,open,high,low,close
 2024-01-03,0.0000014,0.0000016,0.0000012,0.0000013
 ```
 
-Imported data is labeled as source data in the interface. The application does not download or verify market data automatically.
+Imported data is labeled as source data in the interface. The first ~80% of the candles are replayed live; the remaining candles are revealed when the round resolves, so the outcome comes from your data rather than a random scenario. The application does not download or verify market data automatically.
 
 ## Learning Topics
 
@@ -98,7 +138,6 @@ The learning lab introduces:
 
 These concepts are educational explanations, not trading signals or financial advice.
 
-GitHub Pages runs the browser game but does not run `server.py`. Use the Python server locally or deploy it separately to a Python-capable service.
 ## GitHub Pages
 
 The static browser version can be hosted with GitHub Pages:
@@ -118,11 +157,21 @@ https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/
 ```
 
 GitHub Pages runs the browser game but does not run `server.py`. Use the Python server locally or deploy it separately to a Python-capable service.
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -t .
+node --test tests/*.test.js
+```
+
+Both suites run automatically on every pull request and on pushes to `main` (`.github/workflows/tests.yml`).
+
 ## Technology
 
 - HTML
 - CSS
-- JavaScript
+- JavaScript (`metyu-agent.js` is shared by the browser and Node tests)
 - SVG chart rendering
 - Python standard-library HTTP server
 
