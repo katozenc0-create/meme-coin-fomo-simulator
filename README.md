@@ -69,6 +69,23 @@ Every fill includes estimated slippage (higher for volatile cases and larger siz
 
 Use the **1m / 5m / 1h** chart tabs to change candle grouping. Settings (motion effects, price precision, risk reminders) are saved in your browser.
 
+## Metyu Prediction Lab (Polymarket-style agent)
+
+Open `polymarket.html` (or **Metyu Lab** in the top navigation). Metyu is a paper-trading agent for binary YES/NO prediction markets:
+
+- **Fair value**: combines the market price and private research by precision (Bayesian, log-odds space), tracking evidence with a time-aware Kalman filter.
+- **Trade filter**: trades only when the edge beats the spread, a minimum edge, and 1.5σ of its own uncertainty. With no information it does not trade.
+- **Sizing**: fractional (¼) Kelly with a per-position cap and a drawdown kill-switch.
+- **Leverage**: a simulated margin account with interest, a liquidation price, and a liquidation penalty. Metyu scales leverage with edge/volatility and never holds leverage into resolution.
+- **Exits**: when the edge is gone, near liquidation, on a broken thesis, or by the kill-switch. There are no blind price stops on unlevered binaries.
+- **Decision log**: every action comes with its reasons. Brier scores compare Metyu with the crowd.
+- **Backtest lab**: compares Metyu's rules with full Kelly, forced 3x/10x leverage, and "trade every signal" over many simulated markets.
+- **Knowledge base**: Polymarket mechanics, EV, Kelly, leverage on binaries, costs, resolution, and calibration.
+
+**Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
+
+The simulator's hidden probability is a calibrated martingale that resolves to 0 or 1, so results reflect real edge rather than model artifacts. No agent can guarantee profit: real-world edge is rare and small.
+
 ## Market Scenarios
 
 The built-in scenarios are fictionalized practice replays inspired by common public meme-coin patterns. They are not exact historical records.
@@ -136,13 +153,14 @@ GitHub Pages runs the browser game but does not run `server.py`. Use the Python 
 
 ```bash
 python -m unittest discover -s tests -t .
+node --test tests/*.test.js
 ```
 
 ## Technology
 
 - HTML
 - CSS
-- JavaScript
+- JavaScript (`metyu-agent.js` is shared by the browser and Node tests)
 - SVG chart rendering
 - Python standard-library HTTP server
 

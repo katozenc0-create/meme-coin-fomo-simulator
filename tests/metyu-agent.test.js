@@ -1,0 +1,101 @@
+// Run with: node --test tests/
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const M = require('../metyu-agent.js');
+
+const close = (actual, expected, tolerance = 1e-9) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} ≉ ${expected}`);
+
+test('Kelly fraction for binary shares', () => {
+  close(M.kellyFraction(.6, .5), .2);           // (0.6 − 0.5) / 0.5
+  close(M.kellyFraction(.5, .5), 0);
+  close(M.kellyFraction(.3, .5), 0);            // negative edge → no bet
+  close(M.expectedValue(.7, .55), .15, 1e-12);
+});
+
+test('leveraged position accounting and liquidation price', () => {
+  const position = M.openPosition({ side: 'YES', yesPrice: .5, margin: 100, leverage: 4 });
+  close(position.notional, 400);
+  close(position.borrowed, 300);
+  close(position.shares, 800);
+  close(M.markPosition(position, .5).pnl, 0);
+  close(M.markPosition(position, .55).pnl, 40);  // 800 × 0.05
+  const liq = M.liquidationPrice(position, .25); // 300 / (800 × 0.75)
+  close(liq, .5);
+  const unlevered = M.openPosition({ side: 'NO', yesPrice: .3, margin: 70, leverage: 1 });
+  close(unlevered.entry, .7);
+  close(M.liquidationPrice(unlevered), 0);
+  close(M.markPosition(unlevered, 0).pnl, 30);   // NO resolves to $1
+});
+
+test('no edge → no trade, positive edge → sized YES trade', () => {
+  const base = { yesPrice: .5, spread: .02, equity: 1000, peakEquity: 1000, volatility: .05, timeLeft: 1 };
+  assert.equal(M.decide(base).action, 'HOLD');
+  const withResearch = M.decide({ ...base, research: .7, researchVariance: .02 });
+  assert.equal(withResearch.action, 'OPEN');
+  assert.equal(withResearch.side, 'YES');
+  assert.ok(withResearch.margin > 0 && withResearch.margin <= 1000 * M.DEFAULT_CONFIG.maxPositionPct);
+  assert.ok(withResearch.leverage >= 1 && withResearch.leverage <= M.DEFAULT_CONFIG.maxLeverage);
+  const bearish = M.decide({ ...base, research: .3, researchVariance: .02 });
+  assert.equal(bearish.side, 'NO');
+});
+
+test('uncertain research is ignored, kill-switch halts trading', () => {
+  const base = { yesPrice: .5, spread: .02, equity: 1000, peakEquity: 1000, volatility: .05, timeLeft: 1 };
+  assert.equal(M.decide({ ...base, research: .58, researchVariance: 2 }).action, 'HOLD');
+  assert.equal(M.decide({ ...base, equity: 600, research: .9, researchVariance: .01 }).action, 'HALT');
+});
+
+test('never holds leverage into resolution', () => {
+  const position = M.openPosition({ side: 'YES', yesPrice: .5, margin: 100, leverage: 3 });
+  const decision = M.decide({ yesPrice: .52, spread: .02, equity: 1000, peakEquity: 1000, position, timeLeft: .05, research: .7, researchVariance: .02 });
+  assert.equal(decision.action, 'CLOSE');
+});
+
+test('Kalman evidence tracks a moving truth', () => {
+  const evidence = M.createEvidence({ processVar: .03, measurementVar: .04 });
+  for (let i = 0; i < 20; i += 1) evidence.add(.3);
+  let belief;
+  for (let i = 0; i < 10; i += 1) belief = evidence.add(.7);
+  assert.ok(belief.probability > .6, `belief ${belief.probability} should follow fresh evidence`);
+});
+
+test('backtest: no information means no trades, skill helps', () => {
+  const noInfo = M.backtest({ markets: 60, skill: 0, seed: 1 });
+  assert.equal(noInfo.trades, 0);
+  const skilled = M.backtest({ markets: 80, skill: .8, seed: 1 });
+  assert.ok(skilled.totalReturn > 0, `skilled return ${skilled.totalReturn}`);
+});
+
+test('backtest: Metyu rules survive where reckless leverage is ruined', () => {
+  for (const seed of [2024, 7, 99]) {
+    const disciplined = M.backtest({ markets: 150, skill: .3, seed });
+    const reckless = M.backtest({ markets: 150, skill: .3, seed, config: { minEdge: 0, uncertaintyMultiple: 0, maxLeverage: 10, forceLeverage: true, maxDrawdownPct: 1 } });
+    assert.ok(!disciplined.ruined && disciplined.maxDrawdown < .2, `disciplined dd ${disciplined.maxDrawdown}`);
+    assert.ok(reckless.ruined, `reckless return ${reckless.totalReturn}`);
+    assert.ok(reckless.liquidations > 0);
+  }
+});
+
+test('true probability in the simulator is calibrated (a martingale that resolves to 0/1)', () => {
+  const rng = M.createRng(5);
+  let yes = 0; let sum = 0; let count = 0;
+  for (let i = 0; i < 1500; i += 1) {
+    const market = M.createMarket({ seed: Math.floor(rng() * 2 ** 31), startProb: .15 + rng() * .7 });
+    const p = market.truth[60];
+    if (p > .6 && p < .8) { count += 1; sum += p; if (market.outcome === 'YES') yes += 1; }
+  }
+  assert.ok(Math.abs(yes / count - sum / count) < .05, `observed ${yes / count} vs predicted ${sum / count}`);
+});
+
+test('simulation is reproducible with a seed', () => {
+  assert.deepEqual(M.createMarket({ seed: 9 }).prices, M.createMarket({ seed: 9 }).prices);
+});
+
+test('parses Polymarket Gamma API market objects', () => {
+  const parsed = M.parseGammaMarket({ id: 12, question: 'Will it rain?', outcomes: '["Yes","No"]', outcomePrices: '["0.37","0.63"]', bestBid: '0.36', bestAsk: '0.38', volumeNum: 1234, liquidityNum: 99 });
+  assert.equal(parsed.question, 'Will it rain?');
+  close(parsed.yesPrice, .37);
+  close(parsed.spread, .02, 1e-12);
+  assert.equal(M.parseGammaMarket({ outcomes: '["A","B","C"]', outcomePrices: '["0.2","0.3","0.5"]' }), null);
+  assert.equal(M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' }), null);
+});

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Metyu Prediction Lab</title>
+  <style>
+    :root { --ink: #09130f; --panel: #0d1a13; --panel-2: #12251b; --line: #24412f; --acid: #b7ff3c; --green: #3dff87; --red: #ff4654; --amber: #ffd166; --muted: #8fa597; --text: #edfff1; --blue: #6cc6ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 15% 0%, rgba(61,255,135,.08), transparent 40%), #060d09; color: var(--text); font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+    .shell { width: min(1240px, 100% - 24px); margin: 0 auto; padding: 14px 0 60px; }
+    button { cursor: pointer; border: 0; font: 800 12px Consolas, monospace; text-transform: uppercase; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    input, select { font: inherit; }
+    .top-nav { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid #252b2c; background: rgba(12,14,15,.92); }
+    .brand { font: 900 17px Georgia, serif; } .brand::before { content: "◉"; margin-right: 7px; color: var(--acid); }
+    .top-nav a { color: var(--muted); font: 11px Consolas, monospace; text-decoration: none; } .top-nav a:hover { color: var(--text); }
+    header { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: end; margin: 22px 0 14px; }
+    .eyebrow { margin: 0 0 6px; color: var(--acid); font: 11px Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font: 900 clamp(34px, 6vw, 64px)/.92 Impact, sans-serif; text-transform: uppercase; }
+    h1 span { color: var(--acid); }
+    .subhead { margin: 0; color: var(--muted); font: 13px/1.5 Consolas, monospace; }
+    .disclaimer { margin-bottom: 14px; padding: 10px 14px; border-left: 3px solid var(--amber); background: rgba(255,209,102,.07); color: var(--amber); font: 12px/1.5 Consolas, monospace; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; }
+    .panel { padding: 16px; border: 1px solid var(--line); background: rgba(13,26,19,.92); }
+    .panel h2 { margin: 0 0 12px; color: var(--acid); font: 900 16px Impact, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+    .market-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .question { margin: 0; font: 800 18px/1.3 system-ui, sans-serif; }
+    .source-tag { color: var(--amber); font: 10px Consolas, monospace; text-transform: uppercase; }
+    .prices { display: flex; gap: 8px; }
+    .price-box { min-width: 92px; padding: 8px 10px; border: 1px solid var(--line); background: #0a140e; text-align: center; }
+    .price-box span { display: block; color: var(--muted); font: 10px Consolas, monospace; }
+    .price-box strong { font: 800 20px Consolas, monospace; }
+    .yes strong { color: var(--green); } .no strong { color: var(--red); }
+    .chart-wrap { position: relative; height: 300px; margin: 6px 0; border: 1px solid var(--line); background: linear-gradient(rgba(36,65,47,.35) 1px, transparent 1px) 0 0 / 100% 25%, #07110b; }
+    .chart-wrap svg { width: 100%; height: 100%; display: block; }
+    .line-price { fill: none; stroke: var(--green); stroke-width: 2.4; vector-effect: non-scaling-stroke; }
+    .line-fair { fill: none; stroke: var(--acid); stroke-width: 1.6; stroke-dasharray: 6 5; vector-effect: non-scaling-stroke; }
+    .line-truth { fill: none; stroke: var(--blue); stroke-width: 1.4; opacity: .85; vector-effect: non-scaling-stroke; }
+    .mid-line { stroke: rgba(143,165,151,.35); stroke-dasharray: 3 6; vector-effect: non-scaling-stroke; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font: 10px Consolas, monospace; text-transform: uppercase; }
+    .legend i { display: inline-block; width: 18px; height: 2px; margin-right: 6px; vertical-align: middle; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+    .btn { padding: 11px 14px; background: var(--acid); color: var(--ink); box-shadow: 3px 3px 0 #466d18; }
+    .btn.secondary { background: var(--panel-2); color: var(--text); box-shadow: none; border: 1px solid var(--line); }
+    .btn.yes-btn { background: var(--green); box-shadow: 3px 3px 0 #1d7a43; }
+    .btn.no-btn { background: var(--red); color: white; box-shadow: 3px 3px 0 #721f28; }
+    .field { display: grid; gap: 4px; color: var(--muted); font: 10px Consolas, monospace; text-transform: uppercase; }
+    .field input, .field select { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); background: #0a140e; color: var(--text); font: 700 13px Consolas, monospace; }
+    .field input[type=range] { padding: 0; accent-color: var(--acid); }
+    .field output { color: var(--text); font-weight: 800; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .toggle { display: flex; gap: 8px; align-items: center; margin: 8px 0; color: var(--text); font: 800 12px Consolas, monospace; }
+    .toggle input { accent-color: var(--acid); width: 16px; height: 16px; }
+    .metric { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); color: var(--muted); font: 12px Consolas, monospace; }
+    .metric strong { color: var(--text); text-align: right; }
+    .positive { color: var(--green) !important; } .negative { color: var(--red) !important; }
+    .log { max-height: 280px; overflow: auto; margin: 0; padding: 0; list-style: none; font: 11px/1.45 Consolas, monospace; }
+    .log li { padding: 7px 0; border-top: 1px solid var(--line); color: var(--muted); }
+    .log b { color: var(--text); } .log .act-OPEN b { color: var(--acid); } .log .act-CLOSE b, .log .act-LIQ b { color: var(--amber); } .log .act-HALT b { color: var(--red); }
+    .stack > .panel + .panel { margin-top: 14px; }
+    .wide { margin-top: 14px; }
+    table { width: 100%; border-collapse: collapse; font: 12px Consolas, monospace; }
+    th, td { padding: 8px 6px; border-top: 1px solid var(--line); text-align: right; } th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 400; text-transform: uppercase; font-size: 10px; }
+    .table-scroll { overflow-x: auto; }
+    .kb { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .kb article { padding: 14px; border: 1px solid var(--line); background: rgba(8,18,13,.75); }
+    .kb h3 { margin: 0 0 6px; color: var(--text); font: 800 13px Consolas, monospace; }
+    .kb p { margin: 0 0 8px; color: var(--muted); font: 12px/1.5 system-ui, sans-serif; }
+    .formula { padding: 6px 8px; background: #07110b; color: var(--acid); font: 12px Consolas, monospace; overflow-x: auto; }
+    .result-banner { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); font: 800 13px Consolas, monospace; }
+    .live-list { display: grid; gap: 6px; max-height: 220px; overflow: auto; margin-top: 8px; }
+    .live-list button { padding: 8px; background: #0a140e; color: var(--text); border: 1px solid var(--line); text-align: left; text-transform: none; font: 12px system-ui, sans-serif; }
+    .live-list button span { color: var(--green); font-family: Consolas, monospace; }
+    .note { margin: 8px 0 0; color: var(--muted); font: 11px/1.45 Consolas, monospace; }
+    [hidden] { display: none !important; }
+    @media (max-width: 960px) { .grid, header { grid-template-columns: 1fr; } .kb { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .kb, .row2 { grid-template-columns: 1fr; } .chart-wrap { height: 230px; } .prices { width: 100%; } .price-box { flex: 1; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="top-nav"><span class="brand">Metyu Prediction Lab</span><a href="index.html">← Meme coin FOMO simulator</a></nav>
+    <header>
+      <div><p class="eyebrow">Prediction markets · leverage · paper trading</p><h1>Metyu<br><span>trading agent</span></h1></div>
+      <p class="subhead">Metyu reads a Polymarket-style YES/NO market, estimates the fair probability, trades only when the edge beats costs and uncertainty, sizes with fractional Kelly, and treats leverage as something to earn — not assume.</p>
+    </header>
+    <p class="disclaimer">PAPER TRADING ONLY. No wallet, no keys, no orders are ever sent. Live Polymarket data (when available) is a read-only starting price; the path after that is simulated. Polymarket itself does not offer leverage — leverage here is a simulated margin account to show why it is dangerous on binary outcomes. Not financial advice; prediction-market access is restricted in some countries.</p>
+
+    <div class="grid">
+      <div class="stack">
+        <section class="panel">
+          <div class="market-head">
+            <div><p class="question" id="question">Loading market…</p><span class="source-tag" id="sourceTag">SIMULATED MARKET</span></div>
+            <div class="prices"><div class="price-box yes"><span>YES</span><strong id="yesPrice">50¢</strong></div><div class="price-box no"><span>NO</span><strong id="noPrice">50¢</strong></div><div class="price-box"><span>METYU FAIR</span><strong id="fairPrice">—</strong></div></div>
+          </div>
+          <div class="chart-wrap"><svg viewBox="0 0 1000 300" preserveAspectRatio="none" aria-label="YES price chart"><line class="mid-line" x1="0" x2="1000" y1="150" y2="150"/><polyline id="truthLine" class="line-truth" points="" hidden/><polyline id="fairLine" class="line-fair" points=""/><polyline id="priceLine" class="line-price" points=""/><g id="markers"></g></svg></div>
+          <div class="legend"><span><i style="background:var(--green)"></i>YES price</span><span><i style="background:var(--acid)"></i>Metyu fair value</span><span><i style="background:var(--blue)"></i>hidden truth (revealed at resolution)</span><span id="clock">T-160</span></div>
+          <div class="controls">
+            <div class="field" style="min-width:220px;flex:1"><label for="marketSelect">Market</label><select id="marketSelect"></select></div>
+            <button class="btn secondary" id="loadLive">Load live Polymarket</button>
+            <button class="btn" id="startBtn">Start market</button>
+            <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
+            <div class="field" style="width:120px"><label for="speed">Speed <output id="speedOut">1x</output></label><input id="speed" type="range" min="1" max="8" value="2"></div>
+          </div>
+          <p class="note" id="liveNote" hidden></p>
+          <div class="live-list" id="liveList" hidden></div>
+          <div class="result-banner" id="resultBanner" hidden></div>
+        </section>
+
+        <section class="panel">
+          <h2>Metyu decision log</h2>
+          <ul class="log" id="log"><li>Metyu is idle. Start a market and enable autopilot — or trade manually and compare.</li></ul>
+        </section>
+      </div>
+
+      <aside class="stack">
+        <section class="panel">
+          <h2>Trade</h2>
+          <label class="toggle"><input type="checkbox" id="autopilot" checked> Metyu autopilot</label>
+          <div class="row2"><div class="field"><label for="margin">Margin $</label><input id="margin" type="number" min="1" step="10" value="100"></div><div class="field"><label for="leverage">Leverage <output id="levOut">1x</output></label><input id="leverage" type="range" min="1" max="10" value="1"></div></div>
+          <div class="row2"><button class="btn yes-btn" id="buyYes" disabled>Buy YES</button><button class="btn no-btn" id="buyNo" disabled>Buy NO</button></div>
+          <button class="btn secondary" id="closeBtn" style="width:100%" disabled>Close position</button>
+          <div id="positionBox" style="margin-top:10px">
+            <div class="metric"><span>Position</span><strong id="posSide">FLAT</strong></div>
+            <div class="metric"><span>Entry / mark</span><strong id="posEntry">—</strong></div>
+            <div class="metric"><span>Shares · leverage</span><strong id="posSize">—</strong></div>
+            <div class="metric"><span>Liquidation price</span><strong id="posLiq">—</strong></div>
+            <div class="metric"><span>Unrealized P&amp;L</span><strong id="posPnl">—</strong></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Account</h2>
+          <div class="metric"><span>Equity</span><strong id="equity">$1,000</strong></div>
+          <div class="metric"><span>Cash</span><strong id="cash">$1,000</strong></div>
+          <div class="metric"><span>Realized P&amp;L</span><strong id="realized">$0</strong></div>
+          <div class="metric"><span>Drawdown from peak</span><strong id="drawdown">0.0%</strong></div>
+          <div class="metric"><span>Trades · win rate</span><strong id="tradeStats">0 · —</strong></div>
+          <div class="metric"><span>Markets · Metyu Brier</span><strong id="brier">0 · —</strong></div>
+          <div class="row2" style="margin-top:8px"><div class="field"><label for="bankroll">Bankroll $</label><input id="bankroll" type="number" min="100" step="100" value="1000"></div><button class="btn secondary" id="resetAccount" style="align-self:end">Reset account</button></div>
+        </section>
+
+        <section class="panel">
+          <h2>Metyu settings</h2>
+          <div class="field"><label for="skill">Research accuracy <output id="skillOut">60%</output></label><input id="skill" type="range" min="0" max="100" value="60"></div>
+          <p class="note">How good Metyu's private information is. 0% = no information (like most traders) → Metyu should not trade at all.</p>
+          <div class="row2" style="margin-top:8px">
+            <div class="field"><label for="kelly">Kelly multiplier</label><select id="kelly"><option value="0.1">0.10 · very safe</option><option value="0.25" selected>0.25 · quarter Kelly</option><option value="0.5">0.50 · half Kelly</option><option value="1">1.00 · full Kelly</option></select></div>
+            <div class="field"><label for="maxLev">Max leverage</label><select id="maxLev"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option><option value="10">10x</option></select></div>
+            <div class="field"><label for="minEdge">Min edge (pts)</label><input id="minEdge" type="number" min="0" max="30" step="0.5" value="3"></div>
+            <div class="field"><label for="stopLoss">Stop on margin %</label><input id="stopLoss" type="number" min="5" max="95" step="5" value="35"></div>
+            <div class="field"><label for="maxDd">Kill-switch DD %</label><input id="maxDd" type="number" min="5" max="100" step="5" value="30"></div>
+            <div class="field"><label for="uncert">Uncertainty ×σ</label><input id="uncert" type="number" min="0" max="4" step="0.25" value="1.5"></div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="forceLev"> Force max leverage (demo of what goes wrong)</label>
+        </section>
+      </aside>
+    </div>
+
+    <section class="panel wide">
+      <h2>Backtest lab</h2>
+      <p class="note">Runs Metyu across many simulated markets with your current research accuracy, compounding the bankroll. Compare sizing and leverage rules side by side — the same edge can grow or destroy an account depending on sizing.</p>
+      <div class="controls"><div class="field" style="width:140px"><label for="btMarkets">Markets per run</label><input id="btMarkets" type="number" min="20" max="500" step="10" value="150"></div><button class="btn" id="runBacktest">Run backtest</button><span class="note" id="btStatus"></span></div>
+      <div class="table-scroll"><table><thead><tr><th>Configuration</th><th>Final equity</th><th>Return</th><th>Max DD</th><th>Trades</th><th>Win rate</th><th>Liquidations</th></tr></thead><tbody id="btBody"><tr><td colspan="7">Run a backtest to compare.</td></tr></tbody></table></div>
+    </section>
+
+    <section class="panel wide">
+      <h2>Metyu knowledge base</h2>
+      <div class="kb">
+        <article><h3>1 · How Polymarket prices work</h3><p>Each market has YES and NO shares that settle at $1 or $0 when the question resolves. Because YES + NO ≈ $1, the YES price is the crowd's implied probability. Orders match on a central limit order book; you pay the ask and sell at the bid.</p><div class="formula">implied p = YES price · NO ≈ 1 − YES</div></article>
+        <article><h3>2 · Edge is the only reason to trade</h3><p>Buying YES at c when the true probability is p earns p − c per share on average. Without a better estimate than the crowd, EV ≈ −spread − fees. Metyu therefore does nothing when it has no information.</p><div class="formula">EV = p − c   (per $1 share)</div></article>
+        <article><h3>3 · Fair value = market + evidence</h3><p>The market price and private research are two noisy estimates of the same truth. Metyu combines them by precision (inverse variance) in log-odds space and tracks changing evidence with a Kalman filter. Information arrives faster as resolution nears, so the filter trusts old evidence less over time — otherwise it bets against news the crowd already priced.</p><div class="formula">x̂ = (x_m/σ²_m + x_r/σ²_r) / (1/σ²_m + 1/σ²_r)</div></article>
+        <article><h3>4 · Size with fractional Kelly</h3><p>Kelly maximises long-run growth when p is known exactly. Estimates are never exact, so Metyu uses ¼ Kelly and caps each position. Full Kelly roughly halves your bankroll on a routine bad streak.</p><div class="formula">f* = (p − c) / (1 − c)</div></article>
+        <article><h3>5 · Demand edge above uncertainty</h3><p>A 4-point edge with ±6 points of uncertainty is noise. Metyu only trades when edge exceeds max(min edge, k·σ). Sitting out is a position.</p><div class="formula">trade if edge &gt; max(minEdge, k·σ_p)</div></article>
+        <article><h3>6 · Leverage on binaries</h3><p>A binary can gap to $0 on news. With leverage L, a move of about 1/L against you erases the margin — at 10x, a 5-cent gap on a 50¢ share is a liquidation. Leverage multiplies a real edge <em>and</em> the drawdown; without edge it only speeds up ruin. Metyu scales leverage with edge/volatility, never above your cap, and never holds leverage into resolution. (Run the backtest at low research accuracy to see it.)</p><div class="formula">liq price = borrowed / (shares · (1 − maintenance))</div></article>
+        <article><h3>7 · Exits that respect EV</h3><p>On an unlevered binary, a price stop sells a still-positive-EV share at a loss. Metyu exits when the edge is gone, when leverage approaches liquidation, or when the thesis breaks — and a drawdown kill-switch halts trading entirely.</p><div class="formula">exit if fair − mark ≤ 0</div></article>
+        <article><h3>8 · Costs and liquidity</h3><p>The spread, taker fees and thin books are certain costs; edge is uncertain. Large orders walk the book. Low-liquidity markets can show a price you cannot actually trade at size.</p><div class="formula">net edge = edge − spread/2 − fee</div></article>
+        <article><h3>9 · Resolution and calibration</h3><p>Markets resolve through an oracle process (Polymarket uses UMA's optimistic oracle) that can be disputed; read each market's rules. Judge forecasts with the Brier score: lower is better, 0.25 is a coin flip.</p><div class="formula">Brier = mean((forecast − outcome)²)</div></article>
+      </div>
+      <p class="note">No agent can guarantee profit. In real markets edge is rare, usually small, and decays as others find it. Rules that survive: no edge → no trade; size small; leverage rarely and briefly; plan the exit before entry.</p>
+    </section>
+  </div>
+
+  <script src="metyu-agent.js"></script>
+  <script>
+    (() => {
+      const M = window.Metyu;
+      const $ = selector => document.querySelector(selector);
+      const STEPS = 160;
+      const builtInMarkets = [
+        { id: 'stadium', question: 'Will the city council approve the new harbour stadium this year?', yesPrice: .42, spread: .02 },
+        { id: 'final', question: 'Will Team Aurora win the regional final?', yesPrice: .57, spread: .02 },
+        { id: 'cpi', question: 'Will the next monthly inflation print come in above 3%?', yesPrice: .33, spread: .015 },
+        { id: 'rover', question: 'Will the lunar rover land on its scheduled date?', yesPrice: .71, spread: .03 },
+        { id: 'longshot', question: 'Will the indie film win best picture? (long shot)', yesPrice: .08, spread: .02 }
+      ];
+      let markets = [...builtInMarkets];
+      let live = false;
+      let state;
+      let timer = null;
+      let account;
+
+      const formatMoney = value => `${value < 0 ? '-' : ''}$${Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: Math.abs(value) < 100 ? 2 : 0 })}`;
+      const cents = value => `${(value * 100).toFixed(1)}¢`;
+      const pct = value => `${(value * 100).toFixed(1)}%`;
+      const signed = (el, value, text) => { el.textContent = text; el.classList.toggle('positive', value > 0); el.classList.toggle('negative', value < 0); };
+
+      function config() {
+        return {
+          kellyMultiplier: Number($('#kelly').value),
+          maxLeverage: Number($('#maxLev').value),
+          minEdge: Math.max(0, Number($('#minEdge').value) || 0) / 100,
+          stopLossPct: Math.min(.95, Math.max(.05, (Number($('#stopLoss').value) || 35) / 100)),
+          maxDrawdownPct: Math.min(1, Math.max(.05, (Number($('#maxDd').value) || 30) / 100)),
+          uncertaintyMultiple: Math.max(0, Number($('#uncert').value) || 0),
+          forceLeverage: $('#forceLev').checked
+        };
+      }
+      const skill = () => Number($('#skill').value) / 100;
+
+      function resetAccount() {
+        const bankroll = Math.max(100, Number($('#bankroll').value) || 1000);
+        account = { bankroll, cash: bankroll, peak: bankroll, realized: 0, trades: 0, wins: 0, markets: 0, brierSum: 0, halted: false };
+        updateAccount();
+      }
+
+      function fillMarketSelect() {
+        const select = $('#marketSelect');
+        select.replaceChildren(...markets.map((market, index) => {
+          const option = document.createElement('option');
+          option.value = String(index);
+          option.textContent = `${market.question.slice(0, 80)} · ${cents(market.yesPrice)}`;
+          return option;
+        }));
+      }
+
+      function newMarket() {
+        clearInterval(timer); timer = null;
+        const meta = markets[Number($('#marketSelect').value) || 0];
+        const seed = Math.floor(Math.random() * 2 ** 31);
+        const sim = M.createMarket({ seed, steps: STEPS + 1, startProb: meta.yesPrice });
+        state = {
+          meta, sim, step: -1, position: null, fairs: [], forecastSum: 0, forecastCount: 0,
+          evidence: M.createEvidence({ processVar: .03, measurementVar: Math.pow(M.researchNoise(skill()), 2) }),
+          rng: M.createRng(seed ^ 0x5bd1e995), markers: [], done: false
+        };
+        $('#question').textContent = meta.question;
+        $('#sourceTag').textContent = meta.live ? `LIVE POLYMARKET START PRICE ${cents(meta.yesPrice)} · PATH SIMULATED` : 'SIMULATED MARKET';
+        $('#resultBanner').hidden = true;
+        $('#truthLine').setAttribute('hidden', '');
+        $('#markers').replaceChildren();
+        $('#startBtn').textContent = 'Start market';
+        $('#startBtn').disabled = false;
+        $('#pauseBtn').disabled = true;
+        render(meta.yesPrice, null);
+        updateTradeButtons();
+      }
+
+      function y(value) { return 290 - value * 280; }
+      function x(step) { return step / (STEPS - 1) * 1000; }
+      function points(values) { return values.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' '); }
+
+      function render(yesPrice, fair) {
+        $('#yesPrice').textContent = cents(yesPrice);
+        $('#noPrice').textContent = cents(1 - yesPrice);
+        $('#fairPrice').textContent = fair === null ? '—' : cents(fair);
+        const shown = state.sim.prices.slice(0, state.step + 1);
+        $('#priceLine').setAttribute('points', points(shown));
+        $('#fairLine').setAttribute('points', points(state.fairs));
+        $('#clock').textContent = state.done ? 'RESOLVED' : `T-${STEPS - Math.max(0, state.step + 1)}`;
+        updatePosition(yesPrice);
+        updateAccount(yesPrice);
+      }
+
+      function log(action, text, reasons = []) {
+        const item = document.createElement('li');
+        item.className = `act-${action}`;
+        const head = document.createElement('b');
+        head.textContent = `[T-${STEPS - Math.max(0, state ? state.step + 1 : 0)}] ${action} `;
+        item.append(head, text);
+        if (reasons.length) {
+          const detail = document.createElement('div');
+          detail.textContent = reasons.join(' · ');
+          item.append(detail);
+        }
+        const list = $('#log');
+        if (list.firstElementChild && !list.firstElementChild.className) list.firstElementChild.remove();
+        list.prepend(item);
+        while (list.children.length > 80) list.lastElementChild.remove();
+      }
+
+      function equityAt(yesPrice) {
+        if (!state || !state.position) return account.cash;
+        return account.cash + Math.max(0, M.markPosition(state.position, yesPrice, { spread: state.meta.spread }).equity);
+      }
+
+      function updatePosition(yesPrice) {
+        const position = state && state.position;
+        if (!position) {
+          $('#posSide').textContent = 'FLAT'; ['#posEntry', '#posSize', '#posLiq'].forEach(id => { $(id).textContent = '—'; });
+          signed($('#posPnl'), 0, '—');
+          return;
+        }
+        const marked = M.markPosition(position, yesPrice, { spread: state.meta.spread });
+        const liq = M.liquidationPrice(position, M.DEFAULT_CONFIG.maintenanceMargin);
+        $('#posSide').textContent = `${position.side} · ${formatMoney(position.margin)} margin`;
+        $('#posEntry').textContent = `${cents(position.entry)} / ${cents(marked.mark)}`;
+        $('#posSize').textContent = `${position.shares.toFixed(1)} · ${position.leverage}x`;
+        $('#posLiq').textContent = liq > 0 ? cents(liq) : 'none (1x)';
+        signed($('#posPnl'), marked.pnl, `${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})`);
+      }
+
+      function updateAccount(yesPrice) {
+        const price = yesPrice ?? (state ? state.sim.prices[Math.max(0, state.step)] : .5);
+        const equity = equityAt(price);
+        account.peak = Math.max(account.peak, equity);
+        $('#equity').textContent = formatMoney(equity);
+        $('#cash').textContent = formatMoney(account.cash);
+        signed($('#realized'), account.realized, `${account.realized >= 0 ? '+' : ''}${formatMoney(account.realized)}`);
+        const dd = 1 - equity / account.peak;
+        $('#drawdown').textContent = pct(dd);
+        $('#drawdown').classList.toggle('negative', dd > .15);
+        $('#tradeStats').textContent = account.trades ? `${account.trades} · ${Math.round(account.wins / account.trades * 100)}%` : '0 · —';
+        $('#brier').textContent = account.markets ? `${account.markets} · ${(account.brierSum / account.markets).toFixed(3)}` : '0 · —';
+      }
+
+      function updateTradeButtons() {
+        const running = state && state.step >= 0 && !state.done;
+        $('#buyYes').disabled = !running || !!state.position || account.halted;
+        $('#buyNo').disabled = !running || !!state.position || account.halted;
+        $('#closeBtn').disabled = !running || !state.position;
+      }
+
+      function addMarker(side) {
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        const price = state.sim.prices[state.step];
+        marker.setAttribute('cx', x(state.step)); marker.setAttribute('cy', y(price)); marker.setAttribute('r', 6);
+        marker.setAttribute('fill', side === 'YES' ? '#3dff87' : side === 'NO' ? '#ff4654' : '#ffd166');
+        marker.setAttribute('stroke', '#07110b'); marker.setAttribute('stroke-width', 2);
+        $('#markers').append(marker);
+      }
+
+      function open(side, margin, leverage, who, reasons = []) {
+        const yesPrice = state.sim.prices[state.step];
+        const amount = Math.min(margin, account.cash);
+        if (amount < 1) { log('HOLD', 'not enough cash for a new position'); return; }
+        state.position = M.openPosition({ side, yesPrice, margin: amount, leverage, spread: state.meta.spread, time: state.step });
+        account.cash -= amount;
+        addMarker(side);
+        log('OPEN', `${who} bought ${side} @ ${cents(state.position.entry)} · ${formatMoney(amount)} margin · ${leverage}x`, reasons);
+      }
+
+      function close(reason, reasons = [], settlePrice = null) {
+        const position = state.position;
+        if (!position) return;
+        let payout;
+        if (reason === 'LIQUIDATED') {
+          payout = 0; // remaining margin is taken as the liquidation penalty
+        } else if (settlePrice === null) {
+          payout = Math.max(0, M.markPosition(position, state.sim.prices[state.step], { spread: state.meta.spread }).equity);
+        } else {
+          payout = Math.max(0, position.shares * settlePrice - position.borrowed - position.interest);
+        }
+        const pnl = payout - position.margin;
+        account.cash += payout;
+        account.realized += pnl;
+        account.trades += 1;
+        if (pnl > 0) account.wins += 1;
+        state.position = null;
+        addMarker('EXIT');
+        log(reason === 'LIQUIDATED' ? 'LIQ' : 'CLOSE', `${reason} · ${pnl >= 0 ? '+' : ''}${formatMoney(pnl)}`, reasons);
+      }
+
+      function tick() {
+        if (!state || state.done) return;
+        state.step += 1;
+        const step = state.step;
+        const yesPrice = state.sim.prices[step];
+        const cfg = config();
+        if (state.position) {
+          M.accrueInterest(state.position, 1 / 365, M.DEFAULT_CONFIG.annualInterest);
+          const liq = M.liquidationPrice(state.position, M.DEFAULT_CONFIG.maintenanceMargin);
+          if (liq > 0 && M.sidePriceOf(state.position, yesPrice) <= liq) close('LIQUIDATED', [`side price ${cents(M.sidePriceOf(state.position, yesPrice))} hit liquidation ${cents(liq)}`]);
+        }
+        const belief = skill() > 0 ? state.evidence.add(M.researchSignal(state.sim.truth[step], skill(), state.rng), M.processVarianceAt(1 - step / STEPS)) : { probability: null, variance: null };
+        const equity = equityAt(yesPrice);
+        account.peak = Math.max(account.peak, equity);
+        const decision = M.decide({
+          yesPrice, spread: state.meta.spread, history: state.sim.prices.slice(Math.max(0, step - 40), step + 1),
+          research: belief.probability, researchVariance: belief.variance, equity, peakEquity: account.peak,
+          position: state.position, volatility: .05, timeLeft: 1 - step / STEPS
+        }, cfg);
+        state.fairs.push(decision.fair);
+        state.forecastSum += decision.fair; state.forecastCount += 1;
+        if ($('#autopilot').checked && !account.halted) {
+          if (decision.action === 'OPEN' && !state.position) open(decision.side, decision.margin, decision.leverage, 'Metyu', decision.reasons);
+          else if (decision.action === 'CLOSE' && state.position) close('Metyu exit', decision.reasons);
+          else if (decision.action === 'HALT') { account.halted = true; log('HALT', 'kill-switch engaged — no new trades until you reset the account', decision.reasons); }
+          else if (step % 20 === 0) log('HOLD', decision.reasons[decision.reasons.length - 1]);
+        }
+        render(yesPrice, decision.fair);
+        updateTradeButtons();
+        if (step >= STEPS - 1) resolve();
+      }
+
+      function resolve() {
+        clearInterval(timer); timer = null;
+        state.done = true;
+        const outcome = state.sim.outcome;
+        if (state.position) close(`RESOLVED ${outcome}`, [`${state.position.side} settles at ${state.position.side === outcome ? '$1' : '$0'}`], state.position.side === outcome ? 1 : 0);
+        const y1 = outcome === 'YES' ? 1 : 0;
+        const brier = state.fairs.reduce((sum, fair) => sum + Math.pow(fair - y1, 2), 0) / Math.max(1, state.fairs.length);
+        const crowd = state.sim.prices.reduce((sum, price) => sum + Math.pow(price - y1, 2), 0) / state.sim.prices.length;
+        account.markets += 1;
+        account.brierSum += brier;
+        $('#truthLine').setAttribute('points', points(state.sim.truth));
+        $('#truthLine').removeAttribute('hidden');
+        const banner = $('#resultBanner');
+        banner.hidden = false;
+        banner.textContent = `RESOLVED ${outcome} · Metyu Brier ${brier.toFixed(3)} vs crowd ${crowd.toFixed(3)} (lower is better) · equity ${formatMoney(account.cash)}`;
+        banner.style.color = outcome === 'YES' ? 'var(--green)' : 'var(--red)';
+        $('#startBtn').textContent = 'Next market';
+        $('#startBtn').disabled = false;
+        $('#pauseBtn').disabled = true;
+        render(state.sim.prices[STEPS - 1], state.fairs[state.fairs.length - 1]);
+        updateTradeButtons();
+      }
+
+      function speedMs() { return Math.round(420 / Number($('#speed').value)); }
+      function run() { clearInterval(timer); timer = setInterval(tick, speedMs()); $('#pauseBtn').disabled = false; $('#pauseBtn').textContent = 'Pause'; }
+
+      $('#startBtn').addEventListener('click', () => {
+        if (!state || state.done) newMarket();
+        if (account.cash + (state.position ? 1 : 0) < 1) { log('HALT', 'bankroll empty — reset the account'); return; }
+        $('#startBtn').disabled = true;
+        state.evidence = M.createEvidence({ processVar: .03, measurementVar: Math.pow(M.researchNoise(skill()), 2) });
+        log('INFO', `market started · research accuracy ${Math.round(skill() * 100)}% · ${$('#autopilot').checked ? 'autopilot ON' : 'manual'}`);
+        run();
+      });
+      $('#pauseBtn').addEventListener('click', () => {
+        if (timer) { clearInterval(timer); timer = null; $('#pauseBtn').textContent = 'Resume'; }
+        else if (state && !state.done) run();
+      });
+      $('#speed').addEventListener('input', () => { $('#speedOut').textContent = `${$('#speed').value}x`; if (timer) run(); });
+      $('#leverage').addEventListener('input', () => { $('#levOut').textContent = `${$('#leverage').value}x`; });
+      $('#skill').addEventListener('input', () => { $('#skillOut').textContent = `${$('#skill').value}%`; });
+      $('#marketSelect').addEventListener('change', newMarket);
+      const manualBuy = side => {
+        open(side, Number($('#margin').value) || 0, Number($('#leverage').value), 'You');
+        render(state.sim.prices[state.step], state.fairs[state.fairs.length - 1] ?? null);
+        updateTradeButtons();
+      };
+      $('#buyYes').addEventListener('click', () => manualBuy('YES'));
+      $('#buyNo').addEventListener('click', () => manualBuy('NO'));
+      $('#closeBtn').addEventListener('click', () => { close('manual close'); render(state.sim.prices[state.step], state.fairs[state.fairs.length - 1] ?? null); updateTradeButtons(); });
+      $('#resetAccount').addEventListener('click', () => { resetAccount(); newMarket(); log('INFO', `account reset to ${formatMoney(account.bankroll)}`); });
+
+      $('#loadLive').addEventListener('click', async () => {
+        const note = $('#liveNote');
+        note.hidden = false;
+        note.textContent = 'Fetching active markets (read-only)…';
+        const sources = ['/api/polymarket/markets?limit=25', 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=25&order=volume24hr&ascending=false'];
+        let parsed = [];
+        let lastError = '';
+        for (const url of sources) {
+          try {
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const rows = Array.isArray(data) ? data : data.markets || [];
+            parsed = rows.map(M.parseGammaMarket).filter(Boolean);
+            if (parsed.length) break;
+          } catch (error) { lastError = error.message; }
+        }
+        if (!parsed.length) { note.textContent = `Live data unavailable (${lastError || 'no binary markets'}). Run "python server.py" locally or check your network; built-in markets still work.`; return; }
+        markets = [...parsed.map(market => ({ ...market, live: true })), ...builtInMarkets];
+        live = true;
+        fillMarketSelect();
+        newMarket();
+        note.textContent = `${parsed.length} live binary markets loaded. Prices are a read-only snapshot; Metyu trades a simulated path from that price.`;
+        const list = $('#liveList');
+        list.hidden = false;
+        list.replaceChildren(...parsed.slice(0, 12).map((market, index) => {
+          const button = document.createElement('button');
+          const priceTag = document.createElement('span');
+          priceTag.textContent = `${cents(market.yesPrice)} `;
+          button.append(priceTag, market.question);
+          button.addEventListener('click', () => { $('#marketSelect').value = String(index); newMarket(); });
+          return button;
+        }));
+      });
+
+      $('#runBacktest').addEventListener('click', () => {
+        const button = $('#runBacktest');
+        button.disabled = true;
+        const count = Math.max(20, Math.min(500, Number($('#btMarkets').value) || 150));
+        const base = config();
+        const runs = [
+          ['Metyu default rules', { ...base }],
+          ['Full Kelly, no kill-switch', { ...base, kellyMultiplier: 1, maxPositionPct: 1, maxDrawdownPct: 1 }],
+          ['Forced 3x leverage', { ...base, maxLeverage: 3, forceLeverage: true }],
+          ['Forced 10x leverage', { ...base, maxLeverage: 10, forceLeverage: true }],
+          ['Trade every signal (no edge filter)', { ...base, minEdge: 0, uncertaintyMultiple: 0 }],
+          ['Reckless: no filter + forced 10x, no kill-switch', { ...base, minEdge: 0, uncertaintyMultiple: 0, maxLeverage: 10, forceLeverage: true, maxDrawdownPct: 1 }]
+        ];
+        const body = $('#btBody');
+        body.replaceChildren();
+        let index = 0;
+        $('#btStatus').textContent = `research accuracy ${Math.round(skill() * 100)}% · ${count} markets each…`;
+        const next = () => {
+          if (index >= runs.length) { button.disabled = false; $('#btStatus').textContent = `done · research accuracy ${Math.round(skill() * 100)}%`; return; }
+          const [label, cfg] = runs[index];
+          const result = M.backtest({ markets: count, bankroll: 1000, skill: skill(), config: cfg, seed: 2024 });
+          const row = document.createElement('tr');
+          [label, formatMoney(result.finalEquity), pct(result.totalReturn), pct(result.maxDrawdown), String(result.trades), result.trades ? pct(result.winRate) : '—', String(result.liquidations)].forEach((value, column) => {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            if (column === 2) cell.className = result.totalReturn >= 0 ? 'positive' : 'negative';
+            row.append(cell);
+          });
+          body.append(row);
+          index += 1;
+          setTimeout(next, 10);
+        };
+        setTimeout(next, 10);
+      });
+
+      resetAccount();
+      fillMarketSelect();
+      newMarket();
+    })();
+  </script>
+</body>
+</html>

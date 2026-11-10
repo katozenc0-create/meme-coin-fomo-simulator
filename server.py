@@ -10,14 +10,32 @@ import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+import urllib.error
+import urllib.request
+from urllib.parse import parse_qs, urlencode, urlparse
 
 
 ROOT = Path(__file__).resolve().parent
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
 # Only static assets the game needs are served; source files, dotfiles and .git stay private.
+POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets"
 SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
+
+
+def _http_get_json(url: str, timeout: float = 8.0) -> object:
+    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "practice-simulator/1.0"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed https host
+        return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_polymarket_markets(limit: int = 20) -> list[dict]:
+    """Read-only snapshot of active Polymarket markets (public Gamma API, no keys, no trading)."""
+    query = urlencode({"active": "true", "closed": "false", "limit": max(1, min(limit, 100)), "order": "volume24hr", "ascending": "false"})
+    payload = _http_get_json(f"{POLYMARKET_GAMMA_URL}?{query}")
+    markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate")
+    return [{key: market.get(key) for key in keys if key in market} for market in markets if isinstance(market, dict)]
 
 
 class SimulatorHandler(BaseHTTPRequestHandler):
@@ -46,6 +64,16 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         if route == "/api/health":
             self._send_json({"status": "ok", "mode": "practice", "realFunds": False})
+            return
+        if route == "/api/polymarket/markets":
+            try:
+                limit = int(parse_qs(urlparse(self.path).query).get("limit", ["20"])[0])
+            except ValueError:
+                limit = 20
+            try:
+                self._send_json({"source": "polymarket-gamma", "readOnly": True, "markets": fetch_polymarket_markets(limit)})
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
+                self._send_json({"error": f"Polymarket data unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
             return
         if route.startswith("/api/"):
             self._send_json({"error": "unknown endpoint"}, HTTPStatus.NOT_FOUND)

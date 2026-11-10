@@ -54,6 +54,33 @@ class ServerTests(unittest.TestCase):
                 status, _, _ = self.get(path)
                 self.assertEqual(status, 404)
 
+    def test_polymarket_proxy_returns_compact_markets(self) -> None:
+        original = server._http_get_json
+        server._http_get_json = lambda url, timeout=8.0: [{"id": "1", "question": "Q?", "outcomes": '["Yes","No"]', "outcomePrices": '["0.4","0.6"]', "secret": "x"}]
+        try:
+            status, body, _ = self.get("/api/polymarket/markets?limit=5")
+        finally:
+            server._http_get_json = original
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data["readOnly"])
+        self.assertEqual(data["markets"][0]["question"], "Q?")
+        self.assertNotIn("secret", data["markets"][0])
+
+    def test_polymarket_proxy_reports_upstream_failure(self) -> None:
+        original = server._http_get_json
+
+        def fail(url: str, timeout: float = 8.0) -> object:
+            raise urllib.error.URLError("offline")
+
+        server._http_get_json = fail
+        try:
+            status, body, _ = self.get("/api/polymarket/markets")
+        finally:
+            server._http_get_json = original
+        self.assertEqual(status, 502)
+        self.assertIn("unavailable", json.loads(body)["error"])
+
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})
         with urllib.request.urlopen(request) as response:
