@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import json
 import mimetypes
+import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,8 +14,10 @@ from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parent
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = os.environ.get("HOST", "127.0.0.1")
+PORT = int(os.environ.get("PORT", "8000"))
+# Only static assets the game needs are served; source files, dotfiles and .git stay private.
+SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
 
 
 class SimulatorHandler(BaseHTTPRequestHandler):
@@ -41,8 +45,10 @@ class SimulatorHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         route = urlparse(self.path).path
         if route == "/api/health":
-            body = json.dumps({"status": "ok", "mode": "practice", "realFunds": False}).encode()
-            self._send_bytes(body, "application/json; charset=utf-8")
+            self._send_json({"status": "ok", "mode": "practice", "realFunds": False})
+            return
+        if route.startswith("/api/"):
+            self._send_json({"error": "unknown endpoint"}, HTTPStatus.NOT_FOUND)
             return
 
         relative = "index.html" if route in ("/", "") else route.lstrip("/")
@@ -50,11 +56,15 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         if ROOT not in target.parents and target != ROOT:
             self._send_bytes(b"Not found", "text/plain; charset=utf-8", HTTPStatus.NOT_FOUND)
             return
-        if not target.is_file():
+        hidden = any(part.startswith(".") for part in target.relative_to(ROOT).parts) if target != ROOT else True
+        if hidden or target.suffix.lower() not in SERVED_EXTENSIONS or not target.is_file():
             self._send_bytes(b"Not found", "text/plain; charset=utf-8", HTTPStatus.NOT_FOUND)
             return
         content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         self._send_bytes(target.read_bytes(), f"{content_type}; charset=utf-8" if content_type.startswith("text/") else content_type)
+
+    def _send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
+        self._send_bytes(json.dumps(payload).encode(), "application/json; charset=utf-8", status)
 
     def do_HEAD(self) -> None:  # noqa: N802
         self.do_GET()
@@ -63,9 +73,13 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         print(f"{self.address_string()} - {format_string % args}")
 
 
-def main() -> None:
-    server = ThreadingHTTPServer((HOST, PORT), SimulatorHandler)
-    print(f"Meme Coin FOMO Simulator: http://{HOST}:{PORT}")
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Serve the Meme Coin FOMO Simulator locally.")
+    parser.add_argument("--host", default=HOST, help=f"interface to bind (default: {HOST})")
+    parser.add_argument("--port", type=int, default=PORT, help=f"port to listen on (default: {PORT})")
+    args = parser.parse_args(argv)
+    server = ThreadingHTTPServer((args.host, args.port), SimulatorHandler)
+    print(f"Meme Coin FOMO Simulator: http://{args.host}:{args.port}")
     print("Practice only: no wallet connection and no real funds.")
     try:
         server.serve_forever()

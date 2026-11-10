@@ -37,6 +37,14 @@ Open this address in your browser:
 http://127.0.0.1:8000
 ```
 
+Use a different host or port if needed (the `HOST` and `PORT` environment variables also work):
+
+```bash
+python server.py --host 0.0.0.0 --port 8080
+```
+
+The server only serves the game's static assets; source files, dotfiles, and the `.git` folder are never exposed.
+
 The server also provides a health endpoint:
 
 ```text
@@ -50,10 +58,13 @@ http://127.0.0.1:8000/api/health
 3. Choose a position size.
 4. Click **Start Trade**.
 5. Watch the candles, close line, market cap, liquidity, and bonding-curve progress.
-6. Tap or click the chart to simulate entering at that point in the market.
-7. Use the trade controls to complete the scenario.
-8. Review the simulated P&L.
-9. Reset the round and compare your decision with another scenario.
+6. Tap or click the chart to simulate entering at that point in the market. Your fill uses the price at that candle plus estimated slippage.
+7. Optionally switch to the **Sell** tab and press **Take Profit Now** to exit before the peak.
+8. Otherwise press **Buy The Top** / **Hold To Resolution** at the peak to see how the case resolves, then sell to record the result.
+9. Review the simulated P&L (also shown as *Today's P&L* in the portfolio rail).
+10. Reset the round and compare your decision with another scenario.
+
+Use the **1m / 5m / 1h** chart tabs to change candle grouping. Settings (motion effects, price precision, risk reminders) are saved in your browser.
 
 ## Market Scenarios
 
@@ -81,7 +92,7 @@ timestamp,open,high,low,close
 2024-01-03,0.0000014,0.0000016,0.0000012,0.0000013
 ```
 
-Imported data is labeled as source data in the interface. The application does not download or verify market data automatically.
+Imported data is labeled as source data in the interface. The first ~80% of the candles are replayed live; the remaining candles are revealed when the round resolves, so the outcome comes from your data rather than a random scenario. The application does not download or verify market data automatically.
 
 ## Learning Topics
 
@@ -98,7 +109,6 @@ The learning lab introduces:
 
 These concepts are educational explanations, not trading signals or financial advice.
 
-GitHub Pages runs the browser game but does not run `server.py`. Use the Python server locally or deploy it separately to a Python-capable service.
 ## GitHub Pages
 
 The static browser version can be hosted with GitHub Pages:
@@ -118,6 +128,13 @@ https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/
 ```
 
 GitHub Pages runs the browser game but does not run `server.py`. Use the Python server locally or deploy it separately to a Python-capable service.
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -t .
+```
+
 ## Technology
 
 - HTML

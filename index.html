@@ -227,16 +227,16 @@
     <div class="liquid-orb" aria-hidden="true"></div><section class="market-bar"><div class="token-title"><div id="tokenAvatar" class="token-avatar">D</div><div><strong id="tokenName">ROCKET DOG</strong><span><b id="tokenSymbol">$DOGE2</b> · <span id="tokenTag">long-run moonshot</span> · <b id="holders">1</b> holders</span></div></div><div class="market-stats"><div><span>Market cap</span><strong id="marketCap">$0</strong></div><div><span>Liquidity</span><strong id="marketLiquidity">$0</strong></div><div><span>24h</span><strong id="change">+0.00%</strong></div></div></section>
     <section class="learning-strip"><div class="lesson-intro"><strong>Practice mode // $0 risk</strong><span>Run the scenario, watch the numbers change, then reset and try a different decision.</span></div><div class="lesson"><b>01 · Read the chart</b><p>Green candles show price rising. Red candles show selling pressure.</p></div><div class="lesson"><b>02 · Check the numbers</b><p>Market cap is token value. Liquidity is how much can actually trade.</p></div><div class="lesson"><b>03 · Control risk</b><p>Use small position sizes. Slippage means your fill can be worse than the quote.</p></div></section>
     <main class="terminal-grid">
-      <aside class="left-rail"><section class="rail-card"><h2>Portfolio</h2><div class="metric"><span>Practice equity</span><strong id="railEquity">$2,000</strong></div><div class="metric"><span>Today's P&L</span><strong class="positive">+$0.00</strong></div><div class="metric"><span>Risk level</span><strong>TRAINING</strong></div></section><section class="rail-card"><h2>Top markets</h2><div class="rail-token"><i>₿</i><span><strong>BTC/USD</strong><small>Bitcoin</small></span><em>+3.32%</em></div><div class="rail-token"><i>◉</i><span><strong>ETH/USD</strong><small>Ethereum</small></span><em>+1.80%</em></div><div class="rail-token"><i>F</i><span><strong>$FOMO</strong><small id="railScenario">Rocket Dog</small></span><em>LIVE</em></div><div class="rail-token"><i>◎</i><span><strong>SOL/USD</strong><small>Solana</small></span><em>+2.14%</em></div></section><section class="rail-card"><h2>Practice tips</h2><p class="trade-note">Start small. Watch liquidity. Plan the exit before clicking buy.</p></section></aside>
+      <aside class="left-rail"><section class="rail-card"><h2>Portfolio</h2><div class="metric"><span>Practice equity</span><strong id="railEquity">$2,000</strong></div><div class="metric"><span>Today's P&L</span><strong id="railPnl" class="positive">+$0</strong></div><div class="metric"><span>Risk level</span><strong>TRAINING</strong></div></section><section class="rail-card"><h2>Top markets</h2><div class="rail-token"><i>₿</i><span><strong>BTC/USD</strong><small>Bitcoin</small></span><em>+3.32%</em></div><div class="rail-token"><i>◉</i><span><strong>ETH/USD</strong><small>Ethereum</small></span><em>+1.80%</em></div><div class="rail-token"><i>F</i><span><strong>$FOMO</strong><small id="railScenario">Rocket Dog</small></span><em>LIVE</em></div><div class="rail-token"><i>◎</i><span><strong>SOL/USD</strong><small>Solana</small></span><em>+2.14%</em></div></section><section class="rail-card"><h2>Practice tips</h2><p class="trade-note">Start small. Watch liquidity. Plan the exit before clicking buy.</p></section></aside>
       <section class="panel chart-panel">
         <div class="panel-top"><div><span class="coin-name">$FOMO / USD</span><div class="mini-label">BONDING CURVE · VIRTUAL SOL</div></div><span id="price" class="price">$0.00000001</span></div>
-        <div class="chart-toolbar"><div class="tabs"><button class="tab active">1m</button><button class="tab">5m</button><button class="tab">1h</button></div><span class="pair-state" id="pairState">● CURVE LIVE</span></div><div class="data-import"><span class="mini-label">LINE = CLOSE · CANDLES = OHLC</span><span id="ohlcLegend" class="data-source">OPEN / HIGH / LOW / CLOSE</span></div>
+        <div class="chart-toolbar"><div class="tabs"><button class="tab" data-candle="2">1m</button><button class="tab active" data-candle="4">5m</button><button class="tab" data-candle="8">1h</button></div><span class="pair-state" id="pairState">● CURVE LIVE</span></div><div class="data-import"><span class="mini-label">LINE = CLOSE · CANDLES = OHLC</span><span id="ohlcLegend" class="data-source">OPEN / HIGH / LOW / CLOSE</span></div>
         <div class="chart-wrap" id="chartWrap"><svg viewBox="0 0 900 360" preserveAspectRatio="none" aria-label="Meme coin price chart"><polygon id="chartFill" class="chart-fill" points="0,350 0,350"/><g id="candles" aria-label="Candlesticks"></g><polyline id="chartLine" class="chart-line" points="0,350"/></svg></div><div class="chart-hint">TAP OR CLICK ANYWHERE ON THE CHART TO SIMULATE A MARKET ENTRY</div>
         <div id="status" class="status">SYSTEM READY // press START TRADE to awaken the market</div>
         <div class="curve"><div class="curve-head"><span>Bonding curve progress</span><strong id="curvePercent">0.0%</strong></div><div class="curve-track"><div id="curveFill" class="curve-fill"></div></div></div>
       </section>
       <aside class="right-panel">
-        <section class="panel trade-panel"><div class="trade-header"><h2>Trade</h2><span class="wallet-balance">PRACTICE WALLET<strong id="walletBalance">$2,000</strong></span></div><div class="trade-tabs"><button id="buyTab" class="active">Buy</button><button id="sellTab">Sell</button></div><div class="input-label"><label for="amount">Position size</label><span>Available <b id="availableBalance">$2,000</b></span></div><div class="amount"><input id="amount" aria-label="Practice trade amount" type="number" value="100" min="1" step="10"><span>USD</span></div><div class="quick"><button data-amount="50">$50</button><button data-amount="100">$100</button><button data-amount="500">$500</button><button data-amount="2000">MAX</button></div><button id="start" class="start execute">Start Trade</button><button id="buy" class="buy" disabled>Buy The Top</button><button id="panic" class="panic" disabled>Panic Sell At Loss</button><p class="trade-note">Simulated only · estimated slippage varies by case · no wallet connection</p></section>
+        <section class="panel trade-panel"><div class="trade-header"><h2>Trade</h2><span class="wallet-balance">PRACTICE WALLET<strong id="walletBalance">$2,000</strong></span></div><div class="trade-tabs"><button id="buyTab" class="active">Buy</button><button id="sellTab">Sell</button></div><div class="input-label"><label for="amount">Position size</label><span>Available <b id="availableBalance">$2,000</b></span></div><div class="amount"><input id="amount" aria-label="Practice trade amount" type="number" value="100" min="1" step="10"><span>USD</span></div><div class="quick"><button data-amount="50">$50</button><button data-amount="100">$100</button><button data-amount="500">$500</button><button data-amount="max">MAX</button></div><button id="start" class="start execute">Start Trade</button><button id="buy" class="buy" disabled>Buy The Top</button><button id="panic" class="panic" disabled>Panic Sell At Loss</button><button id="takeProfit" class="buy" disabled hidden>Take Profit Now</button><p class="trade-note">Simulated only · estimated slippage varies by case · no wallet connection</p></section>
         <section class="panel metrics"><h2>Token data</h2><div class="metric"><span>Hype index</span><strong id="hype">0%</strong></div><div class="metric"><span>Virtual reserves</span><strong id="reserves">30 SOL</strong></div><div class="metric"><span>Top holders</span><strong id="topHolder">100.0%</strong></div><div class="warning">WARNING: This token has no utility, roadmap, or adult supervision.</div></section>
       </aside>
     </main>
@@ -299,6 +299,13 @@
     const motionToggle = document.querySelector('#motionToggle');
     const adviceToggle = document.querySelector('#adviceToggle');
     const precisionSelect = document.querySelector('#precisionSelect');
+    const start = document.querySelector('#start');
+    const takeProfit = document.querySelector('#takeProfit');
+    const curvePercent = document.querySelector('#curvePercent');
+    const marketLiquidity = document.querySelector('#marketLiquidity');
+    const railPnl = document.querySelector('#railPnl');
+    const timeframeTabs = document.querySelectorAll('[data-candle]');
+    const PEAK_STEP = 80;
     let points = [];
     let phase = 'ready';
     let pumpTimer;
@@ -312,6 +319,13 @@
     let chartEntryTaken = false;
     let historicalRecords = [];
     let activeOhlc = [];
+    let replaySplit = 0;
+    let candleSize = 4;
+    let entryValue = 0;
+    let peakValue = 0;
+    let currentValue = 0;
+    let positionOpen = false;
+    let roundStartedAt = Date.now();
 
     const scenarios = {
       doge: { name: 'ROCKET DOG', symbol: '$DOGE2', tag: 'long-run moonshot', avatar: 'D', peak: 22000, end: 9800, outcome: 'moon', volatility: .8, mood: 'COMMUNITY BID // patience beats precision' },
@@ -330,17 +344,33 @@
       return element;
     }
 
+    function valueAtY(y) { return scenario.peak * Math.max(.02, (350 - y) / 325); }
+    function nearestByX(items, x, getX) {
+      return items.reduce((best, item) => Math.abs(getX(item) - x) < Math.abs(getX(best) - x) ? item : best, items[0]);
+    }
+    function slippageRate() { return Math.min(.25, .004 * scenario.volatility * (1 + positionSize / 1000)); }
+
     function enterAtChartPoint(event) {
-      if (phase !== 'pumping' || chartEntryTaken) return;
+      if (phase !== 'pumping' || chartEntryTaken || !points.length) return;
       const bounds = chartWrap.getBoundingClientRect();
-      const x = Math.max(0, Math.min(900, (event.clientX - bounds.left) / bounds.width * 900));
-      const y = Math.max(25, Math.min(345, (event.clientY - bounds.top) / bounds.height * 360));
-      const svg = chartWrap.querySelector('svg');
-      entryMarker = createSvgElement('circle', { class: 'entry-marker', cx: x, cy: y, r: 7, 'aria-label': 'Your simulated entry' });
-      svg.append(entryMarker);
+      const clickX = Math.max(0, Math.min(900, (event.clientX - bounds.left) / bounds.width * 900));
+      let fillX;
+      let fillY;
+      if (historicalRecords.length && activeOhlc.length) {
+        const record = nearestByX(activeOhlc, clickX, item => item.x);
+        fillX = record.x; fillY = record.closeY; entryValue = record.close;
+      } else {
+        const point = nearestByX(points, clickX, item => item[0]);
+        fillX = point[0]; fillY = point[1]; entryValue = valueAtY(point[1]);
+      }
+      entryValue *= 1 + slippageRate();
+      entryMarker = createSvgElement('circle', { class: 'entry-marker', cx: fillX, cy: fillY, r: 7, 'aria-label': 'Your simulated entry' });
+      chartWrap.querySelector('svg').append(entryMarker);
       chartEntryTaken = true;
-      status.textContent = `ENTRY FILLED // ${scenario.symbol} // simulated market order at chart point`;
-      addTrade('BUY', 'chart entry', formatMoney(positionSize));
+      positionOpen = true;
+      status.textContent = `ENTRY FILLED // ${scenario.symbol} @ ${formatPrice(entryValue)} incl. ${(slippageRate() * 100).toFixed(1)}% slippage`;
+      addTrade('BUY', `chart entry @ ${formatPrice(entryValue)}`, formatMoney(positionSize));
+      syncTradeButtons();
     }
 
     function draw(pointsToDraw, crashed = false) {
@@ -352,6 +382,7 @@
       if (activeOhlc.length) {
         activeOhlc.forEach(record => {
           const direction = record.closeY <= record.openY ? 'candle-up' : 'candle-down';
+          if (record.x > 900) return;
           candles.append(
             createSvgElement('line', { class: `candle-wick ${direction}`, x1: record.x, x2: record.x, y1: record.highY, y2: record.lowY }),
             createSvgElement('rect', { class: `candle-body ${direction}`, x: record.x - 4, y: Math.min(record.openY, record.closeY), width: 8, height: Math.max(3, Math.abs(record.closeY - record.openY)), rx: 1 })
@@ -359,8 +390,8 @@
         });
         return;
       }
-      for (let index = 0; index < pointsToDraw.length; index += 4) {
-        const group = pointsToDraw.slice(index, index + 4);
+      for (let index = 0; index < pointsToDraw.length; index += candleSize) {
+        const group = pointsToDraw.slice(index, index + candleSize);
         if (group.length < 2) continue;
         const open = index === 0 ? 350 : pointsToDraw[index - 1][1];
         const close = group[group.length - 1][1];
@@ -377,11 +408,28 @@
     }
 
     function formatMoney(value) { return `$${Math.max(0, Math.round(value)).toLocaleString()}`; }
-    function formatPrice(value) { return value > 1 ? formatMoney(value) : `$${Number(value).toPrecision(precisionSelect.value === 'precise' ? 7 : 4)}`; }
+    function formatPrice(value) {
+      const precise = precisionSelect.value === 'precise';
+      if (value >= 1000) return formatMoney(value);
+      if (value >= 1) return `$${Number(value).toFixed(precise ? 4 : 2)}`;
+      return `$${Number(value).toPrecision(precise ? 7 : 4)}`;
+    }
     function formatSol(value) { return formatMoney(value); }
+    function formatSigned(value) { return `${value < 0 ? '-' : '+'}${formatMoney(Math.abs(value))}`; }
     function updateWallet() {
+      const free = positionOpen || phase === 'pumping' || phase === 'peak' ? currentWallet - positionSize : currentWallet;
       walletBalance.textContent = formatMoney(currentWallet);
-      availableBalance.textContent = formatMoney(currentWallet);
+      availableBalance.textContent = formatMoney(free);
+      const pnl = currentWallet - startingWallet;
+      railPnl.textContent = formatSigned(pnl);
+      railPnl.classList.toggle('positive', pnl >= 0);
+      railPnl.classList.toggle('negative', pnl < 0);
+    }
+    function syncTradeButtons() {
+      const canTakeProfit = tradeMode === 'sell' && phase === 'pumping' && positionOpen;
+      takeProfit.hidden = tradeMode !== 'sell';
+      takeProfit.disabled = !canTakeProfit;
+      if (phase === 'peak') buy.textContent = chartEntryTaken ? 'Hold To Resolution' : scenario.outcome === 'rug' ? 'Buy The Top' : 'Enter At Peak';
     }
     function applyScenario() {
       tokenAvatar.textContent = scenario.avatar;
@@ -392,13 +440,13 @@
       document.querySelector('.ticker span').textContent = `${scenario.symbol} LIVE // ${scenario.tag.toUpperCase()} // PRACTICE MARKET // ${scenario.symbol} LIVE // ${scenario.tag.toUpperCase()} // PRACTICE MARKET // `;
     }
     function parseOhlcCsv(text) {
-      const rows = text.trim().split(/\r?\n/).map(row => row.split(',').map(value => value.trim()));
+      const rows = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/).filter(row => row.trim()).map(row => row.split(/[,;]/).map(value => value.trim().replace(/^"|"$/g, '')));
       if (rows.length < 3) throw new Error('CSV needs a header and at least two candles.');
       const headers = rows.shift().map(value => value.toLowerCase());
-      const indexOf = name => headers.findIndex(header => header === name || header.includes(name));
+      const indexOf = name => { const exact = headers.indexOf(name); return exact >= 0 ? exact : headers.findIndex(header => header.includes(name)); };
       const columns = { open: indexOf('open'), high: indexOf('high'), low: indexOf('low'), close: indexOf('close') };
       if (Object.values(columns).some(index => index < 0)) throw new Error('CSV must contain open, high, low, and close columns.');
-      const values = rows.map(row => ({ open: Number(row[columns.open]), high: Number(row[columns.high]), low: Number(row[columns.low]), close: Number(row[columns.close]) })).filter(record => Object.values(record).every(Number.isFinite));
+      const values = rows.map(row => ({ open: Number(row[columns.open]), high: Number(row[columns.high]), low: Number(row[columns.low]), close: Number(row[columns.close]) })).filter(record => Object.values(record).every(Number.isFinite) && record.low > 0 && record.high >= record.low && record.high >= Math.max(record.open, record.close) && record.low <= Math.min(record.open, record.close));
       if (values.length < 2) throw new Error('CSV has no usable OHLC records.');
       const prices = values.flatMap(record => [record.high, record.low]);
       const min = Math.min(...prices);
@@ -414,7 +462,16 @@
     function addTrade(type, label, value) {
       const row = document.createElement('div');
       row.className = 'trade-row';
-      row.innerHTML = `<b>${type}</b><span>${label} <small>${value}</small></span><time>now</time>`;
+      const elapsed = (Date.now() - roundStartedAt) / 1000;
+      const typeCell = document.createElement('b');
+      const labelCell = document.createElement('span');
+      const valueCell = document.createElement('small');
+      const timeCell = document.createElement('time');
+      typeCell.textContent = type;
+      valueCell.textContent = value;
+      labelCell.append(`${label} `, valueCell);
+      timeCell.textContent = elapsed < 1 ? 'now' : `+${elapsed.toFixed(1)}s`;
+      row.append(typeCell, labelCell, timeCell);
       tradeFeed.prepend(row);
       while (tradeFeed.children.length > 5) tradeFeed.lastElementChild.remove();
     }
@@ -429,7 +486,10 @@
       reserves.textContent = `${Math.max(0, Math.round(30 - progress * .28))} SOL`;
       holders.textContent = Math.max(1, Math.round(1 + progress * 1.8));
       topHolder.textContent = `${Math.max(1.2, 100 - progress * .7).toFixed(1)}%`;
-      change.textContent = phase === 'crashed' || phase === 'finished' ? `${roundEnd === 0 ? '-99.90' : ((roundEnd / scenario.peak - 1) * 100).toFixed(2)}%` : `+${(progress * 10.5).toFixed(2)}%`;
+      const resolved = phase === 'crashed' || phase === 'finished';
+      const reference = resolved ? peakValue : (historicalRecords.length ? historicalRecords[0].close : scenario.peak * .02);
+      const changePct = resolved ? (roundEnd <= 0 ? -99.9 : (roundEnd / Math.max(peakValue, Number.EPSILON) - 1) * 100) : step === 0 || !currentValue ? 0 : (currentValue / reference - 1) * 100;
+      change.textContent = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`;
       railEquity.textContent = formatMoney(currentWallet);
       railScenario.textContent = scenario.name;
       tableScenario.textContent = scenario.symbol;
@@ -444,6 +504,7 @@
     }
 
     function spawnRocket() {
+      if (!motionToggle.checked) return;
       const rocket = document.createElement('div');
       rocket.className = 'rocket';
       rocket.textContent = '🚀';
@@ -455,6 +516,7 @@
     }
 
     function launchFireworks() {
+      if (!motionToggle.checked) return;
       const colors = ['#b7ff3c', '#3dff87', '#ffd166', '#ff4654'];
       for (let burst = 0; burst < 3; burst += 1) {
         setTimeout(() => {
@@ -488,37 +550,79 @@
 
     function finishRound() {
       phase = 'finished';
+      positionOpen = false;
       panic.disabled = true;
+      buy.disabled = true;
+      syncTradeButtons();
+      updateWallet();
       const pnl = currentWallet - startingWallet;
       scoreResult.textContent = pnl >= 0 ? `Practice P&L: +${formatMoney(pnl)} // simulated only` : `Practice P&L: -${formatMoney(Math.abs(pnl))} // simulated only`;
       document.querySelector('#scoreboard').hidden = false;
-      status.textContent = `ROUND COMPLETE // ${scenario.name} ended at ${formatMoney(roundEnd)} case value`;
+      status.textContent = `ROUND COMPLETE // ${scenario.name} ended at ${formatPrice(roundEnd)} case value`;
       addTrade('SELL', 'you', formatMoney(currentWallet));
+    }
+
+    function settlePosition(exitValue) {
+      if (!positionOpen || entryValue <= 0) return 0;
+      const exitFill = exitValue * (1 - slippageRate());
+      const returnValue = positionSize * Math.max(0, exitFill) / entryValue;
+      currentWallet = startingWallet - positionSize + returnValue;
+      positionOpen = false;
+      return returnValue;
     }
 
     function resolveMarket() {
       phase = 'crashed'; buy.disabled = true; panic.disabled = true;
-      const peak = points[points.length - 1] || [900, 25];
-      const endY = scenario.outcome === 'rug' ? 350 : scenario.outcome === 'fade' ? 315 : scenario.outcome === 'chop' ? 210 : 90;
-      const resolution = [];
-      for (let index = 1; index <= 10; index += 1) {
-        resolution.push([900 + index * 2, peak[1] + (endY - peak[1]) * index / 10]);
+      clearInterval(pumpTimer);
+      if (!chartEntryTaken) { entryValue = peakValue * (1 + slippageRate()); positionOpen = true; }
+      let resolvedPoints;
+      if (historicalRecords.length) {
+        activeOhlc = historicalRecords;
+        resolvedPoints = [...points, ...historicalRecords.slice(replaySplit).map(record => [record.x, record.closeY])];
+        roundEnd = historicalRecords[historicalRecords.length - 1].close;
+      } else {
+        const peak = points[points.length - 1] || [900, 25];
+        const endY = Math.max(25, Math.min(350, 350 - (roundEnd / scenario.peak) * 325));
+        const resolution = [];
+        for (let index = 1; index <= 10; index += 1) {
+          const wobble = index < 10 ? normalRandom() * 6 * scenario.volatility : 0;
+          resolution.push([900 + index * 2, Math.max(25, Math.min(350, peak[1] + (endY - peak[1]) * index / 10 + wobble))]);
+        }
+        resolvedPoints = [...points, ...resolution];
       }
-      const resolvedPoints = [...points, ...resolution];
-      draw(resolvedPoints, scenario.outcome !== 'moon');
+      const lost = roundEnd < peakValue;
+      draw(resolvedPoints, lost);
       points = resolvedPoints;
-      const returnValue = positionSize * roundEnd / scenario.peak;
-      currentWallet = startingWallet - positionSize + returnValue;
-      price.textContent = formatMoney(roundEnd);
-      price.classList.toggle('crashed', scenario.outcome !== 'moon');
-      pairState.textContent = scenario.outcome === 'rug' ? '● RUGGED' : scenario.outcome === 'moon' ? '● RUNNING' : '● DISTRIBUTION';
-      status.textContent = scenario.mood;
-      updateStats(100);
+      currentValue = roundEnd;
+      const returnValue = settlePosition(roundEnd);
+      price.textContent = formatPrice(roundEnd);
+      price.classList.toggle('crashed', lost);
+      pairState.textContent = scenario.outcome === 'rug' && !historicalRecords.length ? '● RUGGED' : lost ? '● DISTRIBUTION' : '● RUNNING';
+      status.textContent = historicalRecords.length ? 'SOURCE DATA RESOLVED // remaining imported candles revealed' : scenario.mood;
+      updateStats(PEAK_STEP);
       updateWallet();
-      addTrade(scenario.outcome === 'rug' ? 'SELL' : 'HOLD', scenario.tag, formatMoney(returnValue));
-      if (scenario.outcome === 'rug') flashCrash();
-      if (scenario.outcome === 'moon') launchFireworks();
-      setTimeout(() => { panic.disabled = false; status.textContent = 'EXIT WINDOW OPEN // sell to record your simulated result'; }, 850);
+      addTrade(scenario.outcome === 'rug' && !historicalRecords.length ? 'SELL' : 'HOLD', historicalRecords.length ? 'source replay' : scenario.tag, formatMoney(returnValue));
+      if (scenario.outcome === 'rug' && !historicalRecords.length) flashCrash();
+      if (!lost) launchFireworks();
+      setTimeout(() => {
+        if (phase !== 'crashed') return;
+        panic.disabled = false;
+        panic.textContent = lost ? 'Panic Sell At Loss' : 'Sell And Record Result';
+        status.textContent = 'EXIT WINDOW OPEN // sell to record your simulated result';
+      }, 850);
+    }
+
+    function takeProfitNow() {
+      if (phase !== 'pumping' || !positionOpen) return;
+      clearInterval(pumpTimer);
+      const returnValue = settlePosition(currentValue);
+      roundEnd = currentValue;
+      peakValue = Math.max(peakValue, currentValue);
+      addTrade('SELL', `early exit @ ${formatPrice(currentValue)}`, formatMoney(returnValue));
+      phase = 'crashed';
+      updateStats(PEAK_STEP);
+      finishRound();
+      status.textContent = `POSITION CLOSED EARLY // ${scenario.symbol} sold at ${formatPrice(currentValue)} before the peak`;
     }
 
     start.addEventListener('click', () => {
@@ -526,11 +630,16 @@
       positionSize = Math.min(Number(amount.value) || 0, currentWallet);
       if (positionSize <= 0) { status.textContent = 'ENTER A PRACTICE AMOUNT BEFORE STARTING'; return; }
       phase = 'pumping'; start.disabled = true; buy.disabled = false;
-      status.textContent = `MARKET LIVE // ${scenario.tag} // number go up`;
-      addTrade('BUY', 'you', formatMoney(positionSize));
+      roundStartedAt = Date.now();
+      status.textContent = `MARKET LIVE // ${scenario.tag} // tap the chart to enter or wait for the peak`;
+      addTrade('ORDER', 'you · size armed', formatMoney(positionSize));
       activeOhlc = [];
       chartEntryTaken = false;
-      chartEntryTaken = false;
+      positionOpen = false;
+      entryValue = 0;
+      replaySplit = historicalRecords.length ? Math.max(1, Math.min(historicalRecords.length - 1, Math.floor(historicalRecords.length * .8))) : 0;
+      updateWallet();
+      syncTradeButtons();
       if (entryMarker) { entryMarker.remove(); entryMarker = null; }
       let latentShock = 0;
       let regime = 'trend';
@@ -538,10 +647,10 @@
       let step = 0;
       pumpTimer = setInterval(() => {
         step += 1;
-        const x = (step / 80) * 900;
+        const x = (step / PEAK_STEP) * 900;
         let y;
         if (historicalRecords.length) {
-          const recordIndex = Math.min(historicalRecords.length - 1, Math.floor((step - 1) / 80 * historicalRecords.length));
+          const recordIndex = Math.min(replaySplit - 1, Math.floor((step - 1) / PEAK_STEP * replaySplit));
           activeOhlc = historicalRecords.slice(0, recordIndex + 1);
           y = activeOhlc[activeOhlc.length - 1].closeY;
         } else {
@@ -550,30 +659,41 @@
             regimeLife = 5 + Math.floor(Math.random() * 14);
           }
           regimeLife -= 1;
-          const base = 345 - Math.pow(step / 80, scenario.outcome === 'moon' ? 1.35 : 1.7) * 315;
+          const base = 345 - Math.pow(step / PEAK_STEP, scenario.outcome === 'moon' ? 1.35 : 1.7) * 315;
           const regimeDrift = regime === 'trend' ? -2.2 : regime === 'mean-revert' ? (175 - base) * .035 : regime === 'panic' ? 5.5 : 0;
           const jump = Math.random() < .035 * scenario.volatility ? normalRandom() * 45 : 0;
           latentShock = latentShock * .78 + normalRandom() * 8 * scenario.volatility + jump;
           if (scenario.outcome === 'rug' && step > 55 && Math.random() < .055) latentShock -= 95;
           y = Math.max(25, Math.min(345, base + regimeDrift + latentShock));
         }
-        points.push([Math.min(x, 900), Math.max(y, 25)]);
+        const pointX = historicalRecords.length ? activeOhlc[activeOhlc.length - 1].x : Math.min(x, 900);
+        points.push([pointX, Math.max(y, 25)]);
         draw(points);
-        const hypeValue = Math.min(99, Math.round(step / 80 * 100));
+        const hypeValue = Math.min(99, Math.round(step / PEAK_STEP * 100));
         hype.textContent = `${hypeValue}%`;
-        price.textContent = historicalRecords.length ? formatPrice(activeOhlc[activeOhlc.length - 1].close) : formatMoney(Math.max(1, Math.round(4200 * Math.pow(1 + step / 8, 2) * scenario.peak / 22000)));
+        currentValue = historicalRecords.length ? activeOhlc[activeOhlc.length - 1].close : valueAtY(y);
+        price.textContent = formatPrice(currentValue);
         updateStats(step);
         if (step % 3 === 0) spawnRocket();
-        if (step >= 80) { clearInterval(pumpTimer); phase = 'peak'; buy.textContent = scenario.outcome === 'rug' ? 'BUY THE TOP' : 'ENTER AT PEAK'; pairState.textContent = '● PEAK LIQUIDITY'; status.textContent = `PEAK DETECTED // ${scenario.mood}`; addTrade('BUY', 'crowd', scenario.tag); }
+        if (step >= PEAK_STEP) {
+          clearInterval(pumpTimer);
+          phase = 'peak';
+          peakValue = currentValue;
+          syncTradeButtons();
+          pairState.textContent = '● PEAK LIQUIDITY';
+          status.textContent = chartEntryTaken ? `PEAK REACHED // entry ${formatPrice(entryValue)} vs now ${formatPrice(peakValue)} // hold to resolve` : `PEAK DETECTED // ${scenario.mood}`;
+          addTrade('BUY', 'crowd', scenario.tag);
+        }
       }, 45);
     });
 
     buy.addEventListener('click', () => {
-      if (phase === 'pumping') { showModal(); return; }
+      if (phase === 'pumping') { if (!chartEntryTaken) showModal(); return; }
       if (phase !== 'peak') return;
       resolveMarket();
     });
 
+    takeProfit.addEventListener('click', takeProfitNow);
     panic.addEventListener('click', () => {
       if (phase !== 'crashed') return;
       finishRound();
@@ -586,13 +706,22 @@
       startingWallet = Math.max(10, Number(bankroll.value) || 2000);
       currentWallet = startingWallet;
       positionSize = 0;
+      positionOpen = false;
+      chartEntryTaken = false;
+      entryValue = 0;
+      peakValue = 0;
+      currentValue = 0;
+      roundStartedAt = Date.now();
+      if (entryMarker) { entryMarker.remove(); entryMarker = null; }
       roundEnd = scenario.outcome === 'rug' ? 0 : Math.max(1, Math.round(scenario.end * (0.86 + Math.random() * 0.28)));
       activeOhlc = [];
       start.disabled = false;
       start.textContent = tradeMode === 'buy' ? 'Start Trade' : 'Simulate Sell';
       buy.disabled = true;
-      buy.textContent = 'Buy';
+      buy.textContent = 'Buy The Top';
       panic.disabled = true;
+      panic.textContent = 'Panic Sell At Loss';
+      modal.hidden = true;
       price.classList.remove('crashed');
       price.textContent = '$0';
       pairState.textContent = '● CURVE LIVE';
@@ -604,6 +733,7 @@
       hype.textContent = '0%';
       updateStats(0);
       updateWallet();
+      syncTradeButtons();
     }
 
     reset.addEventListener('click', resetRound);
@@ -618,13 +748,27 @@
       buyTab.classList.toggle('active', tradeMode === 'buy');
       sellTab.classList.toggle('active', tradeMode === 'sell');
       start.textContent = tradeMode === 'buy' ? 'Start Trade' : 'Simulate Sell';
+      syncTradeButtons();
+      if (tradeMode === 'sell' && phase === 'pumping' && !positionOpen) status.textContent = 'SELL MODE // tap the chart to enter first, then take profit before the peak';
     }));
-    document.querySelectorAll('[data-amount]').forEach(button => button.addEventListener('click', () => { amount.value = button.dataset.amount; }));
+    document.querySelectorAll('[data-amount]').forEach(button => button.addEventListener('click', () => {
+      amount.value = button.dataset.amount === 'max' ? Math.floor(currentWallet) : button.dataset.amount;
+    }));
+    amount.addEventListener('change', () => {
+      const value = Math.max(1, Math.min(Number(amount.value) || 1, Math.floor(currentWallet)));
+      amount.value = value;
+    });
+    timeframeTabs.forEach(tab => tab.addEventListener('click', () => {
+      candleSize = Number(tab.dataset.candle) || 4;
+      timeframeTabs.forEach(item => item.classList.toggle('active', item === tab));
+      draw(points, phase === 'crashed' && roundEnd < peakValue);
+    }));
 
     csvFile.addEventListener('change', async () => {
       const file = csvFile.files[0];
       if (!file) return;
       try {
+        if (phase === 'pumping') resetRound();
         historicalRecords = parseOhlcCsv(await file.text());
         dataSource.textContent = `IMPORTED SOURCE · ${historicalRecords.length} CANDLES`;
         ohlcLegend.textContent = 'SOURCE OHLC / LINE CLOSE';
@@ -632,6 +776,7 @@
         status.textContent = `SOURCE LOADED // ${historicalRecords.length} real OHLC records ready for replay`;
       } catch (error) {
         historicalRecords = [];
+        ohlcLegend.textContent = 'OPEN / HIGH / LOW / CLOSE';
         dataSource.textContent = 'IMPORT ERROR';
         status.textContent = `CSV ERROR // ${error.message}`;
       }
@@ -649,9 +794,27 @@
       if (target) target.scrollIntoView({ behavior: motionToggle.checked ? 'smooth' : 'auto', block: 'start' });
       if (view === 'pulse' || view === 'settings') window.scrollTo({ top: 0, behavior: motionToggle.checked ? 'smooth' : 'auto' });
     }));
-    motionToggle.addEventListener('change', () => document.body.classList.toggle('reduced-motion', !motionToggle.checked));
-    adviceToggle.addEventListener('change', () => document.querySelector('.warning').hidden = !adviceToggle.checked);
-    precisionSelect.addEventListener('change', () => { if (historicalRecords.length && activeOhlc.length) price.textContent = formatPrice(activeOhlc[activeOhlc.length - 1].close); });
+    function saveSettings() {
+      try { localStorage.setItem('fomoSettings', JSON.stringify({ motion: motionToggle.checked, advice: adviceToggle.checked, precision: precisionSelect.value })); } catch (error) { /* storage unavailable */ }
+    }
+    function applySettings() {
+      document.body.classList.toggle('reduced-motion', !motionToggle.checked);
+      document.querySelector('.warning').hidden = !adviceToggle.checked;
+      if (currentValue) price.textContent = formatPrice(phase === 'crashed' || phase === 'finished' ? roundEnd : currentValue);
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('fomoSettings') || 'null');
+      if (saved) {
+        motionToggle.checked = saved.motion !== false;
+        adviceToggle.checked = saved.advice !== false;
+        if (['standard', 'precise'].includes(saved.precision)) precisionSelect.value = saved.precision;
+      } else if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        motionToggle.checked = false;
+      }
+    } catch (error) { /* storage unavailable */ }
+    [motionToggle, adviceToggle, precisionSelect].forEach(control => control.addEventListener('change', () => { applySettings(); saveSettings(); }));
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') modal.hidden = true; });
+    applySettings();
     applyScenario();
     resetRound();
   </script>
