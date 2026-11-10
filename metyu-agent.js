@@ -475,9 +475,34 @@
     };
   }
 
+  /**
+   * Reads a Gamma API market that may have closed. Returns null while it is open,
+   * { outcome: 'YES' | 'NO' } once settled, or { outcome: null } if closed but not cleanly
+   * settled yet (e.g. a resolution still under dispute).
+   */
+  function parseGammaResolution(raw) {
+    if (!raw || !(raw.closed === true || raw.closed === 'true')) return null;
+    const parse = value => { if (Array.isArray(value)) return value; try { return JSON.parse(value); } catch (error) { return []; } };
+    const outcomes = parse(raw.outcomes).map(String);
+    const prices = parse(raw.outcomePrices).map(Number);
+    if (outcomes.length !== 2 || prices.length !== 2) return { outcome: null };
+    const yesIndex = outcomes.findIndex(name => name.toLowerCase() === 'yes');
+    const yes = prices[yesIndex >= 0 ? yesIndex : 0];
+    if (yes >= .99) return { outcome: 'YES' };
+    if (yes <= .01) return { outcome: 'NO' };
+    return { outcome: null };
+  }
+
+  /** Settles a (possibly leveraged) position at resolution: winners get $1/share, losers $0. */
+  function settlePosition(position, outcome) {
+    const perShare = position.side === outcome ? 1 : 0;
+    const payout = Math.max(0, position.shares * perShare - (position.borrowed || 0) - (position.interest || 0));
+    return { payout, pnl: payout - position.margin };
+  }
+
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, parseGammaResolution, settlePosition, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

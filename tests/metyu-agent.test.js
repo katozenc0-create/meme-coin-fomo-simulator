@@ -114,3 +114,13 @@ test('live advisor: sizes a confident edge, refuses a vague one, no leverage nea
   const bearish = M.advise({ yesPrice: .70, spread: .02, belief: .45, confidence: 'high', bankroll: 1000, daysLeft: 45 });
   assert.equal(bearish.side, 'NO');
 });
+
+test('reads Polymarket resolutions and settles positions', () => {
+  assert.equal(M.parseGammaResolution({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' }), null);
+  assert.deepEqual(M.parseGammaResolution({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' }), { outcome: 'YES' });
+  assert.deepEqual(M.parseGammaResolution({ closed: 'true', outcomes: '["No","Yes"]', outcomePrices: '["1","0"]' }), { outcome: 'NO' });
+  assert.deepEqual(M.parseGammaResolution({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.6","0.4"]' }), { outcome: null });
+  const levered = M.openPosition({ side: 'YES', yesPrice: .5, margin: 100, leverage: 3 });
+  close(M.settlePosition(levered, 'YES').pnl, 600 - 200 - 100);   // 600 shares pay $1, repay 200
+  close(M.settlePosition(levered, 'NO').pnl, -100);                // margin lost, never more
+});

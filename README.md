@@ -89,7 +89,7 @@ Open `polymarket.html` (or **Metyu Lab** in the top navigation). Metyu is a pape
 - liquidation price
 - payout if right, expected profit, and break-even probability
 
-You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings.
+You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings. When a live market resolves, its paper positions settle automatically: winners pay $1 per share and losers $0, after any borrowed amount is repaid. The settled result moves into resolved P&L.
 
 **Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, and `/api/polymarket/market?id=<numeric id>` for one market) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
 

@@ -190,6 +190,7 @@
           <h2 style="margin-top:14px">Paper positions</h2>
           <div id="paperList"><p class="note">No paper positions yet.</p></div>
           <div class="metric"><span>Paper P&amp;L (open marks)</span><strong id="paperTotal">$0</strong></div>
+          <div class="metric"><span>Paper P&amp;L (resolved)</span><strong id="paperRealized">$0</strong></div>
         </div>
       </div>
     </section>
@@ -641,7 +642,10 @@
             const response = await fetch(url, { headers: { Accept: 'application/json' } });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
-            const parsed = M.parseGammaMarket(data.market || data);
+            const raw = data.market || data;
+            const resolution = M.parseGammaResolution(raw);
+            if (resolution) return { id: String(raw.id ?? id), resolved: true, outcome: resolution.outcome };
+            const parsed = M.parseGammaMarket(raw);
             if (parsed) return parsed;
             lastError = 'market is not an open binary market';
           } catch (error) { lastError = error.message; }
@@ -707,6 +711,7 @@
       }
 
       function markPaper(item) {
+        if (item.settled) return { pnl: item.settled.pnl, returnOnMargin: item.settled.pnl / item.margin, mark: item.side === item.settled.outcome ? 1 : 0 };
         const position = { side: item.side, shares: item.shares, borrowed: item.borrowed, interest: 0, margin: item.margin };
         return M.markPosition(position, item.lastYes, { spread: item.spread });
       }
@@ -719,52 +724,71 @@
           empty.textContent = 'No paper positions yet.';
           list.replaceChildren(empty);
           signed($('#paperTotal'), 0, '$0');
+          signed($('#paperRealized'), 0, '$0');
           return;
         }
         let total = 0;
+        let realized = 0;
         list.replaceChildren(...paper.map((item, index) => {
           const marked = markPaper(item);
-          total += marked.pnl;
+          if (item.settled) realized += marked.pnl; else total += marked.pnl;
           const row = document.createElement('div');
           row.className = 'paper-row';
           const info = document.createElement('div');
           const title = document.createElement('span');
           title.textContent = `${item.side} ${item.leverage}x · ${item.question.slice(0, 60)}`;
           const detail = document.createElement('small');
-          detail.textContent = `entry ${cents(item.entry)} · now ${cents(M.sidePriceOf(item, item.lastYes))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})${item.liquidation > 0 ? ` · liq ${cents(item.liquidation)}` : ''}${item.liveId ? '' : ' · manual price'}`;
+          detail.textContent = item.settled
+            ? `RESOLVED ${item.settled.outcome} · ${item.side === item.settled.outcome ? 'won' : 'lost'} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)}) realized`
+            : `entry ${cents(item.entry)} · now ${cents(M.sidePriceOf(item, item.lastYes))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})${item.liquidation > 0 ? ` · liq ${cents(item.liquidation)}` : ''}${item.liveId ? '' : ' · manual price'}`;
           detail.style.color = marked.pnl >= 0 ? 'var(--green)' : 'var(--red)';
           info.append(title, detail);
           const remove = document.createElement('button');
-          remove.textContent = 'Close';
+          remove.textContent = item.settled ? 'Remove' : 'Close';
           remove.addEventListener('click', () => { paper.splice(index, 1); saveStore(); renderPaper(); });
           row.append(info, remove);
           return row;
         }));
-        signed($('#paperTotal'), total, `${total >= 0 ? '+' : ''}${formatMoney(total)}`);
+        const plusMoney = value => Math.abs(value) < .005 ? '$0' : `${value > 0 ? '+' : ''}${formatMoney(value)}`;
+        signed($('#paperTotal'), total, plusMoney(total));
+        signed($('#paperRealized'), realized, plusMoney(realized));
       }
 
       async function refreshLive() {
         const market = selectedAdvisorMarket();
-        const ids = new Set(paper.filter(item => item.liveId).map(item => item.liveId));
+        const ids = new Set(paper.filter(item => item.liveId && !item.settled).map(item => item.liveId));
         if (market) ids.add(market.id);
         if (!ids.size) { $('#advStatus').textContent = 'Nothing live to refresh — load live markets first.'; return; }
         $('#advStatus').textContent = 'Refreshing live prices…';
         let updated = 0;
+        let settledNow = 0;
         let failure = '';
         for (const id of ids) {
           try {
             const fresh = await fetchLiveMarket(id);
             updated += 1;
+            if (fresh.resolved) {
+              if (!fresh.outcome) { failure = `market ${id} closed, resolution pending`; continue; }
+              paper.forEach(item => {
+                if (item.liveId !== id || item.settled) return;
+                const { pnl } = M.settlePosition(item, fresh.outcome);
+                item.settled = { outcome: fresh.outcome, pnl, at: Date.now() };
+                settledNow += 1;
+              });
+              const gone = advisorMarkets.findIndex(item => item.id === id);
+              if (gone >= 0) { advisorMarkets.splice(gone, 1); fillAdvisorMarkets(advisorMarkets); }
+              continue;
+            }
             paper.forEach(item => { if (item.liveId === id) item.lastYes = fresh.yesPrice; });
             const index = advisorMarkets.findIndex(item => item.id === id);
             if (index >= 0) advisorMarkets[index] = { ...advisorMarkets[index], ...fresh };
           } catch (error) { failure = error.message; }
         }
         syncAdvisorInputs();
-        if (market) askMetyu();
+        if (selectedAdvisorMarket()) askMetyu();
         renderPaper();
         saveStore();
-        $('#advStatus').textContent = `${updated}/${ids.size} live prices refreshed at ${new Date().toLocaleTimeString()}${failure ? ` · last error: ${failure}` : ''}`;
+        $('#advStatus').textContent = `${updated}/${ids.size} live prices refreshed at ${new Date().toLocaleTimeString()}${settledNow ? ` · ${settledNow} paper position(s) settled at resolution` : ''}${failure ? ` · last error: ${failure}` : ''}`;
       }
 
       $('#advMarket').addEventListener('change', () => { syncAdvisorInputs(); askMetyu(); });
