@@ -7,6 +7,7 @@ import gzip
 import json
 import mimetypes
 import os
+import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,6 +37,20 @@ def fetch_polymarket_markets(limit: int = 20) -> list[dict]:
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
     keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate")
     return [{key: market.get(key) for key in keys if key in market} for market in markets if isinstance(market, dict)]
+
+
+MARKET_ID = re.compile(r"^[0-9]{1,12}$")
+
+
+def fetch_polymarket_market(market_id: str) -> dict:
+    """Read-only snapshot of one Polymarket market by numeric id."""
+    if not MARKET_ID.match(market_id):
+        raise ValueError("market id must be numeric")
+    payload = _http_get_json(f"{POLYMARKET_GAMMA_URL}/{market_id}")
+    if not isinstance(payload, dict):
+        raise ValueError("unexpected response")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed")
+    return {key: payload.get(key) for key in keys if key in payload}
 
 
 class SimulatorHandler(BaseHTTPRequestHandler):
@@ -72,6 +87,16 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 limit = 20
             try:
                 self._send_json({"source": "polymarket-gamma", "readOnly": True, "markets": fetch_polymarket_markets(limit)})
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
+                self._send_json({"error": f"Polymarket data unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
+            return
+        if route == "/api/polymarket/market":
+            market_id = parse_qs(urlparse(self.path).query).get("id", [""])[0]
+            if not MARKET_ID.match(market_id):
+                self._send_json({"error": "id must be a numeric Polymarket market id"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json({"source": "polymarket-gamma", "readOnly": True, "market": fetch_polymarket_market(market_id)})
             except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
                 self._send_json({"error": f"Polymarket data unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
             return

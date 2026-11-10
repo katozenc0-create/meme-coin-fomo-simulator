@@ -99,3 +99,18 @@ test('parses Polymarket Gamma API market objects', () => {
   assert.equal(M.parseGammaMarket({ outcomes: '["A","B","C"]', outcomePrices: '["0.2","0.3","0.5"]' }), null);
   assert.equal(M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' }), null);
 });
+
+test('live advisor: sizes a confident edge, refuses a vague one, no leverage near resolution', () => {
+  const strong = M.advise({ yesPrice: .40, spread: .02, belief: .60, confidence: 'high', bankroll: 1000, daysLeft: 45 });
+  assert.equal(strong.action, 'OPEN');
+  assert.equal(strong.side, 'YES');
+  assert.ok(strong.expectedProfit > 0);
+  assert.ok(strong.maxLoss <= 1000 * M.DEFAULT_CONFIG.maxPositionPct);
+  close(strong.payoutIfRight, strong.shares - (strong.notional - strong.maxLoss), 1e-9);
+  const vague = M.advise({ yesPrice: .40, spread: .02, belief: .46, confidence: 'low', bankroll: 1000, daysLeft: 45 });
+  assert.equal(vague.action, 'HOLD');
+  const lastDays = M.advise({ yesPrice: .40, spread: .02, belief: .60, confidence: 'high', bankroll: 1000, daysLeft: 3 });
+  assert.equal(lastDays.leverage, 1);
+  const bearish = M.advise({ yesPrice: .70, spread: .02, belief: .45, confidence: 'high', bankroll: 1000, daysLeft: 45 });
+  assert.equal(bearish.side, 'NO');
+});

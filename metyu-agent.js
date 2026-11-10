@@ -418,6 +418,39 @@
     };
   }
 
+  /** How sure the user is about their own estimate → log-odds variance of that estimate. */
+  const CONFIDENCE_VARIANCE = Object.freeze({ low: .6, medium: .2, high: .06 });
+
+  /**
+   * Live-market advisor: given a real YES price and the user's own probability estimate,
+   * returns Metyu's verdict plus the numbers a trader should see before clicking anything.
+   * daysLeft maps to the decision's time-to-resolution (leverage is cut inside ~7 days).
+   */
+  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', bankroll = 1000, daysLeft = 30, peakEquity = null }, userConfig = {}) {
+    const config = { ...DEFAULT_CONFIG, ...userConfig };
+    const researchVariance = CONFIDENCE_VARIANCE[confidence] ?? CONFIDENCE_VARIANCE.medium;
+    const timeLeft = clamp(daysLeft / 30, 0, 1);
+    const decision = decide({
+      yesPrice, spread, research: clampProb(belief), researchVariance,
+      equity: bankroll, peakEquity: peakEquity ?? bankroll, volatility: .05, timeLeft
+    }, config);
+    const result = { ...decision, yesPrice, belief: clampProb(belief), daysLeft };
+    if (decision.action !== 'OPEN') return result;
+    const position = openPosition({ side: decision.side, yesPrice, margin: decision.margin, leverage: decision.leverage, spread, feeRate: config.feeRate });
+    const sideFair = decision.side === 'YES' ? decision.fair : 1 - decision.fair;
+    return {
+      ...result,
+      entry: position.entry,
+      shares: position.shares,
+      notional: position.notional,
+      liquidation: liquidationPrice(position, config.maintenanceMargin),
+      payoutIfRight: position.shares - position.borrowed,
+      maxLoss: position.margin,
+      expectedProfit: position.shares * sideFair - position.notional,
+      breakevenProbability: position.entry
+    };
+  }
+
   /** Normalises a Polymarket Gamma API market object into { id, question, yesPrice, ... }. */
   function parseGammaMarket(raw) {
     const parse = value => { if (Array.isArray(value)) return value; try { return JSON.parse(value); } catch (error) { return []; } };
@@ -445,6 +478,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

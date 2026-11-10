@@ -81,6 +81,21 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 502)
         self.assertIn("unavailable", json.loads(body)["error"])
 
+    def test_single_market_endpoint_validates_id_and_fetches(self) -> None:
+        seen = []
+        original = server._http_get_json
+        server._http_get_json = lambda url, timeout=8.0: seen.append(url) or {"id": "42", "question": "Q?", "outcomePrices": '["0.3","0.7"]', "token": "x"}
+        try:
+            bad_status, _, _ = self.get("/api/polymarket/market?id=../../etc")
+            status, body, _ = self.get("/api/polymarket/market?id=42")
+        finally:
+            server._http_get_json = original
+        self.assertEqual(bad_status, 400)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["market"]["id"], "42")
+        self.assertNotIn("token", json.loads(body)["market"])
+        self.assertEqual(seen, [server.POLYMARKET_GAMMA_URL + "/42"])
+
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})
         with urllib.request.urlopen(request) as response:
