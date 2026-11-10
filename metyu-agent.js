@@ -418,6 +418,42 @@
     };
   }
 
+  /** Normalises a CLOB order book side ([{price, size}] strings or numbers) sorted best-first. */
+  function normaliseLevels(levels, side = 'asks') {
+    const clean = (Array.isArray(levels) ? levels : [])
+      .map(level => ({ price: Number(level.price), size: Number(level.size) }))
+      .filter(level => level.price > 0 && level.price < 1 && level.size > 0);
+    return clean.sort((a, b) => side === 'asks' ? a.price - b.price : b.price - a.price);
+  }
+
+  /**
+   * Walks the ask side of an order book to spend `notional` dollars on shares.
+   * Returns the volume-weighted average price, shares bought, dollars left unfilled,
+   * the worst price touched and how many levels were consumed.
+   */
+  function fillFromBook(asks, notional) {
+    const levels = normaliseLevels(asks, 'asks');
+    let remaining = notional;
+    let shares = 0;
+    let worst = 0;
+    let used = 0;
+    for (const level of levels) {
+      if (remaining <= 1e-9) break;
+      const cost = Math.min(remaining, level.price * level.size);
+      shares += cost / level.price;
+      remaining -= cost;
+      worst = level.price;
+      used += 1;
+    }
+    const spent = notional - remaining;
+    return {
+      averagePrice: shares > 0 ? spent / shares : NaN,
+      shares, spent, unfilled: Math.max(0, remaining), worstPrice: worst, levelsUsed: used,
+      bestAsk: levels.length ? levels[0].price : NaN,
+      depth: levels.reduce((sum, level) => sum + level.price * level.size, 0)
+    };
+  }
+
   /** How sure the user is about their own estimate → log-odds variance of that estimate. */
   const CONFIDENCE_VARIANCE = Object.freeze({ low: .6, medium: .2, high: .06 });
 
@@ -426,7 +462,7 @@
    * returns Metyu's verdict plus the numbers a trader should see before clicking anything.
    * daysLeft maps to the decision's time-to-resolution (leverage is cut inside ~7 days).
    */
-  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', bankroll = 1000, daysLeft = 30, peakEquity = null }, userConfig = {}) {
+  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', bankroll = 1000, daysLeft = 30, peakEquity = null, book = null }, userConfig = {}) {
     const config = { ...DEFAULT_CONFIG, ...userConfig };
     const researchVariance = CONFIDENCE_VARIANCE[confidence] ?? CONFIDENCE_VARIANCE.medium;
     const timeLeft = clamp(daysLeft / 30, 0, 1);
@@ -436,10 +472,39 @@
     }, config);
     const result = { ...decision, yesPrice, belief: clampProb(belief), daysLeft };
     if (decision.action !== 'OPEN') return result;
-    const position = openPosition({ side: decision.side, yesPrice, margin: decision.margin, leverage: decision.leverage, spread, feeRate: config.feeRate });
     const sideFair = decision.side === 'YES' ? decision.fair : 1 - decision.fair;
+    let margin = decision.margin;
+    let bookFill = null;
+    const asks = book && book[decision.side];
+    if (asks) {
+      // Real execution: walk the order book. Shrink the order until the average fill keeps the edge.
+      let notional = margin * decision.leverage;
+      bookFill = fillFromBook(asks, notional);
+      for (let attempt = 0; attempt < 12 && (bookFill.unfilled > .01 || sideFair - bookFill.averagePrice < config.minEdge) && notional > 1; attempt += 1) {
+        notional *= .6;
+        bookFill = fillFromBook(asks, notional);
+      }
+      const edgeAfterFill = sideFair - bookFill.averagePrice;
+      if (!(bookFill.shares > 0) || bookFill.unfilled > .01 || edgeAfterFill < config.minEdge || notional < 1) {
+        const best = Number.isFinite(bookFill.bestAsk) ? `${(bookFill.bestAsk * 100).toFixed(1)}¢` : 'none';
+        const after = Number.isFinite(edgeAfterFill) ? `${(edgeAfterFill * 100).toFixed(1)} pts` : 'n/a';
+        return { ...result, action: 'HOLD', bookFill, reasons: [...decision.reasons, `order book too thin: best ask ${best}, edge after fill ${after} < ${(config.minEdge * 100).toFixed(1)}`] };
+      }
+      if (notional < margin * decision.leverage - .01) {
+        margin = notional / decision.leverage;
+        result.reasons = [...decision.reasons, `size cut to $${notional.toFixed(2)} notional so the book fill keeps the edge`];
+      }
+    }
+    const position = openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread, feeRate: config.feeRate });
+    if (bookFill) {
+      // Replace the quote-based fill with the order-book fill.
+      position.entry = bookFill.averagePrice;
+      position.shares = bookFill.shares * (1 - config.feeRate);
+    }
     return {
       ...result,
+      margin,
+      bookFill,
       entry: position.entry,
       shares: position.shares,
       notional: position.notional,
@@ -471,7 +536,13 @@
       spread: Number.isFinite(bid) && Number.isFinite(ask) && ask > bid ? ask - bid : .02,
       volume: Number(raw.volumeNum ?? raw.volume) || 0,
       liquidity: Number(raw.liquidityNum ?? raw.liquidity) || 0,
-      endDate: raw.endDate ? String(raw.endDate) : ''
+      endDate: raw.endDate ? String(raw.endDate) : '',
+      tokenIds: (() => {
+        const ids = parse(raw.clobTokenIds).map(String);
+        if (ids.length !== 2 || !ids.every(id => /^[0-9]{1,100}$/.test(id))) return null;
+        const y = yesIndex >= 0 ? yesIndex : 0;
+        return { YES: ids[y], NO: ids[1 - y] };
+      })()
     };
   }
 
@@ -503,6 +574,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, parseGammaResolution, settlePosition, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, parseGammaResolution, settlePosition, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

@@ -89,9 +89,11 @@ Open `polymarket.html` (or **Metyu Lab** in the top navigation). Metyu is a pape
 - liquidation price
 - payout if right, expected profit, and break-even probability
 
+For live markets, Metyu also reads the outcome's public CLOB order book and walks the asks to find the real average fill. If the fill would eat the edge, it cuts the size or refuses the trade, and the verdict shows the levels used and the book depth.
+
 You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings. When a live market resolves, its paper positions settle automatically: winners pay $1 per share and losers $0, after any borrowed amount is repaid. The settled result moves into resolved P&L.
 
-**Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, and `/api/polymarket/market?id=<numeric id>` for one market) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
+**Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
 
 The simulator's hidden probability is a calibrated martingale that resolves to 0 or 1, so results reflect real edge rather than model artifacts. No agent can guarantee profit: real-world edge is rare and small.
 

@@ -21,6 +21,7 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
 # Only static assets the game needs are served; source files, dotfiles and .git stay private.
 POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets"
+POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
 
 
@@ -35,11 +36,36 @@ def fetch_polymarket_markets(limit: int = 20) -> list[dict]:
     query = urlencode({"active": "true", "closed": "false", "limit": max(1, min(limit, 100)), "order": "volume24hr", "ascending": "false"})
     payload = _http_get_json(f"{POLYMARKET_GAMMA_URL}?{query}")
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "clobTokenIds")
     return [{key: market.get(key) for key in keys if key in market} for market in markets if isinstance(market, dict)]
 
 
 MARKET_ID = re.compile(r"^[0-9]{1,12}$")
+TOKEN_ID = re.compile(r"^[0-9]{1,100}$")
+
+
+def fetch_polymarket_book(token_id: str, depth: int = 50) -> dict:
+    """Read-only CLOB order book for one outcome token (public endpoint, no keys)."""
+    if not TOKEN_ID.match(token_id):
+        raise ValueError("token id must be numeric")
+    payload = _http_get_json(f"{POLYMARKET_CLOB_BOOK_URL}?{urlencode({'token_id': token_id})}")
+    if not isinstance(payload, dict):
+        raise ValueError("unexpected response")
+
+    def levels(side: object) -> list[dict]:
+        rows = side if isinstance(side, list) else []
+        clean = []
+        for row in rows:
+            if isinstance(row, dict):
+                try:
+                    clean.append({"price": float(row.get("price")), "size": float(row.get("size"))})
+                except (TypeError, ValueError):
+                    continue
+        return clean
+
+    asks = sorted(levels(payload.get("asks")), key=lambda level: level["price"])[:depth]
+    bids = sorted(levels(payload.get("bids")), key=lambda level: -level["price"])[:depth]
+    return {"tokenId": token_id, "asks": asks, "bids": bids}
 
 
 def fetch_polymarket_market(market_id: str) -> dict:
@@ -49,7 +75,7 @@ def fetch_polymarket_market(market_id: str) -> dict:
     payload = _http_get_json(f"{POLYMARKET_GAMMA_URL}/{market_id}")
     if not isinstance(payload, dict):
         raise ValueError("unexpected response")
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed", "clobTokenIds")
     return {key: payload.get(key) for key in keys if key in payload}
 
 
@@ -99,6 +125,16 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 self._send_json({"source": "polymarket-gamma", "readOnly": True, "market": fetch_polymarket_market(market_id)})
             except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
                 self._send_json({"error": f"Polymarket data unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
+            return
+        if route == "/api/polymarket/book":
+            token_id = parse_qs(urlparse(self.path).query).get("token_id", [""])[0]
+            if not TOKEN_ID.match(token_id):
+                self._send_json({"error": "token_id must be a numeric CLOB token id"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                self._send_json({"source": "polymarket-clob", "readOnly": True, "book": fetch_polymarket_book(token_id)})
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
+                self._send_json({"error": f"Polymarket order book unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
             return
         if route.startswith("/api/"):
             self._send_json({"error": "unknown endpoint"}, HTTPStatus.NOT_FOUND)

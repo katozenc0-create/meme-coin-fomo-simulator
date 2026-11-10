@@ -674,6 +674,13 @@
         const title = document.createElement('h3');
         title.textContent = advice.action === 'OPEN' ? `Buy ${advice.side}` : 'No trade';
         const rows = [['Market YES / your view', `${cents(inputs.yesPrice)} / ${pct(inputs.belief)}`], ['Metyu fair value', pct(advice.fair)], ['Edge after costs', `${(advice.edge * 100).toFixed(1)} pts`]];
+        const fill = advice.bookFill;
+        const execution = inputs.execution === 'checking' ? 'checking order book…'
+          : fill && Number.isFinite(fill.averagePrice) ? `order book: avg ${cents(fill.averagePrice)} over ${fill.levelsUsed} level(s), best ask ${cents(fill.bestAsk)}, depth ${formatMoney(fill.depth)}`
+          : fill ? `order book: best ask ${Number.isFinite(fill.bestAsk) ? cents(fill.bestAsk) : 'none'}, depth ${formatMoney(fill.depth)}`
+          : inputs.execution === 'manual' ? 'manual price + half spread (no order book)'
+          : inputs.execution || 'quote';
+        rows.push(['Execution', execution]);
         if (advice.action === 'OPEN') {
           rows.push(
             ['Entry price', cents(advice.entry)],
@@ -699,12 +706,46 @@
         reasons.className = 'reasons';
         reasons.textContent = advice.reasons.join(' · ');
         box.replaceChildren(title, ...metricRows, reasons);
-        $('#advTrack').disabled = advice.action !== 'OPEN';
+        $('#advTrack').disabled = advice.action !== 'OPEN' || inputs.execution === 'checking';
       }
 
-      function askMetyu() {
+      async function fetchBook(tokenId) {
+        const sources = [`/api/polymarket/book?token_id=${encodeURIComponent(tokenId)}`, `https://clob.polymarket.com/book?token_id=${encodeURIComponent(tokenId)}`];
+        let lastError = '';
+        for (const url of sources) {
+          try {
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const book = data.book || data;
+            if (Array.isArray(book.asks)) return book;
+            lastError = 'no asks in response';
+          } catch (error) { lastError = error.message; }
+        }
+        throw new Error(lastError || 'unavailable');
+      }
+
+      let adviceSeq = 0;
+      async function askMetyu() {
+        const seq = ++adviceSeq;
         const inputs = adviceInputs();
-        const advice = M.advise({ yesPrice: inputs.yesPrice, spread: inputs.spread, belief: inputs.belief, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft }, config());
+        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, belief: inputs.belief, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft };
+        let advice = M.advise(request, config());
+        inputs.execution = inputs.market ? 'quote' : 'manual';
+        const tokenIds = inputs.market && inputs.market.tokenIds;
+        if (advice.action === 'OPEN' && tokenIds && tokenIds[advice.side]) {
+          renderVerdict(advice, { ...inputs, execution: 'checking' });
+          try {
+            const book = await fetchBook(tokenIds[advice.side]);
+            if (seq !== adviceSeq) return;
+            advice = M.advise({ ...request, book: { [advice.side]: book.asks } }, config());
+            inputs.execution = 'book';
+          } catch (error) {
+            if (seq !== adviceSeq) return;
+            inputs.execution = `quote (order book unavailable: ${error.message})`;
+          }
+        }
+        if (seq !== adviceSeq) return;
         lastAdvice = { advice, inputs };
         renderVerdict(advice, inputs);
         saveStore();

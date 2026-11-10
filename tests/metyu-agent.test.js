@@ -124,3 +124,30 @@ test('reads Polymarket resolutions and settles positions', () => {
   close(M.settlePosition(levered, 'YES').pnl, 600 - 200 - 100);   // 600 shares pay $1, repay 200
   close(M.settlePosition(levered, 'NO').pnl, -100);                // margin lost, never more
 });
+
+test('order book: walks levels, reports average price and depth', () => {
+  const asks = [{ price: '0.43', size: '100' }, { price: '0.41', size: '50' }, { price: '0.45', size: '1000' }];
+  const fill = M.fillFromBook(asks, 50);              // 50 shares @ .41 = $20.5, then $29.5 @ .43
+  close(fill.bestAsk, .41);
+  close(fill.spent, 50);
+  close(fill.shares, 50 + 29.5 / .43, 1e-9);
+  assert.equal(fill.levelsUsed, 2);
+  assert.ok(fill.averagePrice > .41 && fill.averagePrice < .43);
+  const tooBig = M.fillFromBook(asks, 10000);
+  assert.ok(tooBig.unfilled > 0);
+});
+
+test('advisor uses the order book: deep book keeps the trade, thin book shrinks or refuses it', () => {
+  const base = { yesPrice: .40, spread: .02, belief: .60, confidence: 'high', bankroll: 1000, daysLeft: 45 };
+  const deep = M.advise({ ...base, book: { YES: [{ price: .41, size: 100000 }] } });
+  assert.equal(deep.action, 'OPEN');
+  close(deep.entry, .41);
+  const thin = M.advise({ ...base, book: { YES: [{ price: .41, size: 20 }, { price: .58, size: 100000 }] } });
+  assert.ok(thin.action === 'HOLD' || thin.margin < deep.margin, 'thin book must cut size or refuse');
+  if (thin.action === 'OPEN') assert.ok(thin.entry < .5);
+  const empty = M.advise({ ...base, book: { YES: [{ price: .55, size: 100000 }] } });
+  assert.equal(empty.action, 'HOLD');
+  assert.ok(empty.reasons.some(reason => reason.includes('order book too thin')));
+  const tokens = M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["0.4","0.6"]', clobTokenIds: '["111","222"]' }).tokenIds;
+  assert.deepEqual(tokens, { YES: '111', NO: '222' });
+});

@@ -96,6 +96,27 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("token", json.loads(body)["market"])
         self.assertEqual(seen, [server.POLYMARKET_GAMMA_URL + "/42"])
 
+    def test_order_book_endpoint_validates_and_sorts(self) -> None:
+        seen = []
+        original = server._http_get_json
+        server._http_get_json = lambda url, timeout=8.0: seen.append(url) or {
+            "asks": [{"price": "0.45", "size": "10"}, {"price": "0.41", "size": "5"}, {"price": "bad", "size": "1"}],
+            "bids": [{"price": "0.38", "size": "7"}, {"price": "0.39", "size": "3"}],
+            "owner": "secret",
+        }
+        try:
+            bad_status, _, _ = self.get("/api/polymarket/book?token_id=1;rm")
+            status, body, _ = self.get("/api/polymarket/book?token_id=12345")
+        finally:
+            server._http_get_json = original
+        self.assertEqual(bad_status, 400)
+        self.assertEqual(status, 200)
+        book = json.loads(body)["book"]
+        self.assertEqual([level["price"] for level in book["asks"]], [0.41, 0.45])
+        self.assertEqual([level["price"] for level in book["bids"]], [0.39, 0.38])
+        self.assertNotIn("owner", book)
+        self.assertEqual(seen, [server.POLYMARKET_CLOB_BOOK_URL + "?token_id=12345"])
+
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})
         with urllib.request.urlopen(request) as response:
