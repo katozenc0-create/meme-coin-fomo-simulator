@@ -156,6 +156,8 @@ python -m unittest discover -s tests -t .
 node --test tests/*.test.js
 ```
 
+Both suites run automatically on every pull request and on pushes to `main` (`.github/workflows/tests.yml`).
+
 ## Technology
 
 - HTML
