@@ -53,16 +53,19 @@ http://127.0.0.1:8000/api/health
 
 ## How to Use the Simulator
 
-1. Choose a market case.
-2. Set a virtual practice bankroll.
-3. Choose a position size.
-4. Click **Start Trade**.
-5. Watch the candles, close line, market cap, liquidity, and bonding-curve progress.
-6. Tap or click the chart to simulate entering at that point in the market. Your fill uses the price at that candle plus estimated slippage.
-7. Optionally switch to the **Sell** tab and press **Take Profit Now** to exit before the peak.
-8. Otherwise press **Buy The Top** / **Hold To Resolution** at the peak to see how the case resolves, then sell to record the result.
-9. Review the simulated P&L (also shown as *Today's P&L* in the portfolio rail).
-10. Reset the round and compare your decision with another scenario.
+1. Choose a market case and set a virtual practice bankroll (changing the bankroll starts a new session).
+2. Choose a position size and, optionally, a **stop loss %** and **take profit %**.
+3. Click **Start Trade** to start the market.
+4. Enter by tapping the chart (fills at that candle's price) or with **Buy At Market**, or wait and **Buy The Top** at the peak.
+5. Manage the position:
+   - **Sell All Now** closes it at market while the price is still rising; you can re-enter before the peak.
+   - The **Sell** tab sells 25%, 50% or 100% of the position.
+   - Stop-loss and take-profit orders fill automatically. Gaps such as rug pulls can fill below the stop.
+6. At the peak, choose **Hold To Resolution**, **Sell All At Peak**, or **Skip The Top**, then record the result.
+7. Review the round and session P&L. The portfolio rail tracks session P&L, rounds played, win rate, and best/worst round.
+8. Press **Next Practice Round**. Your practice equity carries over between rounds and across market cases.
+
+Every fill includes estimated slippage (higher for volatile cases and larger sizes) plus a 0.3% fee per side. The open-position line shows size, average entry, unrealized P&L, and active SL/TP levels.
 
 Use the **1m / 5m / 1h** chart tabs to change candle grouping. Settings (motion effects, price precision, risk reminders) are saved in your browser.
 
