@@ -172,7 +172,7 @@ test('training: calibration fit finds no edge in a calibrated crowd and finds lo
 
 test('training: parses resolved Gamma markets with YES token and end time', () => {
   const parsed = M.parseResolvedForTraining({ id: 5, question: 'Q', closed: true, outcomes: '["No","Yes"]', outcomePrices: '["0","1"]', clobTokenIds: '["11","22"]', closedTime: '2026-01-02T00:00:00Z' });
-  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22' });
+  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5' });
   assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
   assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
 });
@@ -197,4 +197,58 @@ test('CSV export quotes properly and neutralises formula injection', () => {
   assert.equal(lines[1], `"'=HYPERLINK(""http://evil"",""x"")",-12.5`);
   assert.ok(lines[2].startsWith('"Comma, ""quotes""'));
   assert.equal(csv.split('\r\n').pop(), "'@SUM(A1),");
+});
+
+test('event-aware training: grouped candidates count once and never straddle the split', () => {
+  const weighted = M.weightByEvent([
+    { eventId: 'e1', marketId: 'a', horizon: 7 }, { eventId: 'e1', marketId: 'b', horizon: 7 }, { eventId: 'e1', marketId: 'c', horizon: 7 },
+    { eventId: 'e2', marketId: 'd', horizon: 7 }
+  ]);
+  assert.deepEqual(weighted.map(sample => +sample.weight.toFixed(3)), [.333, .333, .333, 1]);
+  // 30 events; each "who wins" event has 5 candidates, exactly one resolves YES.
+  const markets = [];
+  for (let event = 0; event < 30; event += 1) {
+    for (let candidate = 0; candidate < 5; candidate += 1) {
+      const endTs = 1e9 + event * 86400 * 10 + candidate;
+      markets.push({ id: `m${event}-${candidate}`, eventId: `e${event}`, endTs, outcome: candidate === event % 5 ? 'YES' : 'NO', history: [{ t: endTs - 40 * 86400, p: .2 }] });
+    }
+  }
+  const result = M.trainAndEvaluate(markets, { horizons: [7] });
+  assert.equal(result.counts.events, 30);
+  assert.equal(result.counts.trainMarkets % 5, 0, 'whole events only on each side');
+  assert.ok(Math.abs(result.counts.effectiveTrainSamples - result.counts.trainEvents) < 1e-9, 'one effective sample per event');
+  const tradedEvents = result.paper.trades.map(trade => trade.marketId.split('-')[0]);
+  assert.equal(new Set(tradedEvents).size, tradedEvents.length, 'at most one trade per event');
+  const parsed = M.parseResolvedForTraining({ id: 1, eventId: '99', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0","1"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' });
+  assert.equal(parsed.eventId, '99');
+});
+
+test('data client skips a missing local proxy after the first miss, but not after a 5xx', async () => {
+  const calls = [];
+  const json = body => ({ ok: true, status: 200, json: async () => body });
+  const staticHost = M.createDataClient(async url => {
+    calls.push(url);
+    if (url.startsWith('/api/')) return { ok: false, status: 404, json: async () => ({}) };
+    return json({ direct: true });
+  });
+  assert.deepEqual(await staticHost.fetchJson(['/api/x', 'https://direct/x']), { direct: true });
+  assert.deepEqual(await staticHost.fetchJson(['/api/y', 'https://direct/y']), { direct: true });
+  assert.deepEqual(calls, ['/api/x', 'https://direct/x', 'https://direct/y'], 'second call goes straight to Polymarket');
+  assert.equal(staticHost.proxyState(), false);
+
+  const fileUrl = M.createDataClient(async url => { if (url.startsWith('/api/')) throw new TypeError('Failed to fetch'); return json(1); });
+  assert.equal(await fileUrl.fetchJson(['/api/x', 'https://d/x']), 1);
+  assert.equal(fileUrl.proxyState(), false);
+
+  let upstreamDown = true;
+  const withServer = M.createDataClient(async url => {
+    if (url.startsWith('/api/')) return upstreamDown ? { ok: false, status: 502, json: async () => ({}) } : json({ proxied: true });
+    return json({ direct: true });
+  });
+  assert.deepEqual(await withServer.fetchJson(['/api/x', 'https://d/x']), { direct: true });
+  assert.equal(withServer.proxyState(), null, 'a 502 does not mean the proxy is missing');
+  upstreamDown = false;
+  assert.deepEqual(await withServer.fetchJson(['/api/x', 'https://d/x']), { proxied: true });
+  assert.equal(withServer.proxyState(), true);
+  await assert.rejects(M.createDataClient(async () => ({ ok: false, status: 500 })).fetchJson(['https://d/x']), /HTTP 500/);
 });

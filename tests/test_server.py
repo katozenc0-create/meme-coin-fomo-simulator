@@ -127,7 +127,7 @@ class ServerTests(unittest.TestCase):
             seen.append(url)
             if "prices-history" in url:
                 return {"history": [{"t": 100, "p": 0.4}, {"t": "bad"}, {"t": 200, "p": "0.6"}]}
-            return [{"id": "7", "question": "Done?", "closed": True, "outcomes": '["Yes","No"]', "outcomePrices": '["1","0"]', "clobTokenIds": '["1","2"]', "secret": 1}]
+            return [{"id": "7", "events": [{"id": 777, "title": "Big event", "description": "x" * 5000}], "question": "Done?", "closed": True, "outcomes": '["Yes","No"]', "outcomePrices": '["1","0"]', "clobTokenIds": '["1","2"]', "secret": 1}]
 
         original = server._http_get_json
         server._http_get_json = fake
@@ -141,6 +141,8 @@ class ServerTests(unittest.TestCase):
         market = json.loads(body)["markets"][0]
         self.assertEqual(market["clobTokenIds"], '["1","2"]')
         self.assertNotIn("secret", market)
+        self.assertEqual(market["eventId"], "777")
+        self.assertNotIn("events", market)
         self.assertIn("closed=true", seen[0])
         self.assertIn("offset=10", seen[0])
         self.assertEqual(hist_status, 200)

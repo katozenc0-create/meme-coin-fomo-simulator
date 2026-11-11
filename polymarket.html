@@ -197,10 +197,10 @@
 
     <section class="panel wide" id="trainPanel">
       <h2>Training · learn from resolved markets (virtual money)</h2>
-      <p class="note">Metyu studies markets that already resolved: what was the YES price 1, 7 and 30 days before the end, and did YES win? It fits a calibration model on the older markets, then paper-trades the newer ones it has never seen with virtual money. If the crowd is well calibrated the honest result is "no edge, no trades".</p>
+      <p class="note">Metyu studies markets that already resolved: what was the YES price 1, 7 and 30 days before the end, and did YES win? It fits a calibration model on the older markets, then paper-trades the newer ones it has never seen with virtual money. Candidates of the same event (e.g. "who will win") are not independent: they stay on one side of the split, count once in the fit, and get at most one trade. If the crowd is well calibrated the honest result is "no edge, no trades".</p>
       <div class="controls">
         <div class="field" style="min-width:240px"><label for="trainSource">Data</label><select id="trainSource"><option value="live">Live Polymarket · resolved markets</option><option value="sim0">Simulated · calibrated crowd (control)</option><option value="sim20">Simulated · 20% longshot bias</option><option value="sim35" selected>Simulated · 35% longshot bias</option></select></div>
-        <div class="field" style="width:120px"><label for="trainCount">Markets</label><input id="trainCount" type="number" min="40" max="600" step="20" value="300"></div>
+        <div class="field" style="width:120px"><label for="trainCount">Markets</label><input id="trainCount" type="number" min="40" max="1500" step="20" value="300"></div>
         <div class="field" style="width:170px"><label for="trainHorizon">Trade at</label><select id="trainHorizon"><option value="1">1 day before end</option><option value="7" selected>7 days before end</option><option value="30">30 days before end</option></select></div>
         <button class="btn" id="trainBtn">Train Metyu</button>
         <button class="btn secondary" id="trainUse" disabled>Use model in advisor</button>
@@ -208,7 +208,7 @@
       <p class="note" id="trainStatus"></p>
       <div class="advisor" id="trainResults" hidden style="margin-top:10px">
         <div>
-          <div class="metric"><span>Markets · train / test</span><strong id="trainCounts">—</strong></div>
+          <div class="metric"><span>Data</span><strong id="trainCounts">—</strong></div>
           <div class="metric"><span>Model σ(a + b·logit p)</span><strong id="trainModel">—</strong></div>
           <div class="metric"><span>What it learned</span><strong id="trainMeaning">—</strong></div>
           <div class="metric"><span>Test Brier · crowd → model</span><strong id="trainBrier">—</strong></div>
@@ -531,16 +531,11 @@
         const sources = ['/api/polymarket/markets?limit=25', 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=25&order=volume24hr&ascending=false'];
         let parsed = [];
         let lastError = '';
-        for (const url of sources) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const rows = Array.isArray(data) ? data : data.markets || [];
-            parsed = rows.map(M.parseGammaMarket).filter(Boolean);
-            if (parsed.length) break;
-          } catch (error) { lastError = error.message; }
-        }
+        try {
+          const data = await M.fetchJson(sources);
+          const rows = Array.isArray(data) ? data : data.markets || [];
+          parsed = rows.map(M.parseGammaMarket).filter(Boolean);
+        } catch (error) { lastError = error.message; }
         if (!parsed.length) { note.textContent = `Live data unavailable (${lastError || 'no binary markets'}). Run "python server.py" locally or check your network; built-in markets still work.`; return; }
         markets = [...parsed.map(market => ({ ...market, live: true })), ...builtInMarkets];
         fillAdvisorMarkets(parsed);
@@ -666,21 +661,13 @@
 
       async function fetchLiveMarket(id) {
         const sources = [`/api/polymarket/market?id=${encodeURIComponent(id)}`, `https://gamma-api.polymarket.com/markets/${encodeURIComponent(id)}`];
-        let lastError = '';
-        for (const url of sources) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const raw = data.market || data;
-            const resolution = M.parseGammaResolution(raw);
-            if (resolution) return { id: String(raw.id ?? id), resolved: true, outcome: resolution.outcome };
-            const parsed = M.parseGammaMarket(raw);
-            if (parsed) return parsed;
-            lastError = 'market is not an open binary market';
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
+        const data = await M.fetchJson(sources);
+        const raw = data.market || data;
+        const resolution = M.parseGammaResolution(raw);
+        if (resolution) return { id: String(raw.id ?? id), resolved: true, outcome: resolution.outcome };
+        const parsed = M.parseGammaMarket(raw);
+        if (parsed) return parsed;
+        throw new Error('market is not an open binary market');
       }
 
       function adviceInputs() {
@@ -747,18 +734,10 @@
 
       async function fetchBook(tokenId) {
         const sources = [`/api/polymarket/book?token_id=${encodeURIComponent(tokenId)}`, `https://clob.polymarket.com/book?token_id=${encodeURIComponent(tokenId)}`];
-        let lastError = '';
-        for (const url of sources) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const book = data.book || data;
-            if (Array.isArray(book.asks)) return book;
-            lastError = 'no asks in response';
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
+        const data = await M.fetchJson(sources);
+        const book = data.book || data;
+        if (Array.isArray(book.asks)) return book;
+        throw new Error('no asks in response');
       }
 
       let adviceSeq = 0;
@@ -901,17 +880,7 @@
         if (saved && Number.isFinite(saved.a) && Number.isFinite(saved.b) && Array.isArray(saved.cov)) trainedModel = saved;
       } catch (error) { /* ignore */ }
 
-      async function getJson(urls) {
-        let lastError = '';
-        for (const url of urls) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return await response.json();
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
-      }
+      const getJson = M.fetchJson;
 
       async function loadLiveTrainingMarkets(count, report) {
         const resolved = [];
@@ -944,7 +913,7 @@
       function renderTraining(result, sourceLabel) {
         $('#trainResults').hidden = false;
         const { model, counts, test, paper } = result;
-        setText('#trainCounts', `${counts.markets} · ${counts.trainMarkets} / ${counts.testMarkets} (${counts.trainSamples} / ${counts.testSamples} samples)`);
+        setText('#trainCounts', `${counts.markets} markets in ${counts.events} events · train / test events ${counts.trainEvents} / ${counts.testEvents} (${counts.trainMarkets} / ${counts.testMarkets} markets, ${counts.effectiveTrainSamples.toFixed(0)} effective train samples)`);
         setText('#trainModel', `a ${model.a.toFixed(3)} · b ${model.b.toFixed(3)} (±${Math.sqrt(model.cov[1][1]).toFixed(3)})`);
         const slopeSe = Math.sqrt(model.cov[1][1]);
         const meaning = model.b - 1 > 2 * slopeSe ? 'crowd too timid: longshots overpriced, favourites cheap'
@@ -984,7 +953,7 @@
         button.disabled = true;
         $('#trainUse').disabled = true;
         const source = $('#trainSource').value;
-        const count = Math.max(40, Math.min(600, Number($('#trainCount').value) || 300));
+        const count = Math.max(40, Math.min(1500, Number($('#trainCount').value) || 300));
         const tradeHorizon = Number($('#trainHorizon').value) || 7;
         const report = text => { $('#trainStatus').textContent = text; };
         try {

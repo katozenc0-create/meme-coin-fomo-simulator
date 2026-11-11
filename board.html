@@ -177,17 +177,7 @@
         return { kind: 'live', id: market.id, question: market.question, spread: market.spread, tokenIds: market.tokenIds, endDate: market.endDate, prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
       }
 
-      async function getJson(urls) {
-        let lastError = '';
-        for (const url of urls) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return await response.json();
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
-      }
+      const getJson = M.fetchJson;
 
       // ---------- portfolio ----------
       function markOf(slot) {
@@ -299,7 +289,12 @@
       async function loadLiveSlots() {
         const data = await getJson(['/api/polymarket/markets?limit=40', 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=40&order=volume24hr&ascending=false']);
         const rows = Array.isArray(data) ? data : data.markets || [];
-        const markets = rows.map(M.parseGammaMarket).filter(Boolean).filter(market => market.yesPrice > .03 && market.yesPrice < .97).slice(0, SLOTS);
+        // One market per event: candidates of one event move together, so holding several is one bet in disguise.
+        const seenEvents = new Set();
+        const markets = rows.map(M.parseGammaMarket).filter(Boolean)
+          .filter(market => market.yesPrice > .03 && market.yesPrice < .97)
+          .filter(market => { if (seenEvents.has(market.eventId)) return false; seenEvents.add(market.eventId); return true; })
+          .slice(0, SLOTS);
         if (!markets.length) throw new Error('no open binary markets returned');
         return markets.map(liveSlot);
       }
@@ -523,7 +518,7 @@
         $('#skillField').hidden = live;
         $('#speedField').hidden = live;
         $('#modeNote').textContent = live
-          ? `Live: the 8 busiest open Polymarket binary markets, refreshed every 30s. Metyu's belief is ${trainedModel ? 'your trained calibration model' : 'missing — train a model in the Prediction lab first; without one Metyu correctly makes no trades'}.`
+          ? `Live: the busiest open Polymarket binary markets (one per event), refreshed every 30s. Metyu's belief is ${trainedModel ? 'your trained calibration model' : 'missing — train a model in the Prediction lab first; without one Metyu correctly makes no trades'}.`
           : 'Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu\'s research accuracy sets how much it knows beyond the price.';
         if (running) { pause(); start(); }
       });

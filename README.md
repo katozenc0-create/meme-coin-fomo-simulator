@@ -1,8 +1,29 @@
 # Meme Coin FOMO Simulator
 
-A browser-based crypto trading practice game for learning charts, volatility, liquidity, position sizing, slippage, and meme-coin risk without using real money.
+A browser-based practice ecosystem for trading with **virtual money only**. It has three parts: a meme-coin game, a prediction-market lab with the Metyu agent, and a live board.
 
-## Features
+## Ecosystem
+
+| Page | What it is for |
+|---|---|
+| `index.html` · **FOMO simulator** | A meme-coin trading game. Covers charts, liquidity, slippage, position sizing, stop-loss / take-profit and rug pulls. |
+| `polymarket.html` · **Metyu Prediction Lab** | Metyu, an agent for YES/NO prediction markets. Includes autopilot, leverage with liquidation, a backtest lab, a live advisor (order-book aware), training on resolved Polymarket markets, and a knowledge base. |
+| `board.html` · **Metyu Live Board** | Metyu trades eight markets at once from one virtual account, in demo or live mode. Includes portfolio limits, manual control, an equity curve and CSV export. |
+
+How the pieces fit:
+
+```text
+index.html ─┐
+polymarket.html ─┼─> metyu-agent.js   (shared, dependency-free logic: pricing, Kelly, leverage,
+board.html ─┘                          decisions, simulator, training, order book, CSV, data client)
+       │
+       └─ data: /api/polymarket/* on server.py (cache + rate limiting)
+                └─ falls back to gamma-api / clob.polymarket.com directly (CORS), e.g. on GitHub Pages
+```
+
+All Polymarket access is **read-only**: no wallet, no keys, and no orders, ever. Polymarket itself has no leverage; leverage here is a simulated margin account. Access to Polymarket is restricted in some countries. Nothing here is financial advice.
+
+## Features (FOMO simulator)
 
 - Dark trading-terminal interface inspired by professional market dashboards
 - Responsive layout for phones, tablets, laptops, and desktop screens
@@ -51,11 +72,18 @@ The Polymarket proxy endpoints are read-only and polite to the upstream API:
 - Successful responses are cached briefly: 5s for order books, 10s for single markets, 30s for market lists, 5 min for resolved lists, and 1 hour for price histories.
 - Errors are never cached.
 
-The server also provides a health endpoint:
+### API (read-only)
 
-```text
-http://127.0.0.1:8000/api/health
-```
+| Endpoint | Returns | Cache |
+|---|---|---|
+| `GET /api/health` | `{"status": "ok", "realFunds": false}` | – |
+| `GET /api/polymarket/markets?limit=N` | active markets, busiest first | 30 s |
+| `GET /api/polymarket/market?id=<numeric>` | one market (price, or resolution once closed) | 10 s |
+| `GET /api/polymarket/book?token_id=<numeric>` | CLOB order book, best levels first | 5 s |
+| `GET /api/polymarket/resolved?limit=N&offset=M` | closed markets, most recent first | 5 min |
+| `GET /api/polymarket/history?token_id=<numeric>&fidelity=<min>` | price history `[{t, p}]` | 1 h |
+
+Ids are validated as numeric (anything else gets a 400). Responses carry only the fields the pages use, plus a flat `eventId`. If Polymarket is unreachable, the endpoints return 502.
 
 ## How to Use the Simulator
 
@@ -104,6 +132,8 @@ You can track a recommendation as a paper position. Paper positions are marked t
 - A slope near 1 means the crowd is calibrated: there is no edge and Metyu sits out.
 - A slope above 1 means longshots are overpriced.
 - The data can be live Polymarket data, through `/api/polymarket/resolved` and `/api/polymarket/history`, or simulated data. The simulated options are a calibrated control and 20% / 35% longshot bias.
+- Candidates of the same event are not independent: in a "who will win" event exactly one resolves YES. They stay on one side of the train/test split, each event counts once in the fit, and paper trading takes at most one trade per event.
+  - On real Polymarket data, about 1,000 recently resolved markets come from only about 180 events.
 - A trained model can become Metyu's belief in the live advisor. It is saved in the browser.
 
 **Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
@@ -185,16 +215,20 @@ GitHub will provide a public address similar to:
 https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/
 ```
 
-GitHub Pages runs the browser game but does not run `server.py`. Use the Python server locally or deploy it separately to a Python-capable service.
+GitHub Pages does not run `server.py`, but every page still works there, live Polymarket features included. Polymarket's public APIs allow cross-origin browser requests, so without the local proxy the pages call `gamma-api.polymarket.com` and `clob.polymarket.com` directly. They try the proxy once and then stop trying. The Python server adds response caching and a limit on simultaneous requests.
 
 ## Tests
 
 ```bash
-python -m unittest discover -s tests -t .
-node --test tests/*.test.js
+python -m unittest discover -s tests -t .   # server: static files, API proxies, cache
+node --test tests/*.test.js                 # Metyu agent logic (npm test)
+npm install && npx playwright install chromium
+npm run test:e2e                            # browser end-to-end tests (Playwright)
 ```
 
-Both suites run automatically on every pull request and on pushes to `main` (`.github/workflows/tests.yml`).
+The browser tests start `server.py` on a free port and drive all three pages in Chromium: the game, the Prediction lab and the Live Board. They mock every Polymarket response, so they need no network, and they fail fast if a page tries to reach the real Polymarket.
+
+Every pull request and push to `main` runs all three suites (`.github/workflows/tests.yml`).
 
 ## Technology
 

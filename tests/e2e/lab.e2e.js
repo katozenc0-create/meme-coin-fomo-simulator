@@ -1,0 +1,163 @@
+// Browser tests for the Metyu Prediction Lab (polymarket.html). Polymarket is mocked.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { start, setValues, text, noHorizontalScroll } = require('./harness');
+
+let env;
+test.before(async () => { env = await start(); });
+test.after(async () => { await env.stop(); });
+
+const END = () => new Date(Date.now() + 60 * 86400000).toISOString();
+
+test('autopilot runs a market, manual leveraged trade, backtest table', async () => {
+  const page = await env.page();
+  await page.goto(`${env.base}/polymarket.html`);
+  await setValues(page, { '#skill': 85, '#speed': 8 });
+  await page.click('#startBtn');
+  await page.waitForSelector('#resultBanner:not([hidden])', { timeout: 30000 });
+  assert.match(await text(page, '#resultBanner'), /^RESOLVED (YES|NO)/);
+  assert.equal(await page.locator('#truthLine:not([hidden])').count(), 1, 'hidden truth revealed at resolution');
+
+  await page.uncheck('#autopilot');
+  await page.click('#startBtn');
+  await page.waitForTimeout(400);
+  await page.fill('#margin', '200');
+  await setValues(page, { '#leverage': 5 });
+  await page.click('#buyYes');
+  assert.match(await text(page, '#posSize'), /5x/);
+  assert.match(await text(page, '#posLiq'), /¢/, 'leveraged position shows a liquidation price');
+  await page.click('#closeBtn');
+  assert.equal(await text(page, '#posSide'), 'FLAT');
+
+  await setValues(page, { '#skill': 30, '#btMarkets': 60 });
+  await page.click('#runBacktest');
+  await page.waitForFunction(() => document.querySelectorAll('#btBody tr').length === 6 && !document.querySelector('#runBacktest').disabled, null, { timeout: 90000 });
+  const rows = await page.$$eval('#btBody tr', trs => trs.map(tr => [...tr.children].map(td => td.textContent)));
+  const reckless = rows.find(row => row[0].startsWith('Reckless'));
+  assert.ok(Number(reckless[6]) > 0, 'reckless leverage gets liquidated');
+  assert.deepEqual(page.errors, []);
+});
+
+test('advisor: no-trade vs buy, live market, paper position, refresh, settlement, persistence', async () => {
+  const page = await env.page();
+  let livePrice = '0.40';
+  let closed = false;
+  const end = END();
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets: [
+    { id: '501', question: 'Will the test event happen?', outcomes: '["Yes","No"]', outcomePrices: '["0.40","0.60"]', bestBid: '0.39', bestAsk: '0.41', endDate: end },
+    { id: '502', question: 'Multi-outcome market', outcomes: '["A","B","C"]', outcomePrices: '["0.2","0.3","0.5"]' }
+  ] } }));
+  await page.route('**/api/polymarket/market?id=*', route => route.fulfill({ json: { market: {
+    id: '501', question: 'Will the test event happen?', closed, outcomes: '["Yes","No"]',
+    outcomePrices: JSON.stringify([livePrice, String(1 - Number(livePrice))]), bestBid: '0.49', bestAsk: '0.51', endDate: end } } }));
+  await page.goto(`${env.base}/polymarket.html`);
+
+  await page.fill('#advPrice', '40'); await page.fill('#advBelief', '46'); await page.selectOption('#advConfidence', 'low');
+  await page.click('#advAsk');
+  assert.equal(await text(page, '#advVerdict h3'), 'No trade', 'a vague view does not trade');
+  await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
+  await page.click('#advAsk');
+  assert.equal(await text(page, '#advVerdict h3'), 'Buy YES');
+
+  await page.click('#loadLive');
+  await page.waitForFunction(() => /loaded/.test(document.querySelector('#liveNote').textContent));
+  assert.equal(await page.locator('#advMarket option').count(), 2, 'only binary markets offered');
+  await page.selectOption('#advMarket', '0');
+  assert.equal(await page.inputValue('#advPrice'), '40.0');
+  await page.fill('#advBelief', '62'); await page.dispatchEvent('#advBelief', 'change');
+  await page.waitForTimeout(200);
+  await page.click('#advTrack');
+  assert.match(await text(page, '#paperList'), /Will the test event happen\?/);
+
+  livePrice = '0.50';
+  await page.click('#advRefresh');
+  await page.waitForFunction(() => /refreshed/.test(document.querySelector('#advStatus').textContent));
+  assert.match(await text(page, '#paperTotal'), /^\+/, 'paper P&L positive after the price rose');
+
+  closed = true; livePrice = '1';
+  await page.click('#advRefresh');
+  await page.waitForFunction(() => /settled at resolution/.test(document.querySelector('#advStatus').textContent));
+  assert.match(await text(page, '#paperList'), /RESOLVED YES · won/);
+  assert.match(await text(page, '#paperRealized'), /^\+/);
+  assert.equal(await text(page, '#paperTotal'), '$0');
+
+  await page.reload();
+  assert.match(await text(page, '#paperList'), /RESOLVED YES/, 'settled paper position survives a reload');
+  assert.deepEqual(page.errors, []);
+});
+
+test('advisor sizes against the order book and falls back when it is unavailable', async () => {
+  const page = await env.page();
+  let asks = [{ price: 0.41, size: 100000 }];
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets: [
+    { id: '601', question: 'Book test market?', outcomes: '["Yes","No"]', outcomePrices: '["0.40","0.60"]', bestBid: '0.39', bestAsk: '0.41', endDate: END(), clobTokenIds: '["9001","9002"]' }] } }));
+  await page.route('**/api/polymarket/book?*', route => route.fulfill({ json: { book: { tokenId: '9001', asks, bids: [] } } }));
+  await page.goto(`${env.base}/polymarket.html`);
+  await page.click('#loadLive');
+  await page.waitForFunction(() => /loaded/.test(document.querySelector('#liveNote').textContent));
+  await page.selectOption('#advMarket', '0');
+  await page.fill('#advBelief', '60'); await page.selectOption('#advConfidence', 'high');
+  await page.click('#advAsk');
+  await page.waitForFunction(() => /order book: avg/.test(document.querySelector('#advVerdict').textContent));
+  assert.equal(await text(page, '#advVerdict h3'), 'Buy YES');
+
+  asks = [{ price: 0.55, size: 100000 }];
+  await page.click('#advAsk');
+  await page.waitForFunction(() => /No trade/.test(document.querySelector('#advVerdict h3').textContent));
+  assert.match(await text(page, '#advVerdict'), /order book too thin/);
+  assert.ok(await page.isDisabled('#advTrack'));
+
+  await page.unroute('**/api/polymarket/book?*');
+  await page.route('**/api/polymarket/book?*', route => route.fulfill({ status: 502, json: { error: 'down' } }));
+  await page.click('#advAsk');
+  await page.waitForFunction(() => /order book unavailable/.test(document.querySelector('#advVerdict').textContent));
+  assert.deepEqual(page.errors, []);
+});
+
+test('training: control finds no edge, bias is detected, live pipeline, model feeds the advisor', async () => {
+  const page = await env.page();
+  await page.goto(`${env.base}/polymarket.html`);
+  const fake = await page.evaluate(() => Metyu.simulatedResolvedMarkets(120, { seed: 5, longshotBias: 0.35 }).map((market, index) => ({
+    raw: { id: String(1000 + index), eventId: `ev${index}`, question: market.question, closed: true, outcomes: '["Yes","No"]',
+      outcomePrices: market.outcome === 'YES' ? '["1","0"]' : '["0","1"]', clobTokenIds: JSON.stringify([String(5000 + index), String(9000 + index)]),
+      closedTime: new Date(market.endTs * 1000).toISOString() },
+    history: market.history })));
+  const histories = Object.fromEntries(fake.map(item => [JSON.parse(item.raw.clobTokenIds)[0], item.history]));
+  await page.route('**/api/polymarket/resolved?*', route => {
+    const offset = Number(new URL(route.request().url()).searchParams.get('offset'));
+    return route.fulfill({ json: { markets: fake.slice(offset, offset + 100).map(item => item.raw) } });
+  });
+  await page.route('**/api/polymarket/history?*', route => route.fulfill({ json: { history: histories[new URL(route.request().url()).searchParams.get('token_id')] || [] } }));
+
+  await page.selectOption('#trainSource', 'sim0');
+  await page.click('#trainBtn');
+  await page.waitForSelector('#trainResults:not([hidden])');
+  assert.match(await text(page, '#trainMeaning'), /no reliable edge/);
+
+  await page.selectOption('#trainSource', 'sim35');
+  await page.click('#trainBtn');
+  await page.waitForFunction(() => /35% longshot/.test(document.querySelector('#trainStatus').textContent));
+  assert.match(await text(page, '#trainMeaning'), /timid/);
+
+  await page.selectOption('#trainSource', 'live');
+  await page.fill('#trainCount', '120');
+  await page.click('#trainBtn');
+  await page.waitForFunction(() => /resolved Polymarket markets\. Test|failed/.test(document.querySelector('#trainStatus').textContent), null, { timeout: 60000 });
+  assert.match(await text(page, '#trainStatus'), /120 resolved Polymarket markets/);
+  assert.equal(await page.locator('#trainReliability tr').count(), 10);
+
+  await page.click('#trainUse');
+  assert.ok(await page.isChecked('#advUseModel'));
+  await page.fill('#advPrice', '12'); await page.dispatchEvent('#advPrice', 'change');
+  await page.waitForTimeout(200);
+  assert.match(await text(page, '#advVerdict'), /trained model/);
+  await page.reload();
+  assert.equal(await page.isDisabled('#advUseModel'), false, 'trained model persists');
+  assert.deepEqual(page.errors, []);
+});
+
+test('lab layout fits a phone screen', async () => {
+  const page = await env.page({ width: 390, height: 844 });
+  await page.goto(`${env.base}/polymarket.html`);
+  assert.ok(await noHorizontalScroll(page));
+});
