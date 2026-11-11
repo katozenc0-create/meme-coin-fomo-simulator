@@ -551,6 +551,10 @@
       volume: Number(raw.volumeNum ?? raw.volume) || 0,
       liquidity: Number(raw.liquidityNum ?? raw.liquidity) || 0,
       endDate: raw.endDate ? String(raw.endDate) : '',
+      eventId: (() => {
+        const eventId = raw.eventId ?? (Array.isArray(raw.events) && raw.events[0] && raw.events[0].id);
+        return eventId === undefined || eventId === null || eventId === false ? String(raw.id ?? raw.slug ?? raw.question) : String(eventId);
+      })(),
       tokenIds: (() => {
         const ids = parse(raw.clobTokenIds).map(String);
         if (ids.length !== 2 || !ids.every(id => /^[0-9]{1,100}$/.test(id))) return null;
@@ -600,7 +604,8 @@
     const yesIndex = Math.max(0, outcomes.findIndex(name => name.toLowerCase() === 'yes'));
     const endMs = Date.parse(raw.closedTime || raw.endDate || '');
     if (!Number.isFinite(endMs)) return null;
-    return { id: String(raw.id), question: String(raw.question || 'Resolved market'), endTs: Math.floor(endMs / 1000), outcome: resolution.outcome, yesToken: tokens[yesIndex] };
+    const eventId = raw.eventId ?? (Array.isArray(raw.events) && raw.events[0] && raw.events[0].id);
+    return { id: String(raw.id), question: String(raw.question || 'Resolved market'), endTs: Math.floor(endMs / 1000), outcome: resolution.outcome, yesToken: tokens[yesIndex], eventId: eventId === undefined || eventId === null || eventId === false ? String(raw.id) : String(eventId) };
   }
 
   /** Last price at or before `ts` in a [{t, p}] history sorted by t; null if none. */
@@ -637,7 +642,7 @@
         if (history[0].t > ts) continue;            // market did not exist yet
         const p = priceAt(history, ts);
         if (p === null) continue;
-        samples.push({ marketId: market.id, endTs: market.endTs, horizon, p: clampProb(p), y: market.outcome === 'YES' ? 1 : 0 });
+        samples.push({ marketId: market.id, eventId: market.eventId ?? market.id, endTs: market.endTs, horizon, p: clampProb(p), y: market.outcome === 'YES' ? 1 : 0 });
       }
     }
     return samples;
@@ -663,9 +668,10 @@
       for (const sample of samples) {
         const x = logit(sample.p);
         const q = sigmoid(a + b * x);
-        const w = q * (1 - q);
-        ga += sample.y - q;
-        gb += (sample.y - q) * x;
+        const weight = sample.weight ?? 1;
+        const w = weight * q * (1 - q);
+        ga += weight * (sample.y - q);
+        gb += weight * (sample.y - q) * x;
         haa += w;
         hab += w * x;
         hbb += w * x * x;
@@ -679,7 +685,21 @@
       b += db;
       if (Math.abs(da) + Math.abs(db) < 1e-9) break;
     }
-    return { a, b, cov, n: samples.length };
+    return { a, b, cov, n: samples.length, effectiveN: samples.reduce((sum, sample) => sum + (sample.weight ?? 1), 0) };
+  }
+
+  /**
+   * Markets of one event are not independent (in a "who will win" event exactly one
+   * candidate resolves YES). Each event's samples share a total weight of 1 per horizon,
+   * so a 12-candidate event counts once and the model's uncertainty stays honest.
+   */
+  function weightByEvent(samples) {
+    const counts = new Map();
+    for (const sample of samples) {
+      const key = `${sample.eventId ?? sample.marketId}|${sample.horizon}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return samples.map(sample => ({ ...sample, weight: 1 / counts.get(`${sample.eventId ?? sample.marketId}|${sample.horizon}`) }));
   }
 
   /** Model probability for a market price plus the log-odds variance of that estimate. */
@@ -714,11 +734,22 @@
    * price plus half the spread, and the position settles at the real outcome.
    */
   function trainAndEvaluate(markets, { horizons = [1, 7, 30], trainFraction = .7, tradeHorizon = 7, bankroll = 1000, spread = .02, config = {} } = {}) {
-    const ordered = markets.filter(market => market.outcome === 'YES' || market.outcome === 'NO').slice().sort((x, y) => x.endTs - y.endTs);
-    const cut = Math.max(1, Math.min(ordered.length - 1, Math.floor(ordered.length * trainFraction)));
-    const trainMarkets = ordered.slice(0, cut);
-    const testMarkets = ordered.slice(cut);
-    const trainSamples = buildTrainingSamples(trainMarkets, horizons);
+    const valid = markets.filter(market => market.outcome === 'YES' || market.outcome === 'NO');
+    // Split by event, ordered by the event's last end time, so no event straddles train and test.
+    const events = new Map();
+    for (const market of valid) {
+      const key = String(market.eventId ?? market.id);
+      const group = events.get(key) || { key, endTs: -Infinity, markets: [] };
+      group.markets.push(market);
+      group.endTs = Math.max(group.endTs, market.endTs);
+      events.set(key, group);
+    }
+    const orderedEvents = [...events.values()].sort((x, y) => x.endTs - y.endTs);
+    const cut = Math.max(1, Math.min(orderedEvents.length - 1, Math.floor(orderedEvents.length * trainFraction)));
+    const trainMarkets = orderedEvents.slice(0, cut).flatMap(group => group.markets);
+    const testMarkets = orderedEvents.slice(cut).flatMap(group => group.markets);
+    const ordered = valid;
+    const trainSamples = weightByEvent(buildTrainingSamples(trainMarkets, horizons));
     const testSamples = buildTrainingSamples(testMarkets, horizons);
     const model = fitCalibration(trainSamples);
     const marketPairs = testSamples.map(sample => [sample.p, sample.y]);
@@ -728,7 +759,18 @@
     let peak = bankroll;
     let maxDrawdown = 0;
     const trades = [];
+    // At most one trade per event (its candidates move together): take the largest edge.
+    const bestPerEvent = new Map();
     for (const sample of testSamples.filter(item => item.horizon === tradeHorizon)) {
+      const belief = predictCalibrated(model, sample.p);
+      const advice = advise({ yesPrice: sample.p, spread, belief: belief.probability, beliefVariance: belief.variance, bankroll: 1e6, peakEquity: 1e6, daysLeft: tradeHorizon }, config);   // screening only: size is irrelevant here
+      if (advice.action !== 'OPEN') continue;
+      const key = String(sample.eventId);
+      const current = bestPerEvent.get(key);
+      if (!current || advice.edge > current.edge) bestPerEvent.set(key, { sample, edge: advice.edge });
+    }
+    const chosen = [...bestPerEvent.values()].map(item => item.sample).sort((x, y) => x.endTs - y.endTs);
+    for (const sample of chosen) {
       if (equity < 1) break;
       const belief = predictCalibrated(model, sample.p);
       const advice = advise({ yesPrice: sample.p, spread, belief: belief.probability, beliefVariance: belief.variance, bankroll: equity, peakEquity: peak, daysLeft: tradeHorizon }, config);
@@ -742,7 +784,7 @@
     }
     return {
       model,
-      counts: { markets: ordered.length, trainMarkets: trainMarkets.length, testMarkets: testMarkets.length, trainSamples: trainSamples.length, testSamples: testSamples.length },
+      counts: { markets: ordered.length, events: orderedEvents.length, trainEvents: cut, testEvents: orderedEvents.length - cut, trainMarkets: trainMarkets.length, testMarkets: testMarkets.length, trainSamples: trainSamples.length, testSamples: testSamples.length, effectiveTrainSamples: model.effectiveN },
       test: {
         brierMarket: brierScore(marketPairs), brierModel: brierScore(modelPairs),
         logLossMarket: logLoss(marketPairs), logLossModel: logLoss(modelPairs),
@@ -799,6 +841,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

@@ -75,7 +75,7 @@ def fetch_polymarket_markets(limit: int = 20) -> list[dict]:
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}?{query}", ttl=30)
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
     keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "clobTokenIds")
-    return [{key: market.get(key) for key in keys if key in market} for market in markets if isinstance(market, dict)]
+    return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 
 MARKET_ID = re.compile(r"^[0-9]{1,12}$")
@@ -114,7 +114,7 @@ def fetch_polymarket_market(market_id: str) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("unexpected response")
     keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed", "clobTokenIds")
-    return {key: payload.get(key) for key in keys if key in payload}
+    return _compact_market(payload, keys)
 
 
 def fetch_resolved_markets(limit: int = 100, offset: int = 0) -> list[dict]:
@@ -123,7 +123,7 @@ def fetch_resolved_markets(limit: int = 100, offset: int = 0) -> list[dict]:
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}?{query}", ttl=300)
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
     keys = ("id", "question", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum")
-    return [{key: market.get(key) for key in keys if key in market} for market in markets if isinstance(market, dict)]
+    return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 
 def fetch_price_history(token_id: str, fidelity: int = 720) -> list[dict]:
@@ -141,6 +141,15 @@ def fetch_price_history(token_id: str, fidelity: int = 720) -> list[dict]:
             except (KeyError, TypeError, ValueError):
                 continue
     return history
+
+
+def _compact_market(market: dict, keys: tuple[str, ...]) -> dict:
+    """Selected fields plus a flat eventId (the full nested events objects are large)."""
+    compact = {key: market.get(key) for key in keys if key in market}
+    events = market.get("events")
+    if isinstance(events, list) and events and isinstance(events[0], dict) and events[0].get("id") is not None:
+        compact["eventId"] = str(events[0]["id"])
+    return compact
 
 
 class SimulatorHandler(BaseHTTPRequestHandler):

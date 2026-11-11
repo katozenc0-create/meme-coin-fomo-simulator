@@ -172,7 +172,7 @@ test('training: calibration fit finds no edge in a calibrated crowd and finds lo
 
 test('training: parses resolved Gamma markets with YES token and end time', () => {
   const parsed = M.parseResolvedForTraining({ id: 5, question: 'Q', closed: true, outcomes: '["No","Yes"]', outcomePrices: '["0","1"]', clobTokenIds: '["11","22"]', closedTime: '2026-01-02T00:00:00Z' });
-  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22' });
+  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5' });
   assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
   assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
 });
@@ -197,4 +197,28 @@ test('CSV export quotes properly and neutralises formula injection', () => {
   assert.equal(lines[1], `"'=HYPERLINK(""http://evil"",""x"")",-12.5`);
   assert.ok(lines[2].startsWith('"Comma, ""quotes""'));
   assert.equal(csv.split('\r\n').pop(), "'@SUM(A1),");
+});
+
+test('event-aware training: grouped candidates count once and never straddle the split', () => {
+  const weighted = M.weightByEvent([
+    { eventId: 'e1', marketId: 'a', horizon: 7 }, { eventId: 'e1', marketId: 'b', horizon: 7 }, { eventId: 'e1', marketId: 'c', horizon: 7 },
+    { eventId: 'e2', marketId: 'd', horizon: 7 }
+  ]);
+  assert.deepEqual(weighted.map(sample => +sample.weight.toFixed(3)), [.333, .333, .333, 1]);
+  // 30 events; each "who wins" event has 5 candidates, exactly one resolves YES.
+  const markets = [];
+  for (let event = 0; event < 30; event += 1) {
+    for (let candidate = 0; candidate < 5; candidate += 1) {
+      const endTs = 1e9 + event * 86400 * 10 + candidate;
+      markets.push({ id: `m${event}-${candidate}`, eventId: `e${event}`, endTs, outcome: candidate === event % 5 ? 'YES' : 'NO', history: [{ t: endTs - 40 * 86400, p: .2 }] });
+    }
+  }
+  const result = M.trainAndEvaluate(markets, { horizons: [7] });
+  assert.equal(result.counts.events, 30);
+  assert.equal(result.counts.trainMarkets % 5, 0, 'whole events only on each side');
+  assert.ok(Math.abs(result.counts.effectiveTrainSamples - result.counts.trainEvents) < 1e-9, 'one effective sample per event');
+  const tradedEvents = result.paper.trades.map(trade => trade.marketId.split('-')[0]);
+  assert.equal(new Set(tradedEvents).size, tradedEvents.length, 'at most one trade per event');
+  const parsed = M.parseResolvedForTraining({ id: 1, eventId: '99', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0","1"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' });
+  assert.equal(parsed.eventId, '99');
 });

@@ -104,6 +104,8 @@ You can track a recommendation as a paper position. Paper positions are marked t
 - A slope near 1 means the crowd is calibrated: there is no edge and Metyu sits out.
 - A slope above 1 means longshots are overpriced.
 - The data can be live Polymarket data, through `/api/polymarket/resolved` and `/api/polymarket/history`, or simulated data. The simulated options are a calibrated control and 20% / 35% longshot bias.
+- Candidates of the same event are not independent: in a "who will win" event exactly one resolves YES. They stay on one side of the train/test split, each event counts once in the fit, and paper trading takes at most one trade per event.
+  - On real Polymarket data, about 1,000 recently resolved markets come from only about 180 events.
 - A trained model can become Metyu's belief in the live advisor. It is saved in the browser.
 
 **Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
