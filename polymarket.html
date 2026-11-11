@@ -531,16 +531,11 @@
         const sources = ['/api/polymarket/markets?limit=25', 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=25&order=volume24hr&ascending=false'];
         let parsed = [];
         let lastError = '';
-        for (const url of sources) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const rows = Array.isArray(data) ? data : data.markets || [];
-            parsed = rows.map(M.parseGammaMarket).filter(Boolean);
-            if (parsed.length) break;
-          } catch (error) { lastError = error.message; }
-        }
+        try {
+          const data = await M.fetchJson(sources);
+          const rows = Array.isArray(data) ? data : data.markets || [];
+          parsed = rows.map(M.parseGammaMarket).filter(Boolean);
+        } catch (error) { lastError = error.message; }
         if (!parsed.length) { note.textContent = `Live data unavailable (${lastError || 'no binary markets'}). Run "python server.py" locally or check your network; built-in markets still work.`; return; }
         markets = [...parsed.map(market => ({ ...market, live: true })), ...builtInMarkets];
         fillAdvisorMarkets(parsed);
@@ -666,21 +661,13 @@
 
       async function fetchLiveMarket(id) {
         const sources = [`/api/polymarket/market?id=${encodeURIComponent(id)}`, `https://gamma-api.polymarket.com/markets/${encodeURIComponent(id)}`];
-        let lastError = '';
-        for (const url of sources) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const raw = data.market || data;
-            const resolution = M.parseGammaResolution(raw);
-            if (resolution) return { id: String(raw.id ?? id), resolved: true, outcome: resolution.outcome };
-            const parsed = M.parseGammaMarket(raw);
-            if (parsed) return parsed;
-            lastError = 'market is not an open binary market';
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
+        const data = await M.fetchJson(sources);
+        const raw = data.market || data;
+        const resolution = M.parseGammaResolution(raw);
+        if (resolution) return { id: String(raw.id ?? id), resolved: true, outcome: resolution.outcome };
+        const parsed = M.parseGammaMarket(raw);
+        if (parsed) return parsed;
+        throw new Error('market is not an open binary market');
       }
 
       function adviceInputs() {
@@ -747,18 +734,10 @@
 
       async function fetchBook(tokenId) {
         const sources = [`/api/polymarket/book?token_id=${encodeURIComponent(tokenId)}`, `https://clob.polymarket.com/book?token_id=${encodeURIComponent(tokenId)}`];
-        let lastError = '';
-        for (const url of sources) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const book = data.book || data;
-            if (Array.isArray(book.asks)) return book;
-            lastError = 'no asks in response';
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
+        const data = await M.fetchJson(sources);
+        const book = data.book || data;
+        if (Array.isArray(book.asks)) return book;
+        throw new Error('no asks in response');
       }
 
       let adviceSeq = 0;
@@ -901,17 +880,7 @@
         if (saved && Number.isFinite(saved.a) && Number.isFinite(saved.b) && Array.isArray(saved.cov)) trainedModel = saved;
       } catch (error) { /* ignore */ }
 
-      async function getJson(urls) {
-        let lastError = '';
-        for (const url of urls) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return await response.json();
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
-      }
+      const getJson = M.fetchJson;
 
       async function loadLiveTrainingMarkets(count, report) {
         const resolved = [];

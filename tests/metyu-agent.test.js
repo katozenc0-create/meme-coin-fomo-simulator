@@ -222,3 +222,33 @@ test('event-aware training: grouped candidates count once and never straddle the
   const parsed = M.parseResolvedForTraining({ id: 1, eventId: '99', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0","1"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' });
   assert.equal(parsed.eventId, '99');
 });
+
+test('data client skips a missing local proxy after the first miss, but not after a 5xx', async () => {
+  const calls = [];
+  const json = body => ({ ok: true, status: 200, json: async () => body });
+  const staticHost = M.createDataClient(async url => {
+    calls.push(url);
+    if (url.startsWith('/api/')) return { ok: false, status: 404, json: async () => ({}) };
+    return json({ direct: true });
+  });
+  assert.deepEqual(await staticHost.fetchJson(['/api/x', 'https://direct/x']), { direct: true });
+  assert.deepEqual(await staticHost.fetchJson(['/api/y', 'https://direct/y']), { direct: true });
+  assert.deepEqual(calls, ['/api/x', 'https://direct/x', 'https://direct/y'], 'second call goes straight to Polymarket');
+  assert.equal(staticHost.proxyState(), false);
+
+  const fileUrl = M.createDataClient(async url => { if (url.startsWith('/api/')) throw new TypeError('Failed to fetch'); return json(1); });
+  assert.equal(await fileUrl.fetchJson(['/api/x', 'https://d/x']), 1);
+  assert.equal(fileUrl.proxyState(), false);
+
+  let upstreamDown = true;
+  const withServer = M.createDataClient(async url => {
+    if (url.startsWith('/api/')) return upstreamDown ? { ok: false, status: 502, json: async () => ({}) } : json({ proxied: true });
+    return json({ direct: true });
+  });
+  assert.deepEqual(await withServer.fetchJson(['/api/x', 'https://d/x']), { direct: true });
+  assert.equal(withServer.proxyState(), null, 'a 502 does not mean the proxy is missing');
+  upstreamDown = false;
+  assert.deepEqual(await withServer.fetchJson(['/api/x', 'https://d/x']), { proxied: true });
+  assert.equal(withServer.proxyState(), true);
+  await assert.rejects(M.createDataClient(async () => ({ ok: false, status: 500 })).fetchJson(['https://d/x']), /HTTP 500/);
+});

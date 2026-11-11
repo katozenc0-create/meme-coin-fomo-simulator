@@ -187,7 +187,7 @@ GitHub will provide a public address similar to:
 https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/
 ```
 
-GitHub Pages runs the browser game but does not run `server.py`. Use the Python server locally or deploy it separately to a Python-capable service.
+GitHub Pages does not run `server.py`, but every page still works there, live Polymarket features included. Polymarket's public APIs allow cross-origin browser requests, so without the local proxy the pages call `gamma-api.polymarket.com` and `clob.polymarket.com` directly. They try the proxy once and then stop trying. The Python server adds response caching and a limit on simultaneous requests.
 
 ## Tests
 

@@ -838,9 +838,52 @@
     return lines.join('\r\n');
   }
 
+  // ---------------------------------------------------------------------------
+  // Data access shared by the pages
+  // ---------------------------------------------------------------------------
+
+  /**
+   * GET JSON from the first URL that answers. Proxy URLs (starting with /api/) go to the
+   * optional local server.py; the others go straight to Polymarket, which allows CORS, so
+   * the pages also work on static hosting such as GitHub Pages. Once the local proxy is
+   * known to be missing (404 on /api, or a network error such as file://), later calls skip
+   * it instead of paying for a failed request each time. A 5xx from a present proxy (e.g.
+   * Polymarket briefly down) does not mark the proxy as missing.
+   */
+  function createDataClient(fetchImpl) {
+    let proxy = null;   // null = unknown, true = present, false = absent
+    async function fetchJson(urls) {
+      const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch : null);
+      if (!doFetch) throw new Error('fetch is not available');
+      let lastError = '';
+      for (const url of urls) {
+        const viaProxy = url.startsWith('/api/');
+        if (viaProxy && proxy === false) continue;
+        let response;
+        try {
+          response = await doFetch(url, { headers: { Accept: 'application/json' } });
+        } catch (error) {
+          if (viaProxy && proxy === null) proxy = false;
+          lastError = error.message;
+          continue;
+        }
+        if (viaProxy && response.status === 404) { if (proxy === null) proxy = false; lastError = 'no local proxy'; continue; }
+        if (!response.ok) { lastError = `HTTP ${response.status}`; continue; }
+        try {
+          const data = await response.json();
+          if (viaProxy) proxy = true;
+          return data;
+        } catch (error) { lastError = 'invalid JSON'; }
+      }
+      throw new Error(lastError || 'unavailable');
+    }
+    return { fetchJson, proxyState: () => proxy };
+  }
+  const defaultDataClient = createDataClient();
+
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

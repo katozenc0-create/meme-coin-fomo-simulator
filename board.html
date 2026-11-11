@@ -177,17 +177,7 @@
         return { kind: 'live', id: market.id, question: market.question, spread: market.spread, tokenIds: market.tokenIds, endDate: market.endDate, prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
       }
 
-      async function getJson(urls) {
-        let lastError = '';
-        for (const url of urls) {
-          try {
-            const response = await fetch(url, { headers: { Accept: 'application/json' } });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return await response.json();
-          } catch (error) { lastError = error.message; }
-        }
-        throw new Error(lastError || 'unavailable');
-      }
+      const getJson = M.fetchJson;
 
       // ---------- portfolio ----------
       function markOf(slot) {
