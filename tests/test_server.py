@@ -25,6 +25,9 @@ class ServerTests(unittest.TestCase):
         cls.httpd.shutdown()
         cls.httpd.server_close()
 
+    def setUp(self) -> None:
+        server.clear_cache()
+
     def get(self, path: str) -> tuple[int, bytes, dict]:
         try:
             with urllib.request.urlopen(self.base + path) as response:
@@ -145,6 +148,27 @@ class ServerTests(unittest.TestCase):
         self.assertIn("market=1", seen[1])
         self.assertIn("fidelity=60", seen[1])
         self.assertEqual(bad_status, 400)
+
+    def test_upstream_responses_are_cached_but_errors_are_not(self) -> None:
+        calls = []
+        original = server._http_get_json
+
+        def flaky(url: str, timeout: float = 8.0) -> object:
+            calls.append(url)
+            if len(calls) == 1:
+                raise urllib.error.URLError("temporary")
+            return {"id": "9", "question": "Q?", "outcomes": '["Yes","No"]', "outcomePrices": '["0.5","0.5"]'}
+
+        server._http_get_json = flaky
+        try:
+            first, _, _ = self.get("/api/polymarket/market?id=9")
+            second, _, _ = self.get("/api/polymarket/market?id=9")
+            third, _, _ = self.get("/api/polymarket/market?id=9")
+        finally:
+            server._http_get_json = original
+        self.assertEqual((first, second, third), (502, 200, 200))
+        self.assertEqual(len(calls), 2, "error not cached, success served from cache")
+        self.assertEqual(server.cache_stats["hits"], 1)
 
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})

@@ -45,6 +45,12 @@ python server.py --host 0.0.0.0 --port 8080
 
 The server only serves the game's static assets; source files, dotfiles, and the `.git` folder are never exposed.
 
+The Polymarket proxy endpoints are read-only and polite to the upstream API:
+
+- At most 4 requests go to Polymarket at the same time.
+- Successful responses are cached briefly: 5s for order books, 10s for single markets, 30s for market lists, 5 min for resolved lists, and 1 hour for price histories.
+- Errors are never cached.
+
 The server also provides a health endpoint:
 
 ```text
