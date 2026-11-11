@@ -1,6 +1,8 @@
 """Collect resolved Polymarket binary markets and their price histories (read-only).
 
-Usage:  python research/collect.py data/dataset.json [MARKETS=6000]
+Usage:  python research/collect.py data/dataset.json [MARKETS=6000] [SHIFT_DAYS=0]
+
+SHIFT_DAYS moves the sampled days (1-5) to draw an independent replication sample.
 
 Notes from running this against the live API:
   * Gamma pagination fails (HTTP 422) past roughly 1,000 rows, and `order=` combined with a
@@ -85,9 +87,9 @@ def binary_resolved(raw):
     }
 
 
-def list_markets(target):
+def list_markets(target, shift_days=0):
     markets, seen = [], set()
-    window_end = datetime.now(timezone.utc) - timedelta(days=1)
+    window_end = datetime.now(timezone.utc) - timedelta(days=1 + shift_days)
     for _ in range(200):
         if len(markets) >= target:
             break
@@ -129,7 +131,8 @@ def add_history(market):
 def main():
     out = sys.argv[1]
     target = int(sys.argv[2]) if len(sys.argv) > 2 else 6000
-    markets = list_markets(target)
+    shift = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    markets = list_markets(target, shift)
     with ThreadPoolExecutor(max_workers=8) as pool:          # polite: at most 8 requests at once
         for done, _ in enumerate(pool.map(add_history, markets), 1):
             if done % 500 == 0:
