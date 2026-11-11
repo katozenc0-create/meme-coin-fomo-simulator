@@ -750,13 +750,45 @@
         throw new Error('no asks in response');
       }
 
+      // 3-day momentum exactly as the rich model was trained on it: price now minus the price
+      // three days ago, from the market's CLOB history (cached; refreshed every 6 hours).
+      const momentumCache = new Map();
+      async function threeDayMomentum(tokenId, priceNow) {
+        if (!tokenId) return 0;
+        let entry = momentumCache.get(tokenId);
+        if (!entry || Date.now() - entry.at > 6 * 3600 * 1000) {
+          try {
+            const data = await M.fetchJson([`/api/polymarket/history?token_id=${encodeURIComponent(tokenId)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(tokenId)}&interval=max&fidelity=720`]);
+            entry = { at: Date.now(), history: M.normaliseHistory(data) };
+          } catch (error) { entry = { at: Date.now(), history: [] }; }
+          momentumCache.set(tokenId, entry);
+        }
+        const before = M.priceAt(entry.history, Date.now() / 1000 - 3 * 86400);
+        return before === null ? 0 : priceNow - before;
+      }
+
       let adviceSeq = 0;
       async function askMetyu() {
         const seq = ++adviceSeq;
         const inputs = adviceInputs();
-        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft };
+        const usingModel = inputs.beliefSource === 'trained model';
+        if (usingModel && trainedModel && trainedModel.kind === 'rich' && inputs.market && inputs.market.tokenIds) {
+          const mom = await threeDayMomentum(inputs.market.tokenIds.YES, inputs.yesPrice);
+          if (seq !== adviceSeq) return;
+          const prediction = M.predictModel(trainedModel, { p: inputs.yesPrice, horizon: Math.max(1, inputs.daysLeft), mom, neg: inputs.market.negRisk ? 1 : 0, cat: M.marketCategory(`${inputs.market.question} ${inputs.market.slug || ''}`) });
+          inputs.belief = prediction.probability;
+          inputs.beliefVariance = prediction.variance;
+        }
+        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, feeRate: inputs.market ? inputs.market.feeRate || 0 : 0, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft };
         let advice = M.advise(request, config());
         inputs.execution = inputs.market ? 'quote' : 'manual';
+        // A model without an open evidence gate never trades — decide that before touching the order book.
+        if (usingModel && !M.modelMayTrade(trainedModel) && advice.action === 'OPEN') {
+          const gate = trainedModel && trainedModel.gate;
+          advice = { ...advice, action: 'HOLD', reasons: [...advice.reasons, gate
+            ? `evidence gate closed: out-of-sample return ${pct(gate.meanReturn)} with 95% interval [${pct(gate.ci[0])}, ${pct(gate.ci[1])}] does not clear zero — Metyu will not trade on this model`
+            : 'this model was saved without an evidence gate — retrain it to test whether it may trade'] };
+        }
         const tokenIds = inputs.market && inputs.market.tokenIds;
         if (advice.action === 'OPEN' && tokenIds && tokenIds[advice.side]) {
           renderVerdict(advice, { ...inputs, execution: 'checking' });
@@ -771,10 +803,6 @@
           }
         }
         if (seq !== adviceSeq) return;
-        const gate = inputs.beliefSource === 'trained model' && trainedModel && trainedModel.gate;
-        if (gate && !gate.open && advice.action === 'OPEN') {
-          advice = { ...advice, action: 'HOLD', reasons: [...advice.reasons, `evidence gate closed: out-of-sample return ${pct(gate.meanReturn)} with 95% interval [${pct(gate.ci[0])}, ${pct(gate.ci[1])}] does not clear zero — Metyu will not trade on this model`] };
-        }
         lastAdvice = { advice, inputs };
         renderVerdict(advice, inputs);
         saveStore();
@@ -1033,7 +1061,7 @@
         try { localStorage.setItem(MODEL_KEY, JSON.stringify(trainedModel)); } catch (error) { /* ignore */ }
         $('#advUseModel').disabled = false;
         $('#advUseModel').checked = true;
-        $('#trainStatus').textContent = trainedModel.gate.open
+        $('#trainStatus').textContent = M.modelMayTrade(trainedModel)
           ? `Model (${trainedModel.source}) is now Metyu's belief. Evidence gate OPEN${trainedModel.gate.robust ? '' : ' but fragile'}: the live order book still has to confirm the price.`
           : `Model (${trainedModel.source}) is now Metyu's belief, but its evidence gate is CLOSED: Metyu will show its view and not trade on it.`;
         askMetyu();

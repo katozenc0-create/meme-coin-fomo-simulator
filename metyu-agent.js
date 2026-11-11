@@ -476,15 +476,19 @@
    * returns Metyu's verdict plus the numbers a trader should see before clicking anything.
    * daysLeft maps to the decision's time-to-resolution (leverage is cut inside ~7 days).
    */
-  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null }, userConfig = {}) {
+  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null, feeRate = 0 }, userConfig = {}) {
     const config = { ...DEFAULT_CONFIG, ...userConfig };
+    // The taker fee (per share, same for YES and NO) is a cost like half the spread: fold it in.
+    const fee = feePerShare(feeRate, yesPrice);
+    const quotedSpread = spread;
+    spread = quotedSpread + 2 * fee;
     const researchVariance = Number.isFinite(beliefVariance) && beliefVariance > 0 ? beliefVariance : (CONFIDENCE_VARIANCE[confidence] ?? CONFIDENCE_VARIANCE.medium);
     const timeLeft = clamp(daysLeft / 30, 0, 1);
     const decision = decide({
       yesPrice, spread, research: clampProb(belief), researchVariance,
       equity: bankroll, peakEquity: peakEquity ?? bankroll, volatility: .05, timeLeft
     }, config);
-    const result = { ...decision, yesPrice, belief: clampProb(belief), daysLeft };
+    const result = { ...decision, yesPrice, belief: clampProb(belief), daysLeft, feePerShare: fee };
     if (decision.action !== 'OPEN') return result;
     const sideFair = decision.side === 'YES' ? decision.fair : 1 - decision.fair;
     let margin = decision.margin;
@@ -494,11 +498,11 @@
       // Real execution: walk the order book. Shrink the order until the average fill keeps the edge.
       let notional = margin * decision.leverage;
       bookFill = fillFromBook(asks, notional);
-      for (let attempt = 0; attempt < 12 && (bookFill.unfilled > .01 || sideFair - bookFill.averagePrice < config.minEdge) && notional > 1; attempt += 1) {
+      for (let attempt = 0; attempt < 12 && (bookFill.unfilled > .01 || sideFair - bookFill.averagePrice - fee < config.minEdge) && notional > 1; attempt += 1) {
         notional *= .6;
         bookFill = fillFromBook(asks, notional);
       }
-      const edgeAfterFill = sideFair - bookFill.averagePrice;
+      const edgeAfterFill = sideFair - bookFill.averagePrice - fee;
       if (!(bookFill.shares > 0) || bookFill.unfilled > .01 || edgeAfterFill < config.minEdge || notional < 1) {
         const best = Number.isFinite(bookFill.bestAsk) ? `${(bookFill.bestAsk * 100).toFixed(1)}¢` : 'none';
         const after = Number.isFinite(edgeAfterFill) ? `${(edgeAfterFill * 100).toFixed(1)} pts` : 'n/a';
@@ -511,9 +515,9 @@
     }
     const position = openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread, feeRate: config.feeRate });
     if (bookFill) {
-      // Replace the quote-based fill with the order-book fill.
-      position.entry = bookFill.averagePrice;
-      position.shares = bookFill.shares * (1 - config.feeRate);
+      // Replace the quote-based fill with the order-book fill (plus the taker fee per share).
+      position.entry = bookFill.averagePrice + fee;
+      position.shares = position.notional / position.entry;
     }
     return {
       ...result,
@@ -613,7 +617,7 @@
     if (!Number.isFinite(endMs)) return null;
     const eventId = raw.eventId ?? (Array.isArray(raw.events) && raw.events[0] && raw.events[0].id);
     return {
-      id: String(raw.id), question: String(raw.question || 'Resolved market'), endTs: Math.floor(endMs / 1000), outcome: resolution.outcome, yesToken: tokens[yesIndex],
+      id: String(raw.id), question: String(raw.question || 'Resolved market'), slug: raw.slug ? String(raw.slug) : '', endTs: Math.floor(endMs / 1000), outcome: resolution.outcome, yesToken: tokens[yesIndex],
       closedTs: Number.isFinite(closedMs) ? Math.floor(closedMs / 1000) : null,
       eventId: eventId === undefined || eventId === null || eventId === false ? String(raw.id) : String(eventId),
       negRisk: raw.negRisk === true || raw.negRisk === 'true', feeRate: takerFeeRate(raw)
@@ -700,7 +704,8 @@
    */
   function richFeatures(sample) {
     const x = logit(sample.p);
-    const h = Math.log(Math.max(sample.horizon || 1, .5));
+    // Trained on 1-30 day horizons: clamp so far-off live markets do not extrapolate.
+    const h = Math.log(clamp(sample.horizon || 1, 1, 30));
     const cats = CATEGORIES.map(name => (sample.cat === name ? 1 : 0));
     return [1, x, x * h, h, (sample.mom || 0) * 4, sample.neg ? 1 : 0, ...cats, ...cats.map(value => value * x)];
   }
@@ -768,6 +773,12 @@
   }
 
   /**
+   * Whether Metyu may trade on a trained model: only with an evidence gate that opened.
+   * Models saved before the gate existed (no `gate`) are treated as closed.
+   */
+  function modelMayTrade(model) { return Boolean(model && model.gate && model.gate.open === true); }
+
+  /**
    * Walk-forward evaluation with an evidence gate. Events are ordered by end time and cut into
    * folds + 1 blocks; each test block only sees a model fitted on earlier events. In every
    * block Metyu asks advise() at `tradeHorizon` days before the end (one trade per event,
@@ -803,7 +814,7 @@
         marketPairs.push([sample.p, sample.y]);
         modelPairs.push([prediction.probability, sample.y]);
         if (sample.horizon !== tradeHorizon) continue;
-        const advice = advise({ yesPrice: sample.p, spread, belief: prediction.probability, beliefVariance: prediction.variance, bankroll: 1e6, peakEquity: 1e6, daysLeft: tradeHorizon }, config);
+        const advice = advise({ yesPrice: sample.p, spread, feeRate: sample.feeRate, belief: prediction.probability, beliefVariance: prediction.variance, bankroll: 1e6, peakEquity: 1e6, daysLeft: tradeHorizon }, config);
         if (advice.action !== 'OPEN') continue;
         const sidePrice = advice.side === 'YES' ? sample.p : 1 - sample.p;
         const cost = sidePrice + spread / 2 + feePerShare(sample.feeRate, sample.p);
@@ -1088,6 +1099,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, feePerShare, marketCategory, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, feePerShare, marketCategory, modelMayTrade, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

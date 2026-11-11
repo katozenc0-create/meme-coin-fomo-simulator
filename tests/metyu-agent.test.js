@@ -176,7 +176,7 @@ test('training: calibration fit finds no edge in a calibrated crowd and finds lo
 
 test('training: parses resolved Gamma markets with YES token and end time', () => {
   const parsed = M.parseResolvedForTraining({ id: 5, question: 'Q', closed: true, outcomes: '["No","Yes"]', outcomePrices: '["0","1"]', clobTokenIds: '["11","22"]', closedTime: '2026-01-02T00:00:00Z' });
-  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, closedTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5', negRisk: false, feeRate: 0 });
+  assert.deepEqual(parsed, { id: '5', question: 'Q', slug: '', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, closedTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5', negRisk: false, feeRate: 0 });
   assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
   assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
 });
@@ -294,4 +294,24 @@ test('training counts horizons from the scheduled end and skips samples after an
   const history = [{ t: parsed.closedTs - 200 * 86400, p: .3 }];
   const samples = M.buildTrainingSamples([{ ...parsed, history }], [1, 7, 30]);
   assert.equal(samples.length, 0, 'every horizon falls after the early close: nothing tradable');
+});
+
+test('live safety: fees cost edge, horizons are clamped, only an open gate may trade', () => {
+  const base = { yesPrice: .40, spread: .02, belief: .62, confidence: 'high', bankroll: 1000, daysLeft: 45 };
+  const free = M.advise(base);
+  assert.equal(free.action, 'OPEN', 'edge without fees');
+  const lowFee = M.advise({ ...base, feeRate: .1 });           // 0.1 x 0.4 = 4c per share
+  close(lowFee.feePerShare, .04, 1e-12);
+  close(free.edge - lowFee.edge, .04, 1e-9, 'the fee comes straight off the edge');
+  assert.equal(M.advise({ ...base, feeRate: .2 }).action, 'HOLD', 'an 8c fee eats the edge');
+  const filled = M.advise({ ...base, belief: .62, feeRate: .1, book: { YES: [{ price: .41, size: 1e6 }] } });
+  close(filled.entry, .41 + .04, 1e-12);
+  const far = M.richFeatures({ p: .5, horizon: 700 });
+  const thirty = M.richFeatures({ p: .5, horizon: 30 });
+  assert.deepEqual(far, thirty, 'horizons beyond 30 days are clamped');
+  assert.equal(M.modelMayTrade(null), false);
+  assert.equal(M.modelMayTrade({ a: 0, b: 1, cov: [[1, 0], [0, 1]] }), false, 'pre-gate models are closed');
+  assert.equal(M.modelMayTrade({ gate: { open: false } }), false);
+  assert.equal(M.modelMayTrade({ gate: { open: true } }), true);
+  assert.equal(M.parseResolvedForTraining({ id: 1, slug: 'nba-lakers-celtics', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }).slug, 'nba-lakers-celtics');
 });
