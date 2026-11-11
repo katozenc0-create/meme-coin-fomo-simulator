@@ -197,26 +197,32 @@
 
     <section class="panel wide" id="trainPanel">
       <h2>Training · learn from resolved markets (virtual money)</h2>
-      <p class="note">Metyu studies markets that already resolved: what was the YES price 1, 7 and 30 days before the end, and did YES win? It fits a calibration model on the older markets, then paper-trades the newer ones it has never seen with virtual money. Candidates of the same event (e.g. "who will win") are not independent: they stay on one side of the split, count once in the fit, and get at most one trade. If the crowd is well calibrated the honest result is "no edge, no trades".</p>
+      <p class="note">Metyu studies markets that already resolved: the YES price 1–30 days before the <b>scheduled</b> end, and whether YES won. It is judged <b>walk-forward</b>: events are ordered in time and every block is traded with virtual money by a model fitted only on earlier events, paying the spread and the taker fee. Candidates of one event count once and get at most one trade. Metyu's <b>evidence gate</b> opens only if the out-of-sample return's 95% interval is above zero; otherwise it does not trade with this model. A stress run at double the spread shows how fragile an edge is.</p>
       <div class="controls">
         <div class="field" style="min-width:240px"><label for="trainSource">Data</label><select id="trainSource"><option value="live">Live Polymarket · resolved markets</option><option value="sim0">Simulated · calibrated crowd (control)</option><option value="sim20">Simulated · 20% longshot bias</option><option value="sim35" selected>Simulated · 35% longshot bias</option></select></div>
-        <div class="field" style="width:120px"><label for="trainCount">Markets</label><input id="trainCount" type="number" min="40" max="1500" step="20" value="300"></div>
+        <div class="field" style="width:120px"><label for="trainCount">Markets</label><input id="trainCount" type="number" min="40" max="6000" step="100" value="300"></div>
+        <div class="field" style="width:190px"><label for="trainKind">Model</label><select id="trainKind"><option value="calib" selected>Calibration σ(a + b·logit p)</option><option value="rich">Rich (horizon, momentum, category, grouped)</option></select></div>
+        <div class="field" style="width:120px"><label for="trainSpread">Spread (¢)</label><input id="trainSpread" type="number" min="0" max="10" step="0.5" value="2"></div>
         <div class="field" style="width:170px"><label for="trainHorizon">Trade at</label><select id="trainHorizon"><option value="1">1 day before end</option><option value="7" selected>7 days before end</option><option value="30">30 days before end</option></select></div>
-        <button class="btn" id="trainBtn">Train Metyu</button>
+        <button class="btn" id="trainBtn">Train & test Metyu</button>
         <button class="btn secondary" id="trainUse" disabled>Use model in advisor</button>
       </div>
       <p class="note" id="trainStatus"></p>
       <div class="advisor" id="trainResults" hidden style="margin-top:10px">
         <div>
           <div class="metric"><span>Data</span><strong id="trainCounts">—</strong></div>
-          <div class="metric"><span>Model σ(a + b·logit p)</span><strong id="trainModel">—</strong></div>
+          <div class="metric"><span>Model</span><strong id="trainModel">—</strong></div>
           <div class="metric"><span>What it learned</span><strong id="trainMeaning">—</strong></div>
+          <div class="metric"><span>Evidence gate</span><strong id="trainGate">—</strong></div>
+          <div class="metric"><span>Out-of-sample return per $1</span><strong id="trainEvidence">—</strong></div>
+          <div class="metric"><span>Per test block</span><strong id="trainFolds">—</strong></div>
+          <div class="metric"><span>Stress · 2× spread</span><strong id="trainStress">—</strong></div>
           <div class="metric"><span>Test Brier · crowd → model</span><strong id="trainBrier">—</strong></div>
           <div class="metric"><span>Test log loss · crowd → model</span><strong id="trainLogLoss">—</strong></div>
           <div class="table-scroll"><table><thead><tr><th>Price bin</th><th>Samples</th><th>Crowd said</th><th>Happened</th><th>Model says</th></tr></thead><tbody id="trainReliability"></tbody></table></div>
         </div>
         <div>
-          <h2>Paper trading on unseen markets</h2>
+          <h2>Paper trading on unseen markets (walk-forward)</h2>
           <div class="metric"><span>Virtual bankroll → final</span><strong id="trainEquity">—</strong></div>
           <div class="metric"><span>Return · max drawdown</span><strong id="trainReturn">—</strong></div>
           <div class="metric"><span>Trades · wins</span><strong id="trainTrades">—</strong></div>
@@ -680,7 +686,11 @@
           spread: market ? market.spread : .02,
           ...(() => {
             if ($('#advUseModel').checked && trainedModel) {
-              const prediction = M.predictCalibrated(trainedModel, yesPrice);
+              const questionText = market ? market.question : $('#advQuestion').value;
+              const prediction = M.predictModel(trainedModel, {
+                p: yesPrice, horizon: Math.max(1, Number($('#advDays').value) || 1), mom: 0,
+                neg: market && market.negRisk ? 1 : 0, cat: M.marketCategory(`${questionText} ${market && market.slug ? market.slug : ''}`)
+              });
               return { belief: prediction.probability, beliefVariance: prediction.variance, beliefSource: 'trained model' };
             }
             return { belief: M.clamp((Number($('#advBelief').value) || 50) / 100, .01, .99), beliefVariance: null, beliefSource: 'your view' };
@@ -761,6 +771,10 @@
           }
         }
         if (seq !== adviceSeq) return;
+        const gate = inputs.beliefSource === 'trained model' && trainedModel && trainedModel.gate;
+        if (gate && !gate.open && advice.action === 'OPEN') {
+          advice = { ...advice, action: 'HOLD', reasons: [...advice.reasons, `evidence gate closed: out-of-sample return ${pct(gate.meanReturn)} with 95% interval [${pct(gate.ci[0])}, ${pct(gate.ci[1])}] does not clear zero — Metyu will not trade on this model`] };
+        }
         lastAdvice = { advice, inputs };
         renderVerdict(advice, inputs);
         saveStore();
@@ -877,19 +891,28 @@
       let lastTraining = null;
       try {
         const saved = JSON.parse(localStorage.getItem(MODEL_KEY) || 'null');
-        if (saved && Number.isFinite(saved.a) && Number.isFinite(saved.b) && Array.isArray(saved.cov)) trainedModel = saved;
+        if (saved && Array.isArray(saved.cov) && ((saved.kind === 'rich' && Array.isArray(saved.beta)) || (Number.isFinite(saved.a) && Number.isFinite(saved.b)))) trainedModel = saved;
       } catch (error) { /* ignore */ }
 
       const getJson = M.fetchJson;
 
       async function loadLiveTrainingMarkets(count, report) {
+        // Sample one day of SCHEDULED end dates every six days, going back from yesterday, so
+        // the data spans months and every market had its whole life before its end date.
         const resolved = [];
-        for (let offset = 0; resolved.length < count && offset < count * 4; offset += 100) {
-          report(`fetching resolved markets… ${resolved.length}/${count}`);
-          const data = await getJson([`/api/polymarket/resolved?limit=100&offset=${offset}`, `https://gamma-api.polymarket.com/markets?closed=true&limit=100&offset=${offset}&order=endDate&ascending=false`]);
+        const seen = new Set();
+        const day = 86400000;
+        const isoDay = time => new Date(time).toISOString().slice(0, 10);
+        for (let window = 0; resolved.length < count && window < 120; window += 1) {
+          const endMax = Date.now() - day - window * 6 * day;
+          const from = isoDay(endMax - day);
+          const to = isoDay(endMax);
+          report(`fetching resolved markets… ${resolved.length}/${count} (ended ${from})`);
+          const data = await getJson([`/api/polymarket/resolved?limit=100&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/markets?closed=true&limit=100&end_date_min=${from}&end_date_max=${to}`]);
           const rows = Array.isArray(data) ? data : data.markets || [];
-          if (!rows.length) break;
-          rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => { if (resolved.length < count) resolved.push(market); });
+          rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => {
+            if (resolved.length < count && !seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
+          });
         }
         let done = 0;
         const queue = resolved.slice();
@@ -910,25 +933,41 @@
 
       function setText(id, text) { $(id).textContent = text; }
 
-      function renderTraining(result, sourceLabel) {
+      function evidenceText(evidence) {
+        if (!evidence.trades) return 'no trades: no edge found anywhere';
+        return `${pct(evidence.meanReturn)} over ${evidence.trades} trades (win ${Math.round(evidence.wins / evidence.trades * 100)}%) · 95% [${pct(evidence.ci[0])}, ${pct(evidence.ci[1])}]`;
+      }
+
+      function renderTraining(result, stress, sourceLabel) {
         $('#trainResults').hidden = false;
-        const { model, counts, test, paper } = result;
-        setText('#trainCounts', `${counts.markets} markets in ${counts.events} events · train / test events ${counts.trainEvents} / ${counts.testEvents} (${counts.trainMarkets} / ${counts.testMarkets} markets, ${counts.effectiveTrainSamples.toFixed(0)} effective train samples)`);
-        setText('#trainModel', `a ${model.a.toFixed(3)} · b ${model.b.toFixed(3)} (±${Math.sqrt(model.cov[1][1]).toFixed(3)})`);
+        const { model, counts, test, paper, evidence } = result;
+        setText('#trainCounts', `${counts.markets} markets in ${counts.events} events · ${counts.samples} samples (${counts.effectiveTrainSamples.toFixed(0)} effective)`);
+        if (model.kind === 'rich') {
+          setText('#trainModel', `rich · ${model.beta.length} coefficients · price slope ${model.beta[1].toFixed(3)}`);
+        } else {
+          setText('#trainModel', `σ(a + b·logit p) · a ${model.a.toFixed(3)} · b ${model.b.toFixed(3)} (±${Math.sqrt(model.cov[1][1]).toFixed(3)})`);
+        }
+        const slope = model.kind === 'rich' ? model.beta[1] : model.b;
         const slopeSe = Math.sqrt(model.cov[1][1]);
-        const meaning = model.b - 1 > 2 * slopeSe ? 'crowd too timid: longshots overpriced, favourites cheap'
-          : 1 - model.b > 2 * slopeSe ? 'crowd overconfident: extremes overpriced'
-          : 'crowd ≈ calibrated: no reliable edge';
-        setText('#trainMeaning', meaning);
+        setText('#trainMeaning', slope - 1 > 2 * slopeSe ? 'crowd too timid: longshots overpriced, favourites cheap'
+          : 1 - slope > 2 * slopeSe ? 'crowd overconfident: extremes overpriced'
+          : 'crowd ≈ calibrated on price alone');
+        const gate = $('#trainGate');
+        gate.textContent = evidence.gateOpen
+          ? (stress.evidence.gateOpen ? 'OPEN · robust to 2× spread' : 'OPEN · fragile (closes at 2× spread)')
+          : evidence.trades < evidence.minTrades ? `closed · only ${evidence.trades} trades (needs ${evidence.minTrades})` : 'closed · interval includes zero';
+        gate.className = evidence.gateOpen ? (stress.evidence.gateOpen ? 'positive' : '') : 'negative';
+        signed($('#trainEvidence'), evidence.meanReturn, evidenceText(evidence));
+        setText('#trainFolds', evidence.folds.length ? evidence.folds.map(fold => `#${fold.fold}: ${fold.trades ? `${pct(fold.meanReturn)} (${fold.trades})` : '—'}`).join(' · ') : '—');
+        signed($('#trainStress'), stress.evidence.meanReturn, evidenceText(stress.evidence));
         const better = (crowd, mine) => `${crowd.toFixed(4)} → ${mine.toFixed(4)} ${mine < crowd ? '(better)' : '(not better)'}`;
         setText('#trainBrier', better(test.brierMarket, test.brierModel));
         setText('#trainLogLoss', better(test.logLossMarket, test.logLossModel));
         const body = $('#trainReliability');
-        body.replaceChildren(...test.reliabilityMarket.map((row, index) => {
+        body.replaceChildren(...test.reliabilityMarket.map(row => {
           const tr = document.createElement('tr');
-          const modelRow = test.reliabilityModel[index];
           const center = (row.from + row.to) / 2;
-          [`${Math.round(row.from * 100)}–${Math.round(row.to * 100)}¢`, String(row.n), row.n ? pct(row.forecast) : '—', row.n ? pct(row.observed) : '—', pct(M.predictCalibrated(model, center).probability)].forEach(value => {
+          [`${Math.round(row.from * 100)}–${Math.round(row.to * 100)}¢`, String(row.n), row.n ? pct(row.forecast) : '—', row.n ? pct(row.observed) : '—', pct(M.predictModel(model, { p: center, horizon: evidence.tradeHorizon }).probability)].forEach(value => {
             const td = document.createElement('td'); td.textContent = value; tr.append(td);
           });
           return tr;
@@ -939,13 +978,13 @@
         const log = $('#trainLog');
         log.replaceChildren(...paper.trades.slice(-12).reverse().map(trade => {
           const li = document.createElement('li');
-          li.className = trade.pnl > 0 ? 'act-OPEN' : 'act-CLOSE';
+          li.className = trade.ret > 0 ? 'act-OPEN' : 'act-CLOSE';
           const head = document.createElement('b');
-          head.textContent = `${trade.side} ${trade.leverage}x `;
-          li.append(head, `@ ${cents(trade.price)} · model ${pct(trade.belief)} · ${trade.pnl >= 0 ? '+' : ''}${formatMoney(trade.pnl)}`);
+          head.textContent = `${trade.side} `;
+          li.append(head, `@ ${cents(trade.price)} (cost ${cents(trade.cost)}) · model ${pct(trade.belief)} · ${trade.ret >= 0 ? '+' : ''}${pct(trade.ret)} per $1 · block ${trade.fold}`);
           return li;
         }));
-        $('#trainStatus').textContent = `Trained on ${sourceLabel}. Test markets were never seen during fitting.`;
+        $('#trainStatus').textContent = `Tested walk-forward on ${sourceLabel}: every trade was made by a model that had not seen that market.`;
       }
 
       $('#trainBtn').addEventListener('click', async () => {
@@ -953,7 +992,7 @@
         button.disabled = true;
         $('#trainUse').disabled = true;
         const source = $('#trainSource').value;
-        const count = Math.max(40, Math.min(1500, Number($('#trainCount').value) || 300));
+        const count = Math.max(40, Math.min(6000, Number($('#trainCount').value) || 300));
         const tradeHorizon = Number($('#trainHorizon').value) || 7;
         const report = text => { $('#trainStatus').textContent = text; };
         try {
@@ -968,11 +1007,18 @@
             markets = M.simulatedResolvedMarkets(count, { seed: 41, longshotBias: bias });
             label = `${count} simulated markets (${Math.round(bias * 100)}% longshot bias)`;
           }
-          report('fitting model and paper-trading the held-out markets…');
+          report('walk-forward: fitting on earlier events, paper-trading later ones…');
           await new Promise(resolve => setTimeout(resolve, 10));
-          const result = M.trainAndEvaluate(markets, { tradeHorizon, bankroll: 1000, config: config() });
-          lastTraining = { model: result.model, source: label, trainedAt: Date.now() };
-          renderTraining(result, label);
+          const kind = $('#trainKind').value === 'rich' ? 'rich' : 'calib';
+          const spread = Math.max(0, Math.min(.1, (Number($('#trainSpread').value) || 0) / 100));
+          const options = { kind, tradeHorizon, spread, bankroll: 1000, config: config() };
+          const result = M.walkForward(markets, options);
+          const stress = M.walkForward(markets, { ...options, spread: spread * 2 });
+          lastTraining = {
+            model: result.model, source: label, trainedAt: Date.now(),
+            gate: { open: result.evidence.gateOpen, robust: result.evidence.gateOpen && stress.evidence.gateOpen, meanReturn: result.evidence.meanReturn, ci: result.evidence.ci, trades: result.evidence.trades, spread, tradeHorizon }
+          };
+          renderTraining(result, stress, label);
           $('#trainUse').disabled = false;
         } catch (error) {
           report(`Training failed: ${error.message}. Live data needs "python server.py" and network access to Polymarket; simulated data always works.`);
@@ -983,11 +1029,13 @@
 
       $('#trainUse').addEventListener('click', () => {
         if (!lastTraining) return;
-        trainedModel = { ...lastTraining.model, source: lastTraining.source, trainedAt: lastTraining.trainedAt };
+        trainedModel = { ...lastTraining.model, source: lastTraining.source, trainedAt: lastTraining.trainedAt, gate: lastTraining.gate };
         try { localStorage.setItem(MODEL_KEY, JSON.stringify(trainedModel)); } catch (error) { /* ignore */ }
         $('#advUseModel').disabled = false;
         $('#advUseModel').checked = true;
-        $('#trainStatus').textContent = `Model (${trainedModel.source}) is now Metyu's belief in the live advisor.`;
+        $('#trainStatus').textContent = trainedModel.gate.open
+          ? `Model (${trainedModel.source}) is now Metyu's belief. Evidence gate OPEN${trainedModel.gate.robust ? '' : ' but fragile'}: the live order book still has to confirm the price.`
+          : `Model (${trainedModel.source}) is now Metyu's belief, but its evidence gate is CLOSED: Metyu will show its view and not trade on it.`;
         askMetyu();
       });
       $('#advUseModel').addEventListener('change', askMetyu);

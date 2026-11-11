@@ -167,12 +167,16 @@ test('training: calibration fit finds no edge in a calibrated crowd and finds lo
   const biased = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: .35 }));
   assert.ok(biased.model.b > 1.25, `biased slope ${biased.model.b}`);
   assert.ok(biased.test.brierModel < biased.test.brierMarket, 'model beats the biased crowd out of sample');
-  assert.ok(biased.paper.trades.length > fair.paper.trades.length, 'more trades when there is something to exploit');
+  assert.equal(fair.paper.trades.length, 0, 'no edge, no trades');
+  // With one effective observation per event, a mild bias in 400 markets is not enough evidence
+  // to trade; a strong one is.
+  const strong = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: .5 }));
+  assert.ok(strong.paper.trades.length > 0, 'trades when the edge is large enough to be sure of');
 });
 
 test('training: parses resolved Gamma markets with YES token and end time', () => {
   const parsed = M.parseResolvedForTraining({ id: 5, question: 'Q', closed: true, outcomes: '["No","Yes"]', outcomePrices: '["0","1"]', clobTokenIds: '["11","22"]', closedTime: '2026-01-02T00:00:00Z' });
-  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5' });
+  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, closedTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5', negRisk: false, feeRate: 0 });
   assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
   assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
 });
@@ -251,4 +255,43 @@ test('data client skips a missing local proxy after the first miss, but not afte
   assert.deepEqual(await withServer.fetchJson(['/api/x', 'https://d/x']), { proxied: true });
   assert.equal(withServer.proxyState(), true);
   await assert.rejects(M.createDataClient(async () => ({ ok: false, status: 500 })).fetchJson(['https://d/x']), /HTTP 500/);
+});
+
+test('fees, categories and rich features use only information known at decision time', () => {
+  assert.equal(M.takerFeeRate({ feesEnabled: true, takerBaseFee: 1000 }), .1);
+  assert.equal(M.takerFeeRate({ feesEnabled: false, takerBaseFee: 1000 }), 0);
+  close(M.feePerShare(.1, .9), .01);
+  assert.equal(M.marketCategory('Counter-Strike: MOUZ vs G2 (BO3)'), 'sports');
+  assert.equal(M.marketCategory('Will Bitcoin be above $100k?'), 'crypto');
+  assert.equal(M.marketCategory('Who will be the next Attorney General?'), 'politics');
+  assert.equal(M.marketCategory('Will it snow in Paris?'), 'other');
+  const features = M.richFeatures({ p: .5, horizon: 7, mom: .1, neg: 1, cat: 'sports' });
+  assert.equal(features.length, 14);
+  const samples = M.buildTrainingSamples([{ id: 'm', eventId: 'e', question: 'Lakers vs Celtics', negRisk: true, feeRate: .1, endTs: 20 * 86400, outcome: 'NO',
+    history: [{ t: 0, p: .5 }, { t: 9 * 86400, p: .4 }, { t: 13 * 86400, p: .45 }] }], [7]);
+  assert.equal(samples[0].cat, 'sports');
+  assert.equal(samples[0].neg, 1);
+  close(samples[0].mom, .45 - .4, 1e-12);
+});
+
+test('walk-forward evidence gate stays closed on a calibrated crowd and opens on a strong bias', () => {
+  const fair = M.walkForward(M.simulatedResolvedMarkets(500, { seed: 3, longshotBias: 0 }), { kind: 'calib' });
+  assert.equal(fair.evidence.gateOpen, false, `calibrated crowd: CI ${fair.evidence.ci}`);
+  const biased = M.walkForward(M.simulatedResolvedMarkets(500, { seed: 3, longshotBias: .5 }), { kind: 'calib' });
+  assert.ok(biased.evidence.trades >= 30, `trades ${biased.evidence.trades}`);
+  assert.equal(biased.evidence.gateOpen, true, `strong bias: CI ${biased.evidence.ci}`);
+  assert.ok(biased.test.brierModel < biased.test.brierMarket);
+  const rich = M.walkForward(M.simulatedResolvedMarkets(300, { seed: 4, longshotBias: .5 }), { kind: 'rich' });
+  assert.equal(rich.model.kind, 'rich');
+  assert.ok(Number.isFinite(M.predictModel(rich.model, { p: .3, horizon: 7 }).probability));
+});
+
+test('training counts horizons from the scheduled end and skips samples after an early close', () => {
+  const parsed = M.parseResolvedForTraining({ id: 9, closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]',
+    endDate: '2026-12-31T00:00:00Z', closedTime: '2026-10-01 12:00:00+00' });
+  assert.equal(parsed.endTs, Date.parse('2026-12-31T00:00:00Z') / 1000, 'scheduled end, not the early close');
+  assert.equal(parsed.closedTs, Date.parse('2026-10-01T12:00:00Z') / 1000);
+  const history = [{ t: parsed.closedTs - 200 * 86400, p: .3 }];
+  const samples = M.buildTrainingSamples([{ ...parsed, history }], [1, 7, 30]);
+  assert.equal(samples.length, 0, 'every horizon falls after the early close: nothing tradable');
 });

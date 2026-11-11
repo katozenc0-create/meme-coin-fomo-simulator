@@ -120,7 +120,7 @@
       let trainedModel = null;
       try {
         const saved = JSON.parse(localStorage.getItem(MODEL_KEY) || 'null');
-        if (saved && Number.isFinite(saved.a) && Number.isFinite(saved.b) && Array.isArray(saved.cov)) trainedModel = saved;
+        if (saved && Array.isArray(saved.cov) && ((saved.kind === 'rich' && Array.isArray(saved.beta)) || (Number.isFinite(saved.a) && Number.isFinite(saved.b)))) trainedModel = saved;
       } catch (error) { /* ignore */ }
 
       function cfg() { return { maxLeverage: Number($('#maxLev').value) || 3, maxPositionPct: .1 }; }
@@ -316,8 +316,11 @@
             slot.spread = fresh.spread;
             refreshed += 1;
             const daysLeft = Number.isFinite(Date.parse(slot.endDate)) ? Math.max(0, (Date.parse(slot.endDate) - Date.now()) / 86400000) : 30;
-            if (trainedModel) {
-              const prediction = M.predictCalibrated(trainedModel, fresh.yesPrice);
+            if (trainedModel && trainedModel.gate && trainedModel.gate.open) {
+              const prediction = M.predictModel(trainedModel, {
+                p: fresh.yesPrice, horizon: Math.max(1, daysLeft), mom: slot.prices.length > 7 ? fresh.yesPrice - slot.prices[slot.prices.length - 7] : 0,
+                neg: fresh.negRisk ? 1 : 0, cat: M.marketCategory(`${fresh.question} ${fresh.slug || ''}`)
+              });
               decideOn(slot, prediction.probability, prediction.variance, M.clamp(daysLeft / 30, 0, 1));
             } else {
               decideOn(slot, null, null, M.clamp(daysLeft / 30, 0, 1));
@@ -325,7 +328,7 @@
           } catch (error) { slot.last = `refresh failed: ${error.message}`; }
         }
         afterTick();
-        $('#statusNote').textContent = `${refreshed}/${slots.filter(slot => !slot.done).length} live prices refreshed at ${new Date().toLocaleTimeString()} · next in 30s · belief: ${trainedModel ? `trained model (${trainedModel.source || 'saved'})` : 'market only (no trained model → no edge, no trades)'}`;
+        $('#statusNote').textContent = `${refreshed}/${slots.filter(slot => !slot.done).length} live prices refreshed at ${new Date().toLocaleTimeString()} · next in 30s · belief: ${trainedModel && trainedModel.gate && trainedModel.gate.open ? `trained model (${trainedModel.source || 'saved'}), evidence gate open` : trainedModel ? 'trained model saved but its evidence gate is closed → no trades' : 'market only (no trained model → no edge, no trades)'}`;
       }
 
       // ---------- render ----------

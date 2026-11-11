@@ -172,6 +172,20 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(len(calls), 2, "error not cached, success served from cache")
         self.assertEqual(server.cache_stats["hits"], 1)
 
+    def test_resolved_markets_by_scheduled_end_window(self) -> None:
+        seen = []
+        original = server._http_get_json
+        server._http_get_json = lambda url, timeout=8.0: seen.append(url) or []
+        try:
+            status, _, _ = self.get("/api/polymarket/resolved?limit=100&end_min=2026-01-01&end_max=2026-01-02")
+            bad, _, _ = self.get("/api/polymarket/resolved?end_min=2026-01-01;DROP")
+        finally:
+            server._http_get_json = original
+        self.assertEqual((status, bad), (200, 400))
+        self.assertIn("end_date_min=2026-01-01", seen[0])
+        self.assertIn("end_date_max=2026-01-02", seen[0])
+        self.assertNotIn("order=", seen[0], "Gamma rejects ordering together with a date window")
+
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})
         with urllib.request.urlopen(request) as response:
