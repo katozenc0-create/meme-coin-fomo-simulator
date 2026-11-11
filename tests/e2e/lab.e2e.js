@@ -123,34 +123,44 @@ test('training: control finds no edge, bias is detected, live pipeline, model fe
       closedTime: new Date(market.endTs * 1000).toISOString() },
     history: market.history })));
   const histories = Object.fromEntries(fake.map(item => [JSON.parse(item.raw.clobTokenIds)[0], item.history]));
+  let windowCalls = 0;
   await page.route('**/api/polymarket/resolved?*', route => {
-    const offset = Number(new URL(route.request().url()).searchParams.get('offset'));
-    return route.fulfill({ json: { markets: fake.slice(offset, offset + 100).map(item => item.raw) } });
+    const params = new URL(route.request().url()).searchParams;
+    if (!params.get('end_min') || !params.get('end_max')) return route.fulfill({ status: 400, json: { error: 'window expected' } });
+    const start = 100 * windowCalls++;     // each scheduled-end window returns the next batch
+    return route.fulfill({ json: { markets: fake.slice(start, start + 100).map(item => item.raw) } });
   });
   await page.route('**/api/polymarket/history?*', route => route.fulfill({ json: { history: histories[new URL(route.request().url()).searchParams.get('token_id')] || [] } }));
 
   await page.selectOption('#trainSource', 'sim0');
   await page.click('#trainBtn');
   await page.waitForSelector('#trainResults:not([hidden])');
-  assert.match(await text(page, '#trainMeaning'), /no reliable edge/);
+  assert.match(await text(page, '#trainMeaning'), /calibrated/);
+  assert.match(await text(page, '#trainGate'), /^closed/, 'no edge in a calibrated crowd: evidence gate stays closed');
 
   await page.selectOption('#trainSource', 'sim35');
+  await page.fill('#trainCount', '600');   // one effective observation per event: enough to see the bias
   await page.click('#trainBtn');
   await page.waitForFunction(() => /35% longshot/.test(document.querySelector('#trainStatus').textContent));
   assert.match(await text(page, '#trainMeaning'), /timid/);
+  assert.match(await text(page, '#trainFolds'), /#\d/, 'per-block walk-forward results shown');
+  assert.match(await text(page, '#trainStress'), /./);
 
   await page.selectOption('#trainSource', 'live');
   await page.fill('#trainCount', '120');
   await page.click('#trainBtn');
-  await page.waitForFunction(() => /resolved Polymarket markets\. Test|failed/.test(document.querySelector('#trainStatus').textContent), null, { timeout: 60000 });
+  await page.waitForFunction(() => /walk-forward on \d+ resolved Polymarket markets|failed/.test(document.querySelector('#trainStatus').textContent), null, { timeout: 60000 });
   assert.match(await text(page, '#trainStatus'), /120 resolved Polymarket markets/);
   assert.equal(await page.locator('#trainReliability tr').count(), 10);
 
+  const gateOpen = /^OPEN/.test(await text(page, '#trainGate'));
   await page.click('#trainUse');
   assert.ok(await page.isChecked('#advUseModel'));
+  assert.match(await text(page, '#trainStatus'), gateOpen ? /gate OPEN/ : /gate is CLOSED/);
   await page.fill('#advPrice', '12'); await page.dispatchEvent('#advPrice', 'change');
   await page.waitForTimeout(200);
   assert.match(await text(page, '#advVerdict'), /trained model/);
+  if (!gateOpen) assert.equal(await text(page, '#advVerdict h3'), 'No trade', 'a closed evidence gate never trades');
   await page.reload();
   assert.equal(await page.isDisabled('#advUseModel'), false, 'trained model persists');
   assert.deepEqual(page.errors, []);

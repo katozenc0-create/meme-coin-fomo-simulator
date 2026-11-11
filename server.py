@@ -74,7 +74,7 @@ def fetch_polymarket_markets(limit: int = 20) -> list[dict]:
     query = urlencode({"active": "true", "closed": "false", "limit": max(1, min(limit, 100)), "order": "volume24hr", "ascending": "false"})
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}?{query}", ttl=30)
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "clobTokenIds")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "clobTokenIds", "negRisk", "feesEnabled", "takerBaseFee")
     return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 
@@ -113,16 +113,35 @@ def fetch_polymarket_market(market_id: str) -> dict:
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}/{market_id}", ttl=10)
     if not isinstance(payload, dict):
         raise ValueError("unexpected response")
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed", "clobTokenIds")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed", "closedTime", "clobTokenIds", "negRisk", "feesEnabled", "takerBaseFee")
     return _compact_market(payload, keys)
 
 
-def fetch_resolved_markets(limit: int = 100, offset: int = 0) -> list[dict]:
-    """Read-only list of closed Polymarket markets (most recently ended first) for training."""
-    query = urlencode({"closed": "true", "limit": max(1, min(limit, 500)), "offset": max(0, min(offset, 100000)), "order": "endDate", "ascending": "false"})
+DATE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?$")
+
+
+def fetch_resolved_markets(limit: int = 100, offset: int = 0, end_min: str | None = None, end_max: str | None = None) -> list[dict]:
+    """Read-only list of closed Polymarket markets for training.
+
+    Without a window: most recent scheduled end first. That list is dominated by markets
+    scheduled to end years from now that closed early, which give no tradable samples, so
+    training asks for windows of scheduled end dates instead (end_min..end_max, ISO dates).
+    Gamma rejects ordering combined with a date window, so a window is sent unordered.
+    """
+    params = {"closed": "true", "limit": max(1, min(limit, 500)), "offset": max(0, min(offset, 900))}
+    if end_min or end_max:
+        if (end_min and not DATE.match(end_min)) or (end_max and not DATE.match(end_max)):
+            raise ValueError("end_min/end_max must be YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ")
+        if end_min:
+            params["end_date_min"] = end_min
+        if end_max:
+            params["end_date_max"] = end_max
+    else:
+        params.update(order="endDate", ascending="false")
+    query = urlencode(params)
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}?{query}", ttl=300)
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-    keys = ("id", "question", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum", "negRisk", "feesEnabled", "takerBaseFee")
     return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 
@@ -206,8 +225,13 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 offset = int(query.get("offset", ["0"])[0])
             except ValueError:
                 limit, offset = 100, 0
+            end_min = query.get("end_min", [None])[0]
+            end_max = query.get("end_max", [None])[0]
+            if (end_min and not DATE.match(end_min)) or (end_max and not DATE.match(end_max)):
+                self._send_json({"error": "end_min/end_max must be ISO dates"}, HTTPStatus.BAD_REQUEST)
+                return
             try:
-                self._send_json({"source": "polymarket-gamma", "readOnly": True, "markets": fetch_resolved_markets(limit, offset)})
+                self._send_json({"source": "polymarket-gamma", "readOnly": True, "markets": fetch_resolved_markets(limit, offset, end_min, end_max)})
             except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
                 self._send_json({"error": f"Polymarket data unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
             return
