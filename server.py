@@ -23,6 +23,7 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
 # Only static assets the game needs are served; source files, dotfiles and .git stay private.
 POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets"
+POLYMARKET_GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
 SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
@@ -123,25 +124,35 @@ DATE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?$")
 def fetch_resolved_markets(limit: int = 100, offset: int = 0, end_min: str | None = None, end_max: str | None = None) -> list[dict]:
     """Read-only list of closed Polymarket markets for training.
 
-    Without a window: most recent scheduled end first. That list is dominated by markets
-    scheduled to end years from now that closed early, which give no tradable samples, so
-    training asks for windows of scheduled end dates instead (end_min..end_max, ISO dates).
-    Gamma rejects ordering combined with a date window, so a window is sent unordered.
+    With a window of scheduled end dates (end_min..end_max, validated by the handler) whole
+    EVENTS are fetched and flattened, so every candidate of an event arrives together: taking
+    "the first 100 markets" of a window could keep an event's losers and drop its winner,
+    biasing the sample toward NO. `limit` then counts events. Gamma rejects ordering combined
+    with a date window, so a window is sent unordered.
+    Without a window: markets, most recent scheduled end first.
     """
-    params = {"closed": "true", "limit": max(1, min(limit, 500)), "offset": max(0, min(offset, 900))}
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum", "negRisk", "feesEnabled", "takerBaseFee")
     if end_min or end_max:
-        if (end_min and not DATE.match(end_min)) or (end_max and not DATE.match(end_max)):
-            raise ValueError("end_min/end_max must be YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ")
+        params = {"closed": "true", "limit": max(1, min(limit, 100)), "offset": max(0, min(offset, 900))}
         if end_min:
             params["end_date_min"] = end_min
         if end_max:
             params["end_date_max"] = end_max
-    else:
-        params.update(order="endDate", ascending="false")
-    query = urlencode(params)
+        payload = _cached_get_json(f"{POLYMARKET_GAMMA_EVENTS_URL}?{urlencode(params)}", ttl=300)
+        events = payload if isinstance(payload, list) else []
+        flat = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            for market in event.get("markets") or []:
+                if isinstance(market, dict):
+                    compact = _compact_market(market, keys)
+                    compact["eventId"] = str(event.get("id"))
+                    flat.append(compact)
+        return flat
+    query = urlencode({"closed": "true", "limit": max(1, min(limit, 500)), "offset": max(0, min(offset, 100000)), "order": "endDate", "ascending": "false"})
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}?{query}", ttl=300)
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum", "negRisk", "feesEnabled", "takerBaseFee")
     return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 

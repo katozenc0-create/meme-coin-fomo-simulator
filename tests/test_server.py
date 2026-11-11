@@ -175,16 +175,27 @@ class ServerTests(unittest.TestCase):
     def test_resolved_markets_by_scheduled_end_window(self) -> None:
         seen = []
         original = server._http_get_json
-        server._http_get_json = lambda url, timeout=8.0: seen.append(url) or []
+
+        def fake(url: str, timeout: float = 8.0) -> object:
+            seen.append(url)
+            return [{"id": 55, "title": "Who wins?", "description": "x" * 5000, "markets": [
+                {"id": "1", "question": "A?", "outcomes": '["Yes","No"]', "outcomePrices": '["1","0"]', "secret": 1},
+                {"id": "2", "question": "B?", "outcomes": '["Yes","No"]', "outcomePrices": '["0","1"]'}]}]
+
+        server._http_get_json = fake
         try:
-            status, _, _ = self.get("/api/polymarket/resolved?limit=100&end_min=2026-01-01&end_max=2026-01-02")
+            status, body, _ = self.get("/api/polymarket/resolved?limit=20&end_min=2026-01-01&end_max=2026-01-02")
             bad, _, _ = self.get("/api/polymarket/resolved?end_min=2026-01-01;DROP")
         finally:
             server._http_get_json = original
         self.assertEqual((status, bad), (200, 400))
+        self.assertTrue(seen[0].startswith(server.POLYMARKET_GAMMA_EVENTS_URL), "windows fetch whole events")
         self.assertIn("end_date_min=2026-01-01", seen[0])
-        self.assertIn("end_date_max=2026-01-02", seen[0])
         self.assertNotIn("order=", seen[0], "Gamma rejects ordering together with a date window")
+        markets = json.loads(body)["markets"]
+        self.assertEqual([m["id"] for m in markets], ["1", "2"], "every candidate of the event")
+        self.assertEqual({m["eventId"] for m in markets}, {"55"})
+        self.assertNotIn("secret", markets[0])
 
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})

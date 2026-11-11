@@ -6,9 +6,9 @@ SHIFT_DAYS moves the sampled days (1-5) to draw an independent replication sampl
 
 Notes from running this against the live API:
   * Gamma pagination fails (HTTP 422) past roughly 1,000 rows, and `order=` combined with a
-    date filter returns HTTP 500. So markets are sampled by *scheduled end date* in windows:
-    one day every six days, going back from yesterday, up to 100 markets per window. That
-    spreads the sample over about a year instead of the last few days.
+    date filter returns HTTP 500. So whole EVENTS are sampled by *scheduled end date* in
+    windows: one day every six days, going back from yesterday, 25 events per window. That
+    spreads the sample over about a year and never splits an event's candidates.
   * CLOB prices-history ignores fidelity below ~12h when `interval=max` is used, and rejects
     explicit startTs/endTs ranges of 15 days or more. Each history is therefore the full life
     at 12h merged with the last 14 days before the end at 6h.
@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 GAMMA = "https://gamma-api.polymarket.com/markets"
+GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 HISTORY = "https://clob.polymarket.com/prices-history"
 HEADERS = {"Accept": "application/json", "User-Agent": "practice-research/1.0"}
 
@@ -63,7 +64,7 @@ def to_ts(value):
         return None
 
 
-def binary_resolved(raw):
+def binary_resolved(raw, event_id=None):
     outcomes = [str(o) for o in parse_list(raw.get("outcomes"))]
     prices = [float(p) for p in parse_list(raw.get("outcomePrices")) if p not in (None, "")]
     tokens = [str(t) for t in parse_list(raw.get("clobTokenIds"))]
@@ -79,7 +80,7 @@ def binary_resolved(raw):
     events = raw.get("events") or [{}]
     event = events[0] if isinstance(events[0], dict) else {}
     return {
-        "id": str(raw.get("id")), "eventId": str(event.get("id") or raw.get("id")), "eventTitle": event.get("title"),
+        "id": str(raw.get("id")), "eventId": str(event_id or event.get("id") or raw.get("id")), "eventTitle": event.get("title"),
         "question": raw.get("question"), "slug": raw.get("slug"), "outcome": outcome, "yesToken": tokens[yes_index],
         "endDate": raw.get("endDate"), "closedTime": raw.get("closedTime"), "startDate": raw.get("startDate"),
         "volume": raw.get("volumeNum"), "negRisk": bool(raw.get("negRisk")),
@@ -87,25 +88,32 @@ def binary_resolved(raw):
     }
 
 
-def list_markets(target, shift_days=0):
+def list_markets(target, shift_days=0, events_per_window=25):
+    """Whole events per one-day window of scheduled end dates, every six days going back.
+
+    Fetching EVENTS (with all their markets) instead of the first N markets of a window keeps
+    every candidate of an event together; a cut-off market list can keep an event's losers and
+    drop its winner, which biases the sample toward NO.
+    """
     markets, seen = [], set()
     window_end = datetime.now(timezone.utc) - timedelta(days=1 + shift_days)
-    for _ in range(200):
+    for _ in range(300):
         if len(markets) >= target:
             break
         window_start = window_end - timedelta(days=1)
-        query = urllib.parse.urlencode({"closed": "true", "limit": 100, "end_date_min": window_start.strftime("%Y-%m-%dT%H:%M:%SZ"), "end_date_max": window_end.strftime("%Y-%m-%dT%H:%M:%SZ")})
-        page = get(f"{GAMMA}?{query}") or []
+        query = urllib.parse.urlencode({"closed": "true", "limit": events_per_window, "end_date_min": window_start.strftime("%Y-%m-%dT%H:%M:%SZ"), "end_date_max": window_end.strftime("%Y-%m-%dT%H:%M:%SZ")})
+        page = get(f"{GAMMA_EVENTS}?{query}") or []
         added = 0
-        for raw in page if isinstance(page, list) else []:
-            market = binary_resolved(raw)
-            if market and market["id"] not in seen:
-                seen.add(market["id"])
-                markets.append(market)
-                added += 1
+        for event in page if isinstance(page, list) else []:
+            for raw in event.get("markets") or []:
+                market = binary_resolved(raw, event.get("id"))
+                if market and market["id"] not in seen:
+                    seen.add(market["id"])
+                    markets.append(market)
+                    added += 1
         print(f"window {window_start:%Y-%m-%d}: +{added} -> {len(markets)}", flush=True)
         window_end -= timedelta(days=6)
-    return markets[:target]
+    return markets          # whole windows, so whole events (may overshoot target slightly)
 
 
 def add_history(market):

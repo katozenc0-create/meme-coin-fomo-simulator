@@ -927,6 +927,8 @@
       async function loadLiveTrainingMarkets(count, report) {
         // Sample one day of SCHEDULED end dates every six days, going back from yesterday, so
         // the data spans months and every market had its whole life before its end date.
+        // Whole EVENTS are fetched (25 per window), never a cut-off list of markets: keeping an
+        // event's losers but not its winner would bias the sample toward NO.
         const resolved = [];
         const seen = new Set();
         const day = 86400000;
@@ -936,10 +938,11 @@
           const from = isoDay(endMax - day);
           const to = isoDay(endMax);
           report(`fetching resolved markets… ${resolved.length}/${count} (ended ${from})`);
-          const data = await getJson([`/api/polymarket/resolved?limit=100&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/markets?closed=true&limit=100&end_date_min=${from}&end_date_max=${to}`]);
-          const rows = Array.isArray(data) ? data : data.markets || [];
+          const data = await getJson([`/api/polymarket/resolved?limit=25&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=25&end_date_min=${from}&end_date_max=${to}`]);
+          const rows = M.flattenEvents(Array.isArray(data) ? data : data.markets || []);
+          // Keep whole windows (and so whole events), even if that overshoots `count` a little.
           rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => {
-            if (resolved.length < count && !seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
+            if (!seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
           });
         }
         let done = 0;
@@ -1040,8 +1043,8 @@
           const kind = $('#trainKind').value === 'rich' ? 'rich' : 'calib';
           const spread = Math.max(0, Math.min(.1, (Number($('#trainSpread').value) || 0) / 100));
           const options = { kind, tradeHorizon, spread, bankroll: 1000, config: config() };
-          const result = M.walkForward(markets, options);
-          const stress = M.walkForward(markets, { ...options, spread: spread * 2 });
+          const result = M.walkForward(markets, { ...options, stressSpreads: [spread * 2] });
+          const stress = { evidence: result.stress[0] };
           lastTraining = {
             model: result.model, source: label, trainedAt: Date.now(),
             gate: { open: result.evidence.gateOpen, robust: result.evidence.gateOpen && stress.evidence.gateOpen, meanReturn: result.evidence.meanReturn, ci: result.evidence.ci, trades: result.evidence.trades, spread, tradeHorizon }

@@ -277,7 +277,7 @@ test('fees, categories and rich features use only information known at decision 
 test('walk-forward evidence gate stays closed on a calibrated crowd and opens on a strong bias', () => {
   const fair = M.walkForward(M.simulatedResolvedMarkets(500, { seed: 3, longshotBias: 0 }), { kind: 'calib' });
   assert.equal(fair.evidence.gateOpen, false, `calibrated crowd: CI ${fair.evidence.ci}`);
-  const biased = M.walkForward(M.simulatedResolvedMarkets(500, { seed: 3, longshotBias: .5 }), { kind: 'calib' });
+  const biased = M.walkForward(M.simulatedResolvedMarkets(700, { seed: 3, longshotBias: .5 }), { kind: 'calib' });   // purged training needs a little more data
   assert.ok(biased.evidence.trades >= 30, `trades ${biased.evidence.trades}`);
   assert.equal(biased.evidence.gateOpen, true, `strong bias: CI ${biased.evidence.ci}`);
   assert.ok(biased.test.brierModel < biased.test.brierMarket);
@@ -314,4 +314,18 @@ test('live safety: fees cost edge, horizons are clamped, only an open gate may t
   assert.equal(M.modelMayTrade({ gate: { open: false } }), false);
   assert.equal(M.modelMayTrade({ gate: { open: true } }), true);
   assert.equal(M.parseResolvedForTraining({ id: 1, slug: 'nba-lakers-celtics', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }).slug, 'nba-lakers-celtics');
+});
+
+test('walk-forward purges training events that end within the horizon of a test block', () => {
+  // 60 single-market events, one per day. With 30-day horizons, block 1 (events 10-19) would
+  // otherwise train on events ending days before its own trades were placed.
+  const markets = Array.from({ length: 60 }, (_, index) => {
+    const endTs = 1e9 + index * 86400;
+    return { id: `m${index}`, eventId: `e${index}`, endTs, outcome: index % 2 ? 'YES' : 'NO', history: [{ t: endTs - 60 * 86400, p: .4 }] };
+  });
+  const result = M.walkForward(markets, { kind: 'calib', folds: 5, horizons: [30], tradeHorizon: 30, stressSpreads: [.04] });
+  assert.equal(result.stress.length, 1, 'stress evidence reuses the same fits');
+  assert.equal(result.stress[0].spread, .04);
+  // block 1 starts at event 10; nothing ended 30+ days earlier, so it cannot be traded.
+  assert.ok(!result.evidence.folds.some(fold => fold.fold === 1), 'block 1 has no purged training data');
 });
