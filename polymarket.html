@@ -927,7 +927,7 @@
       async function loadLiveTrainingMarkets(count, report) {
         // Sample one day of SCHEDULED end dates every six days, going back from yesterday, so
         // the data spans months and every market had its whole life before its end date.
-        // Whole EVENTS are fetched (25 per window), never a cut-off list of markets: keeping an
+        // Whole EVENTS are fetched (5 per window, so the sample spans about a year), never a cut-off list of markets: keeping an
         // event's losers but not its winner would bias the sample toward NO.
         const resolved = [];
         const seen = new Set();
@@ -938,7 +938,7 @@
           const from = isoDay(endMax - day);
           const to = isoDay(endMax);
           report(`fetching resolved markets… ${resolved.length}/${count} (ended ${from})`);
-          const data = await getJson([`/api/polymarket/resolved?limit=25&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=25&end_date_min=${from}&end_date_max=${to}`]);
+          const data = await getJson([`/api/polymarket/resolved?limit=5&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=5&end_date_min=${from}&end_date_max=${to}`]);
           const rows = M.flattenEvents(Array.isArray(data) ? data : data.markets || []);
           // Keep whole windows (and so whole events), even if that overshoots `count` a little.
           rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => {

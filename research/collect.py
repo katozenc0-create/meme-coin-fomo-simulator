@@ -1,8 +1,10 @@
 """Collect resolved Polymarket binary markets and their price histories (read-only).
 
-Usage:  python research/collect.py data/dataset.json [MARKETS=6000] [SHIFT_DAYS=0]
+Usage:  python research/collect.py data/dataset.json [MARKETS=6000] [SHIFT_DAYS=0] [EVENTS_PER_WINDOW=5]
 
 SHIFT_DAYS moves the sampled days (1-5) to draw an independent replication sample.
+EVENTS_PER_WINDOW trades depth for time span: big events hold dozens of markets, so 25 events
+per window reach 6,000 markets within ~2-3 months; 5 spreads the sample over about a year.
 
 Notes from running this against the live API:
   * Gamma pagination fails (HTTP 422) past roughly 1,000 rows, and `order=` combined with a
@@ -88,7 +90,7 @@ def binary_resolved(raw, event_id=None):
     }
 
 
-def list_markets(target, shift_days=0, events_per_window=25):
+def list_markets(target, shift_days=0, events_per_window=5):
     """Whole events per one-day window of scheduled end dates, every six days going back.
 
     Fetching EVENTS (with all their markets) instead of the first N markets of a window keeps
@@ -140,7 +142,8 @@ def main():
     out = sys.argv[1]
     target = int(sys.argv[2]) if len(sys.argv) > 2 else 6000
     shift = int(sys.argv[3]) if len(sys.argv) > 3 else 0
-    markets = list_markets(target, shift)
+    per_window = int(sys.argv[4]) if len(sys.argv) > 4 else 5
+    markets = list_markets(target, shift, per_window)
     with ThreadPoolExecutor(max_workers=8) as pool:          # polite: at most 8 requests at once
         for done, _ in enumerate(pool.map(add_history, markets), 1):
             if done % 500 == 0:
