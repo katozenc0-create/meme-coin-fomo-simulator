@@ -104,6 +104,17 @@ You can track a recommendation as a paper position. Paper positions are marked t
 
 The simulator's hidden probability is a calibrated martingale that resolves to 0 or 1, so results reflect real edge rather than model artifacts. No agent can guarantee profit: real-world edge is rare and small.
 
+## Metyu Live Board (virtual money)
+
+Open `board.html`, or use **Live Board** in the navigation. Metyu trades eight markets at once from one virtual account.
+
+- **Demo mode:** simulated markets stream continuously. When one resolves, a new one takes its place. A slider sets how accurate Metyu's research is.
+- **Live mode:** follows the eight busiest open Polymarket binary markets, with read-only prices refreshed every 30s. Positions settle when a market resolves.
+  - Metyu's belief comes from the model trained in the Prediction lab.
+  - Without a trained model, or when the model sees no edge, Metyu watches and does not trade.
+- **Board view:** equity, P&L, cash and open positions, win rate, drawdown, an equity curve, and a decision feed.
+- **Saved state:** the account is kept in the browser.
+
 ## Market Scenarios
 
 The built-in scenarios are fictionalized practice replays inspired by common public meme-coin patterns. They are not exact historical records.
