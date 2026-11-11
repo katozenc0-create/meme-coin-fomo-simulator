@@ -418,6 +418,56 @@
     };
   }
 
+  /** Normalises a CLOB order book side ([{price, size}] strings or numbers) sorted best-first. */
+  function normaliseLevels(levels, side = 'asks') {
+    const clean = (Array.isArray(levels) ? levels : [])
+      .map(level => ({ price: Number(level.price), size: Number(level.size) }))
+      .filter(level => level.price > 0 && level.price < 1 && level.size > 0);
+    return clean.sort((a, b) => side === 'asks' ? a.price - b.price : b.price - a.price);
+  }
+
+  /**
+   * Walks the ask side of an order book to spend `notional` dollars on shares.
+   * Returns the volume-weighted average price, shares bought, dollars left unfilled,
+   * the worst price touched and how many levels were consumed.
+   */
+  function fillFromBook(asks, notional) {
+    const levels = normaliseLevels(asks, 'asks');
+    let remaining = notional;
+    let shares = 0;
+    let worst = 0;
+    let used = 0;
+    for (const level of levels) {
+      if (remaining <= 1e-9) break;
+      const cost = Math.min(remaining, level.price * level.size);
+      shares += cost / level.price;
+      remaining -= cost;
+      worst = level.price;
+      used += 1;
+    }
+    const spent = notional - remaining;
+    return {
+      averagePrice: shares > 0 ? spent / shares : NaN,
+      shares, spent, unfilled: Math.max(0, remaining), worstPrice: worst, levelsUsed: used,
+      bestAsk: levels.length ? levels[0].price : NaN,
+      depth: levels.reduce((sum, level) => sum + level.price * level.size, 0)
+    };
+  }
+
+  /**
+   * Portfolio guard for many simultaneous positions: caps a new position's margin so total
+   * notional stays within maxGross × equity and the number of open positions within maxOpen.
+   * Returns { margin, reason } — margin 0 means the trade must be skipped.
+   */
+  function capToPortfolio({ equity, openNotional = 0, openCount = 0, margin, leverage = 1, maxGross = 1.5, maxOpen = 6 }) {
+    if (openCount >= maxOpen) return { margin: 0, reason: `max ${maxOpen} open positions reached` };
+    const room = maxGross * equity - openNotional;
+    const lev = Math.max(1, leverage);
+    if (room < lev) return { margin: 0, reason: `gross exposure cap ${maxGross}x of equity reached` };
+    if (margin * lev > room) return { margin: room / lev, reason: `size cut to stay within ${maxGross}x gross exposure` };
+    return { margin, reason: null };
+  }
+
   /** How sure the user is about their own estimate → log-odds variance of that estimate. */
   const CONFIDENCE_VARIANCE = Object.freeze({ low: .6, medium: .2, high: .06 });
 
@@ -426,9 +476,9 @@
    * returns Metyu's verdict plus the numbers a trader should see before clicking anything.
    * daysLeft maps to the decision's time-to-resolution (leverage is cut inside ~7 days).
    */
-  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', bankroll = 1000, daysLeft = 30, peakEquity = null }, userConfig = {}) {
+  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null }, userConfig = {}) {
     const config = { ...DEFAULT_CONFIG, ...userConfig };
-    const researchVariance = CONFIDENCE_VARIANCE[confidence] ?? CONFIDENCE_VARIANCE.medium;
+    const researchVariance = Number.isFinite(beliefVariance) && beliefVariance > 0 ? beliefVariance : (CONFIDENCE_VARIANCE[confidence] ?? CONFIDENCE_VARIANCE.medium);
     const timeLeft = clamp(daysLeft / 30, 0, 1);
     const decision = decide({
       yesPrice, spread, research: clampProb(belief), researchVariance,
@@ -436,10 +486,39 @@
     }, config);
     const result = { ...decision, yesPrice, belief: clampProb(belief), daysLeft };
     if (decision.action !== 'OPEN') return result;
-    const position = openPosition({ side: decision.side, yesPrice, margin: decision.margin, leverage: decision.leverage, spread, feeRate: config.feeRate });
     const sideFair = decision.side === 'YES' ? decision.fair : 1 - decision.fair;
+    let margin = decision.margin;
+    let bookFill = null;
+    const asks = book && book[decision.side];
+    if (asks) {
+      // Real execution: walk the order book. Shrink the order until the average fill keeps the edge.
+      let notional = margin * decision.leverage;
+      bookFill = fillFromBook(asks, notional);
+      for (let attempt = 0; attempt < 12 && (bookFill.unfilled > .01 || sideFair - bookFill.averagePrice < config.minEdge) && notional > 1; attempt += 1) {
+        notional *= .6;
+        bookFill = fillFromBook(asks, notional);
+      }
+      const edgeAfterFill = sideFair - bookFill.averagePrice;
+      if (!(bookFill.shares > 0) || bookFill.unfilled > .01 || edgeAfterFill < config.minEdge || notional < 1) {
+        const best = Number.isFinite(bookFill.bestAsk) ? `${(bookFill.bestAsk * 100).toFixed(1)}¢` : 'none';
+        const after = Number.isFinite(edgeAfterFill) ? `${(edgeAfterFill * 100).toFixed(1)} pts` : 'n/a';
+        return { ...result, action: 'HOLD', bookFill, reasons: [...decision.reasons, `order book too thin: best ask ${best}, edge after fill ${after} < ${(config.minEdge * 100).toFixed(1)}`] };
+      }
+      if (notional < margin * decision.leverage - .01) {
+        margin = notional / decision.leverage;
+        result.reasons = [...decision.reasons, `size cut to $${notional.toFixed(2)} notional so the book fill keeps the edge`];
+      }
+    }
+    const position = openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread, feeRate: config.feeRate });
+    if (bookFill) {
+      // Replace the quote-based fill with the order-book fill.
+      position.entry = bookFill.averagePrice;
+      position.shares = bookFill.shares * (1 - config.feeRate);
+    }
     return {
       ...result,
+      margin,
+      bookFill,
       entry: position.entry,
       shares: position.shares,
       notional: position.notional,
@@ -471,13 +550,255 @@
       spread: Number.isFinite(bid) && Number.isFinite(ask) && ask > bid ? ask - bid : .02,
       volume: Number(raw.volumeNum ?? raw.volume) || 0,
       liquidity: Number(raw.liquidityNum ?? raw.liquidity) || 0,
-      endDate: raw.endDate ? String(raw.endDate) : ''
+      endDate: raw.endDate ? String(raw.endDate) : '',
+      tokenIds: (() => {
+        const ids = parse(raw.clobTokenIds).map(String);
+        if (ids.length !== 2 || !ids.every(id => /^[0-9]{1,100}$/.test(id))) return null;
+        const y = yesIndex >= 0 ? yesIndex : 0;
+        return { YES: ids[y], NO: ids[1 - y] };
+      })()
     };
+  }
+
+  /**
+   * Reads a Gamma API market that may have closed. Returns null while it is open,
+   * { outcome: 'YES' | 'NO' } once settled, or { outcome: null } if closed but not cleanly
+   * settled yet (e.g. a resolution still under dispute).
+   */
+  function parseGammaResolution(raw) {
+    if (!raw || !(raw.closed === true || raw.closed === 'true')) return null;
+    const parse = value => { if (Array.isArray(value)) return value; try { return JSON.parse(value); } catch (error) { return []; } };
+    const outcomes = parse(raw.outcomes).map(String);
+    const prices = parse(raw.outcomePrices).map(Number);
+    if (outcomes.length !== 2 || prices.length !== 2) return { outcome: null };
+    const yesIndex = outcomes.findIndex(name => name.toLowerCase() === 'yes');
+    const yes = prices[yesIndex >= 0 ? yesIndex : 0];
+    if (yes >= .99) return { outcome: 'YES' };
+    if (yes <= .01) return { outcome: 'NO' };
+    return { outcome: null };
+  }
+
+  /** Settles a (possibly leveraged) position at resolution: winners get $1/share, losers $0. */
+  function settlePosition(position, outcome) {
+    const perShare = position.side === outcome ? 1 : 0;
+    const payout = Math.max(0, position.shares * perShare - (position.borrowed || 0) - (position.interest || 0));
+    return { payout, pnl: payout - position.margin };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Training on resolved markets (virtual money only)
+  // ---------------------------------------------------------------------------
+
+  /** A closed Gamma market → { id, question, endTs, outcome, yesToken } for training, or null. */
+  function parseResolvedForTraining(raw) {
+    const resolution = parseGammaResolution(raw);
+    if (!resolution || !resolution.outcome) return null;
+    const parse = value => { if (Array.isArray(value)) return value; try { return JSON.parse(value); } catch (error) { return []; } };
+    const outcomes = parse(raw.outcomes).map(String);
+    const tokens = parse(raw.clobTokenIds).map(String);
+    if (tokens.length !== 2 || !tokens.every(id => /^[0-9]{1,100}$/.test(id))) return null;
+    const yesIndex = Math.max(0, outcomes.findIndex(name => name.toLowerCase() === 'yes'));
+    const endMs = Date.parse(raw.closedTime || raw.endDate || '');
+    if (!Number.isFinite(endMs)) return null;
+    return { id: String(raw.id), question: String(raw.question || 'Resolved market'), endTs: Math.floor(endMs / 1000), outcome: resolution.outcome, yesToken: tokens[yesIndex] };
+  }
+
+  /** Last price at or before `ts` in a [{t, p}] history sorted by t; null if none. */
+  function priceAt(history, ts) {
+    let found = null;
+    for (const point of history) {
+      if (point.t > ts) break;
+      found = point.p;
+    }
+    return found;
+  }
+
+  /** Cleans a CLOB prices-history payload into [{t (seconds), p}] sorted by time. */
+  function normaliseHistory(raw) {
+    const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.history) ? raw.history : []);
+    return rows
+      .map(point => ({ t: Number(point.t), p: Number(point.p) }))
+      .filter(point => Number.isFinite(point.t) && point.p > 0 && point.p < 1)
+      .sort((a, b) => a.t - b.t);
+  }
+
+  /**
+   * One training sample per (market, horizon): the YES price `horizon` days before the
+   * market ended, and whether YES won. markets: [{ id, endTs (s), outcome, history }].
+   */
+  function buildTrainingSamples(markets, horizons = [1, 7, 30]) {
+    const samples = [];
+    for (const market of markets) {
+      if (market.outcome !== 'YES' && market.outcome !== 'NO') continue;
+      const history = market.history || [];
+      if (!history.length) continue;
+      for (const horizon of horizons) {
+        const ts = market.endTs - horizon * 86400;
+        if (history[0].t > ts) continue;            // market did not exist yet
+        const p = priceAt(history, ts);
+        if (p === null) continue;
+        samples.push({ marketId: market.id, endTs: market.endTs, horizon, p: clampProb(p), y: market.outcome === 'YES' ? 1 : 0 });
+      }
+    }
+    return samples;
+  }
+
+  /**
+   * Logistic recalibration of market prices:  P(YES) = σ(a + b · logit(price)).
+   * a = 0, b = 1 means the crowd is calibrated. b > 1 means prices are too timid
+   * (longshots overpriced, favourites underpriced). Fitted by Newton–Raphson with a
+   * small ridge penalty pulling toward the calibrated (0, 1) prior; returns the
+   * parameter covariance so predictions carry an honest uncertainty.
+   */
+  function fitCalibration(samples, { l2 = 1, iterations = 30 } = {}) {
+    let a = 0;
+    let b = 1;
+    let cov = [[1, 0], [0, 1]];
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      let ga = -l2 * a;
+      let gb = -l2 * (b - 1);
+      let haa = l2;
+      let hab = 0;
+      let hbb = l2;
+      for (const sample of samples) {
+        const x = logit(sample.p);
+        const q = sigmoid(a + b * x);
+        const w = q * (1 - q);
+        ga += sample.y - q;
+        gb += (sample.y - q) * x;
+        haa += w;
+        hab += w * x;
+        hbb += w * x * x;
+      }
+      const det = haa * hbb - hab * hab;
+      if (!(det > 0)) break;
+      cov = [[hbb / det, -hab / det], [-hab / det, haa / det]];
+      const da = cov[0][0] * ga + cov[0][1] * gb;
+      const db = cov[1][0] * ga + cov[1][1] * gb;
+      a += da;
+      b += db;
+      if (Math.abs(da) + Math.abs(db) < 1e-9) break;
+    }
+    return { a, b, cov, n: samples.length };
+  }
+
+  /** Model probability for a market price plus the log-odds variance of that estimate. */
+  function predictCalibrated(model, price) {
+    const x = logit(price);
+    const variance = model.cov[0][0] + 2 * x * model.cov[0][1] + x * x * model.cov[1][1];
+    return { probability: clampProb(sigmoid(model.a + model.b * x)), variance: Math.max(1e-6, variance) };
+  }
+
+  function brierScore(pairs) {
+    return pairs.length ? pairs.reduce((sum, [forecast, outcome]) => sum + Math.pow(forecast - outcome, 2), 0) / pairs.length : NaN;
+  }
+
+  function logLoss(pairs) {
+    return pairs.length ? -pairs.reduce((sum, [forecast, outcome]) => sum + (outcome ? Math.log(clampProb(forecast)) : Math.log(1 - clampProb(forecast))), 0) / pairs.length : NaN;
+  }
+
+  /** Reliability table: for each probability bin, mean forecast vs observed frequency. */
+  function reliability(pairs, bins = 10) {
+    const table = Array.from({ length: bins }, (_, index) => ({ from: index / bins, to: (index + 1) / bins, n: 0, forecast: 0, observed: 0 }));
+    for (const [forecast, outcome] of pairs) {
+      const row = table[Math.min(bins - 1, Math.floor(forecast * bins))];
+      row.n += 1; row.forecast += forecast; row.observed += outcome;
+    }
+    return table.map(row => ({ ...row, forecast: row.n ? row.forecast / row.n : null, observed: row.n ? row.observed / row.n : null }));
+  }
+
+  /**
+   * Time-ordered train/test split by market end date (no peeking at the future), fit on the
+   * older markets, then paper-trade the newer ones with virtual money: at `tradeHorizon` days
+   * before resolution Metyu asks advise() using the model as its belief, buys at the historical
+   * price plus half the spread, and the position settles at the real outcome.
+   */
+  function trainAndEvaluate(markets, { horizons = [1, 7, 30], trainFraction = .7, tradeHorizon = 7, bankroll = 1000, spread = .02, config = {} } = {}) {
+    const ordered = markets.filter(market => market.outcome === 'YES' || market.outcome === 'NO').slice().sort((x, y) => x.endTs - y.endTs);
+    const cut = Math.max(1, Math.min(ordered.length - 1, Math.floor(ordered.length * trainFraction)));
+    const trainMarkets = ordered.slice(0, cut);
+    const testMarkets = ordered.slice(cut);
+    const trainSamples = buildTrainingSamples(trainMarkets, horizons);
+    const testSamples = buildTrainingSamples(testMarkets, horizons);
+    const model = fitCalibration(trainSamples);
+    const marketPairs = testSamples.map(sample => [sample.p, sample.y]);
+    const modelPairs = testSamples.map(sample => [predictCalibrated(model, sample.p).probability, sample.y]);
+
+    let equity = bankroll;
+    let peak = bankroll;
+    let maxDrawdown = 0;
+    const trades = [];
+    for (const sample of testSamples.filter(item => item.horizon === tradeHorizon)) {
+      if (equity < 1) break;
+      const belief = predictCalibrated(model, sample.p);
+      const advice = advise({ yesPrice: sample.p, spread, belief: belief.probability, beliefVariance: belief.variance, bankroll: equity, peakEquity: peak, daysLeft: tradeHorizon }, config);
+      if (advice.action !== 'OPEN') continue;
+      const position = openPosition({ side: advice.side, yesPrice: sample.p, margin: advice.margin, leverage: advice.leverage, spread });
+      const { pnl } = settlePosition(position, sample.y ? 'YES' : 'NO');
+      equity += pnl;
+      peak = Math.max(peak, equity);
+      maxDrawdown = Math.max(maxDrawdown, 1 - equity / peak);
+      trades.push({ marketId: sample.marketId, side: advice.side, price: sample.p, belief: belief.probability, leverage: advice.leverage, margin: advice.margin, pnl });
+    }
+    return {
+      model,
+      counts: { markets: ordered.length, trainMarkets: trainMarkets.length, testMarkets: testMarkets.length, trainSamples: trainSamples.length, testSamples: testSamples.length },
+      test: {
+        brierMarket: brierScore(marketPairs), brierModel: brierScore(modelPairs),
+        logLossMarket: logLoss(marketPairs), logLossModel: logLoss(modelPairs),
+        reliabilityMarket: reliability(marketPairs), reliabilityModel: reliability(modelPairs)
+      },
+      paper: { bankroll, finalEquity: equity, totalReturn: equity / bankroll - 1, maxDrawdown, trades, wins: trades.filter(trade => trade.pnl > 0).length }
+    };
+  }
+
+  /**
+   * Offline practice data: resolved markets from the simulator, with daily history.
+   * `longshotBias` (0–1) compresses prices toward 50¢, the classic favourite–longshot
+   * bias; 0 gives a calibrated crowd, where a trained model should find no edge.
+   * (The lab's own lagging simulator prices are deliberately not used here: a trained
+   * model does find that lag, which would hide the "no edge" control.)
+   */
+  function simulatedResolvedMarkets(count = 300, { seed = 11, longshotBias = 0, days = 60 } = {}) {
+    const rng = createRng(seed);
+    const startTs = 1.7e9;
+    const markets = [];
+    for (let index = 0; index < count; index += 1) {
+      // No news jumps here: with pure Gaussian drift Φ(X/σ) is exactly the true probability.
+      const sim = createMarket({ seed: Math.floor(rng() * 2 ** 31), steps: days + 1, startProb: .05 + rng() * .9, jumpRate: 0, volatility: .25 });
+      const endTs = startTs + index * 86400 * 2 + days * 86400;
+      // Base prices are the calibrated true probability (a perfectly efficient crowd);
+      // the bias then distorts them the way real crowds overpay for longshots.
+      const history = sim.truth.map((price, day) => {
+        const biased = sigmoid(logit(price) * (1 - longshotBias));
+        return { t: endTs - (days - day) * 86400, p: clamp(biased, .005, .995) };
+      });
+      markets.push({ id: `sim-${index}`, question: `Simulated market #${index + 1}`, endTs, outcome: sim.outcome, history });
+    }
+    return markets;
+  }
+
+  /**
+   * RFC 4180 CSV with spreadsheet formula-injection protection: text cells that start with
+   * = + - @ (or tab / carriage return) get a leading apostrophe, because market questions
+   * come from outside and a spreadsheet would otherwise execute them as formulas.
+   */
+  function toCsv(rows, columns) {
+    const cell = value => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+      let text = String(value);
+      if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const lines = [columns.map(column => cell(column.label)).join(',')];
+    for (const row of rows) lines.push(columns.map(column => cell(row[column.key])).join(','));
+    return lines.join('\r\n');
   }
 
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

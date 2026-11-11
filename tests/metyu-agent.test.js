@@ -114,3 +114,87 @@ test('live advisor: sizes a confident edge, refuses a vague one, no leverage nea
   const bearish = M.advise({ yesPrice: .70, spread: .02, belief: .45, confidence: 'high', bankroll: 1000, daysLeft: 45 });
   assert.equal(bearish.side, 'NO');
 });
+
+test('reads Polymarket resolutions and settles positions', () => {
+  assert.equal(M.parseGammaResolution({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' }), null);
+  assert.deepEqual(M.parseGammaResolution({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' }), { outcome: 'YES' });
+  assert.deepEqual(M.parseGammaResolution({ closed: 'true', outcomes: '["No","Yes"]', outcomePrices: '["1","0"]' }), { outcome: 'NO' });
+  assert.deepEqual(M.parseGammaResolution({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.6","0.4"]' }), { outcome: null });
+  const levered = M.openPosition({ side: 'YES', yesPrice: .5, margin: 100, leverage: 3 });
+  close(M.settlePosition(levered, 'YES').pnl, 600 - 200 - 100);   // 600 shares pay $1, repay 200
+  close(M.settlePosition(levered, 'NO').pnl, -100);                // margin lost, never more
+});
+
+test('order book: walks levels, reports average price and depth', () => {
+  const asks = [{ price: '0.43', size: '100' }, { price: '0.41', size: '50' }, { price: '0.45', size: '1000' }];
+  const fill = M.fillFromBook(asks, 50);              // 50 shares @ .41 = $20.5, then $29.5 @ .43
+  close(fill.bestAsk, .41);
+  close(fill.spent, 50);
+  close(fill.shares, 50 + 29.5 / .43, 1e-9);
+  assert.equal(fill.levelsUsed, 2);
+  assert.ok(fill.averagePrice > .41 && fill.averagePrice < .43);
+  const tooBig = M.fillFromBook(asks, 10000);
+  assert.ok(tooBig.unfilled > 0);
+});
+
+test('advisor uses the order book: deep book keeps the trade, thin book shrinks or refuses it', () => {
+  const base = { yesPrice: .40, spread: .02, belief: .60, confidence: 'high', bankroll: 1000, daysLeft: 45 };
+  const deep = M.advise({ ...base, book: { YES: [{ price: .41, size: 100000 }] } });
+  assert.equal(deep.action, 'OPEN');
+  close(deep.entry, .41);
+  const thin = M.advise({ ...base, book: { YES: [{ price: .41, size: 20 }, { price: .58, size: 100000 }] } });
+  assert.ok(thin.action === 'HOLD' || thin.margin < deep.margin, 'thin book must cut size or refuse');
+  if (thin.action === 'OPEN') assert.ok(thin.entry < .5);
+  const empty = M.advise({ ...base, book: { YES: [{ price: .55, size: 100000 }] } });
+  assert.equal(empty.action, 'HOLD');
+  assert.ok(empty.reasons.some(reason => reason.includes('order book too thin')));
+  const tokens = M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["0.4","0.6"]', clobTokenIds: '["111","222"]' }).tokenIds;
+  assert.deepEqual(tokens, { YES: '111', NO: '222' });
+});
+
+test('training: history lookup and sample building respect time', () => {
+  const history = M.normaliseHistory({ history: [{ t: 300, p: .7 }, { t: 100, p: .4 }, { t: 200, p: 1.5 }] });
+  assert.deepEqual(history.map(point => point.t), [100, 300]);
+  assert.equal(M.priceAt(history, 250), .4);
+  assert.equal(M.priceAt(history, 50), null);
+  const samples = M.buildTrainingSamples([{ id: 'm', endTs: 10 * 86400, outcome: 'YES', history: [{ t: 0, p: .3 }, { t: 9 * 86400, p: .8 }] }], [1, 7, 30]);
+  assert.deepEqual(samples.map(sample => [sample.horizon, sample.p]), [[1, .8], [7, .3]]);   // no 30-day sample: market too young
+});
+
+test('training: calibration fit finds no edge in a calibrated crowd and finds longshot bias', () => {
+  const fair = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: 0 }));
+  assert.ok(Math.abs(fair.model.b - 1) < .25, `calibrated slope ${fair.model.b}`);
+  const biased = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: .35 }));
+  assert.ok(biased.model.b > 1.25, `biased slope ${biased.model.b}`);
+  assert.ok(biased.test.brierModel < biased.test.brierMarket, 'model beats the biased crowd out of sample');
+  assert.ok(biased.paper.trades.length > fair.paper.trades.length, 'more trades when there is something to exploit');
+});
+
+test('training: parses resolved Gamma markets with YES token and end time', () => {
+  const parsed = M.parseResolvedForTraining({ id: 5, question: 'Q', closed: true, outcomes: '["No","Yes"]', outcomePrices: '["0","1"]', clobTokenIds: '["11","22"]', closedTime: '2026-01-02T00:00:00Z' });
+  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22' });
+  assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
+  assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
+});
+
+test('portfolio guard caps gross exposure and open positions', () => {
+  assert.deepEqual(M.capToPortfolio({ equity: 1000, openNotional: 0, margin: 100, leverage: 3 }), { margin: 100, reason: null });
+  const cut = M.capToPortfolio({ equity: 1000, openNotional: 1350, margin: 100, leverage: 3 });   // room 150 → margin 50
+  close(cut.margin, 50);
+  assert.match(cut.reason, /size cut/);
+  assert.equal(M.capToPortfolio({ equity: 1000, openNotional: 1500, margin: 100, leverage: 2 }).margin, 0);
+  assert.equal(M.capToPortfolio({ equity: 1000, openCount: 6, margin: 10 }).margin, 0);
+});
+
+test('CSV export quotes properly and neutralises formula injection', () => {
+  const csv = M.toCsv([
+    { q: '=HYPERLINK("http://evil","x")', pnl: -12.5 },
+    { q: 'Comma, "quotes"\nnewline', pnl: 3 },
+    { q: '@SUM(A1)', pnl: NaN }
+  ], [{ key: 'q', label: 'Market' }, { key: 'pnl', label: 'P&L' }]);
+  const lines = csv.split('\r\n');
+  assert.equal(lines[0], 'Market,P&L');
+  assert.equal(lines[1], `"'=HYPERLINK(""http://evil"",""x"")",-12.5`);
+  assert.ok(lines[2].startsWith('"Comma, ""quotes""'));
+  assert.equal(csv.split('\r\n').pop(), "'@SUM(A1),");
+});

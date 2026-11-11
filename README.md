@@ -45,6 +45,12 @@ python server.py --host 0.0.0.0 --port 8080
 
 The server only serves the game's static assets; source files, dotfiles, and the `.git` folder are never exposed.
 
+The Polymarket proxy endpoints are read-only and polite to the upstream API:
+
+- At most 4 requests go to Polymarket at the same time.
+- Successful responses are cached briefly: 5s for order books, 10s for single markets, 30s for market lists, 5 min for resolved lists, and 1 hour for price histories.
+- Errors are never cached.
+
 The server also provides a health endpoint:
 
 ```text
@@ -89,11 +95,34 @@ Open `polymarket.html` (or **Metyu Lab** in the top navigation). Metyu is a pape
 - liquidation price
 - payout if right, expected profit, and break-even probability
 
-You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings.
+For live markets, Metyu also reads the outcome's public CLOB order book and walks the asks to find the real average fill. If the fill would eat the edge, it cuts the size or refuses the trade, and the verdict shows the levels used and the book depth.
 
-**Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, and `/api/polymarket/market?id=<numeric id>` for one market) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
+You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings. When a live market resolves, its paper positions settle automatically: winners pay $1 per share and losers $0, after any borrowed amount is repaid. The settled result moves into resolved P&L.
+
+**Training (virtual money):** the Training panel learns from markets that have already resolved. For each market it takes the YES price 1, 7 and 30 days before the end and whether YES won, then fits a calibration model, σ(a + b·logit p), on the older markets. It then paper-trades the newer markets it has never seen, with virtual money.
+
+- A slope near 1 means the crowd is calibrated: there is no edge and Metyu sits out.
+- A slope above 1 means longshots are overpriced.
+- The data can be live Polymarket data, through `/api/polymarket/resolved` and `/api/polymarket/history`, or simulated data. The simulated options are a calibrated control and 20% / 35% longshot bias.
+- A trained model can become Metyu's belief in the live advisor. It is saved in the browser.
+
+**Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
 
 The simulator's hidden probability is a calibrated martingale that resolves to 0 or 1, so results reflect real edge rather than model artifacts. No agent can guarantee profit: real-world edge is rare and small.
+
+## Metyu Live Board (virtual money)
+
+Open `board.html`, or use **Live Board** in the navigation. Metyu trades eight markets at once from one virtual account.
+
+- **Demo mode:** simulated markets stream continuously. When one resolves, a new one takes its place. A slider sets how accurate Metyu's research is.
+- **Live mode:** follows the eight busiest open Polymarket binary markets, with read-only prices refreshed every 30s. Positions settle when a market resolves.
+  - Metyu's belief comes from the model trained in the Prediction lab.
+  - Without a trained model, or when the model sees no edge, Metyu watches and does not trade.
+- **Board view:** equity, P&L, cash and open positions, win rate, drawdown, an equity curve, and a decision feed.
+- **Portfolio limits:** a cap on total notional (1x–3x of equity) and on the number of open positions. Trades that would break a limit are cut down or skipped, and the feed says why.
+- **Manual control:** every card has a **Close** button, and **Flatten all** closes every position. Metyu waits a few ticks before it re-enters a market you closed by hand.
+- **Export trades (CSV):** downloads every closed virtual trade: open and close times, market, side, leverage, entry and exit prices, Metyu's fair value at entry, margin, notional, P&L and the reason it closed. Cells that start like a formula are neutralised so a spreadsheet will not run them.
+- **Saved state:** the account and the last 1,000 trades are kept in the browser.
 
 ## Market Scenarios
 

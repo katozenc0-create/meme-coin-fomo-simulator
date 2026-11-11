@@ -89,7 +89,7 @@
 </head>
 <body>
   <div class="shell">
-    <nav class="top-nav"><span class="brand">Metyu Prediction Lab</span><a href="index.html">← Meme coin FOMO simulator</a></nav>
+    <nav class="top-nav"><span class="brand">Metyu Prediction Lab</span><span style="display:flex;gap:14px"><a href="board.html">Live board →</a><a href="index.html">← Meme coin FOMO simulator</a></span></nav>
     <header>
       <div><p class="eyebrow">Prediction markets · leverage · paper trading</p><h1>Metyu<br><span>trading agent</span></h1></div>
       <p class="subhead">Metyu reads a Polymarket-style YES/NO market, estimates the fair probability, trades only when the edge beats costs and uncertainty, sizes with fractional Kelly, and treats leverage as something to earn — not assume.</p>
@@ -181,7 +181,7 @@
             <div class="field"><label for="advDays">Days to resolution</label><input id="advDays" type="number" min="0" step="1" value="30"></div>
             <div class="field"><label for="advBankroll">Paper bankroll $</label><input id="advBankroll" type="number" min="10" step="10" value="1000"></div>
           </div>
-          <div class="controls"><button class="btn" id="advAsk">Ask Metyu</button><button class="btn secondary" id="advRefresh" disabled>Refresh live price</button><label class="toggle" style="margin:0"><input type="checkbox" id="advAuto"> auto-refresh 30s</label></div>
+          <div class="controls"><button class="btn" id="advAsk">Ask Metyu</button><button class="btn secondary" id="advRefresh" disabled>Refresh live price</button><label class="toggle" style="margin:0"><input type="checkbox" id="advAuto"> auto-refresh 30s</label><label class="toggle" style="margin:0"><input type="checkbox" id="advUseModel" disabled> use trained model as my belief</label></div>
           <p class="note" id="advStatus"></p>
         </div>
         <div>
@@ -190,6 +190,37 @@
           <h2 style="margin-top:14px">Paper positions</h2>
           <div id="paperList"><p class="note">No paper positions yet.</p></div>
           <div class="metric"><span>Paper P&amp;L (open marks)</span><strong id="paperTotal">$0</strong></div>
+          <div class="metric"><span>Paper P&amp;L (resolved)</span><strong id="paperRealized">$0</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel wide" id="trainPanel">
+      <h2>Training · learn from resolved markets (virtual money)</h2>
+      <p class="note">Metyu studies markets that already resolved: what was the YES price 1, 7 and 30 days before the end, and did YES win? It fits a calibration model on the older markets, then paper-trades the newer ones it has never seen with virtual money. If the crowd is well calibrated the honest result is "no edge, no trades".</p>
+      <div class="controls">
+        <div class="field" style="min-width:240px"><label for="trainSource">Data</label><select id="trainSource"><option value="live">Live Polymarket · resolved markets</option><option value="sim0">Simulated · calibrated crowd (control)</option><option value="sim20">Simulated · 20% longshot bias</option><option value="sim35" selected>Simulated · 35% longshot bias</option></select></div>
+        <div class="field" style="width:120px"><label for="trainCount">Markets</label><input id="trainCount" type="number" min="40" max="600" step="20" value="300"></div>
+        <div class="field" style="width:170px"><label for="trainHorizon">Trade at</label><select id="trainHorizon"><option value="1">1 day before end</option><option value="7" selected>7 days before end</option><option value="30">30 days before end</option></select></div>
+        <button class="btn" id="trainBtn">Train Metyu</button>
+        <button class="btn secondary" id="trainUse" disabled>Use model in advisor</button>
+      </div>
+      <p class="note" id="trainStatus"></p>
+      <div class="advisor" id="trainResults" hidden style="margin-top:10px">
+        <div>
+          <div class="metric"><span>Markets · train / test</span><strong id="trainCounts">—</strong></div>
+          <div class="metric"><span>Model σ(a + b·logit p)</span><strong id="trainModel">—</strong></div>
+          <div class="metric"><span>What it learned</span><strong id="trainMeaning">—</strong></div>
+          <div class="metric"><span>Test Brier · crowd → model</span><strong id="trainBrier">—</strong></div>
+          <div class="metric"><span>Test log loss · crowd → model</span><strong id="trainLogLoss">—</strong></div>
+          <div class="table-scroll"><table><thead><tr><th>Price bin</th><th>Samples</th><th>Crowd said</th><th>Happened</th><th>Model says</th></tr></thead><tbody id="trainReliability"></tbody></table></div>
+        </div>
+        <div>
+          <h2>Paper trading on unseen markets</h2>
+          <div class="metric"><span>Virtual bankroll → final</span><strong id="trainEquity">—</strong></div>
+          <div class="metric"><span>Return · max drawdown</span><strong id="trainReturn">—</strong></div>
+          <div class="metric"><span>Trades · wins</span><strong id="trainTrades">—</strong></div>
+          <ul class="log" id="trainLog"></ul>
         </div>
       </div>
     </section>
@@ -641,7 +672,10 @@
             const response = await fetch(url, { headers: { Accept: 'application/json' } });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
-            const parsed = M.parseGammaMarket(data.market || data);
+            const raw = data.market || data;
+            const resolution = M.parseGammaResolution(raw);
+            if (resolution) return { id: String(raw.id ?? id), resolved: true, outcome: resolution.outcome };
+            const parsed = M.parseGammaMarket(raw);
             if (parsed) return parsed;
             lastError = 'market is not an open binary market';
           } catch (error) { lastError = error.message; }
@@ -657,7 +691,13 @@
           question: market ? market.question : ($('#advQuestion').value.trim() || 'My custom market'),
           yesPrice,
           spread: market ? market.spread : .02,
-          belief: M.clamp((Number($('#advBelief').value) || 50) / 100, .01, .99),
+          ...(() => {
+            if ($('#advUseModel').checked && trainedModel) {
+              const prediction = M.predictCalibrated(trainedModel, yesPrice);
+              return { belief: prediction.probability, beliefVariance: prediction.variance, beliefSource: 'trained model' };
+            }
+            return { belief: M.clamp((Number($('#advBelief').value) || 50) / 100, .01, .99), beliefVariance: null, beliefSource: 'your view' };
+          })(),
           confidence: $('#advConfidence').value,
           daysLeft: Math.max(0, Number($('#advDays').value) || 0),
           bankroll: Math.max(10, Number($('#advBankroll').value) || 1000)
@@ -669,7 +709,14 @@
         box.className = `verdict ${advice.action === 'OPEN' ? 'go' : advice.action === 'HALT' ? 'stop' : 'wait'}`;
         const title = document.createElement('h3');
         title.textContent = advice.action === 'OPEN' ? `Buy ${advice.side}` : 'No trade';
-        const rows = [['Market YES / your view', `${cents(inputs.yesPrice)} / ${pct(inputs.belief)}`], ['Metyu fair value', pct(advice.fair)], ['Edge after costs', `${(advice.edge * 100).toFixed(1)} pts`]];
+        const rows = [[`Market YES / ${inputs.beliefSource || 'your view'}`, `${cents(inputs.yesPrice)} / ${pct(inputs.belief)}`], ['Metyu fair value', pct(advice.fair)], ['Edge after costs', `${(advice.edge * 100).toFixed(1)} pts`]];
+        const fill = advice.bookFill;
+        const execution = inputs.execution === 'checking' ? 'checking order book…'
+          : fill && Number.isFinite(fill.averagePrice) ? `order book: avg ${cents(fill.averagePrice)} over ${fill.levelsUsed} level(s), best ask ${cents(fill.bestAsk)}, depth ${formatMoney(fill.depth)}`
+          : fill ? `order book: best ask ${Number.isFinite(fill.bestAsk) ? cents(fill.bestAsk) : 'none'}, depth ${formatMoney(fill.depth)}`
+          : inputs.execution === 'manual' ? 'manual price + half spread (no order book)'
+          : inputs.execution || 'quote';
+        rows.push(['Execution', execution]);
         if (advice.action === 'OPEN') {
           rows.push(
             ['Entry price', cents(advice.entry)],
@@ -695,18 +742,53 @@
         reasons.className = 'reasons';
         reasons.textContent = advice.reasons.join(' · ');
         box.replaceChildren(title, ...metricRows, reasons);
-        $('#advTrack').disabled = advice.action !== 'OPEN';
+        $('#advTrack').disabled = advice.action !== 'OPEN' || inputs.execution === 'checking';
       }
 
-      function askMetyu() {
+      async function fetchBook(tokenId) {
+        const sources = [`/api/polymarket/book?token_id=${encodeURIComponent(tokenId)}`, `https://clob.polymarket.com/book?token_id=${encodeURIComponent(tokenId)}`];
+        let lastError = '';
+        for (const url of sources) {
+          try {
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const book = data.book || data;
+            if (Array.isArray(book.asks)) return book;
+            lastError = 'no asks in response';
+          } catch (error) { lastError = error.message; }
+        }
+        throw new Error(lastError || 'unavailable');
+      }
+
+      let adviceSeq = 0;
+      async function askMetyu() {
+        const seq = ++adviceSeq;
         const inputs = adviceInputs();
-        const advice = M.advise({ yesPrice: inputs.yesPrice, spread: inputs.spread, belief: inputs.belief, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft }, config());
+        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft };
+        let advice = M.advise(request, config());
+        inputs.execution = inputs.market ? 'quote' : 'manual';
+        const tokenIds = inputs.market && inputs.market.tokenIds;
+        if (advice.action === 'OPEN' && tokenIds && tokenIds[advice.side]) {
+          renderVerdict(advice, { ...inputs, execution: 'checking' });
+          try {
+            const book = await fetchBook(tokenIds[advice.side]);
+            if (seq !== adviceSeq) return;
+            advice = M.advise({ ...request, book: { [advice.side]: book.asks } }, config());
+            inputs.execution = 'book';
+          } catch (error) {
+            if (seq !== adviceSeq) return;
+            inputs.execution = `quote (order book unavailable: ${error.message})`;
+          }
+        }
+        if (seq !== adviceSeq) return;
         lastAdvice = { advice, inputs };
         renderVerdict(advice, inputs);
         saveStore();
       }
 
       function markPaper(item) {
+        if (item.settled) return { pnl: item.settled.pnl, returnOnMargin: item.settled.pnl / item.margin, mark: item.side === item.settled.outcome ? 1 : 0 };
         const position = { side: item.side, shares: item.shares, borrowed: item.borrowed, interest: 0, margin: item.margin };
         return M.markPosition(position, item.lastYes, { spread: item.spread });
       }
@@ -719,52 +801,71 @@
           empty.textContent = 'No paper positions yet.';
           list.replaceChildren(empty);
           signed($('#paperTotal'), 0, '$0');
+          signed($('#paperRealized'), 0, '$0');
           return;
         }
         let total = 0;
+        let realized = 0;
         list.replaceChildren(...paper.map((item, index) => {
           const marked = markPaper(item);
-          total += marked.pnl;
+          if (item.settled) realized += marked.pnl; else total += marked.pnl;
           const row = document.createElement('div');
           row.className = 'paper-row';
           const info = document.createElement('div');
           const title = document.createElement('span');
           title.textContent = `${item.side} ${item.leverage}x · ${item.question.slice(0, 60)}`;
           const detail = document.createElement('small');
-          detail.textContent = `entry ${cents(item.entry)} · now ${cents(M.sidePriceOf(item, item.lastYes))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})${item.liquidation > 0 ? ` · liq ${cents(item.liquidation)}` : ''}${item.liveId ? '' : ' · manual price'}`;
+          detail.textContent = item.settled
+            ? `RESOLVED ${item.settled.outcome} · ${item.side === item.settled.outcome ? 'won' : 'lost'} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)}) realized`
+            : `entry ${cents(item.entry)} · now ${cents(M.sidePriceOf(item, item.lastYes))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})${item.liquidation > 0 ? ` · liq ${cents(item.liquidation)}` : ''}${item.liveId ? '' : ' · manual price'}`;
           detail.style.color = marked.pnl >= 0 ? 'var(--green)' : 'var(--red)';
           info.append(title, detail);
           const remove = document.createElement('button');
-          remove.textContent = 'Close';
+          remove.textContent = item.settled ? 'Remove' : 'Close';
           remove.addEventListener('click', () => { paper.splice(index, 1); saveStore(); renderPaper(); });
           row.append(info, remove);
           return row;
         }));
-        signed($('#paperTotal'), total, `${total >= 0 ? '+' : ''}${formatMoney(total)}`);
+        const plusMoney = value => Math.abs(value) < .005 ? '$0' : `${value > 0 ? '+' : ''}${formatMoney(value)}`;
+        signed($('#paperTotal'), total, plusMoney(total));
+        signed($('#paperRealized'), realized, plusMoney(realized));
       }
 
       async function refreshLive() {
         const market = selectedAdvisorMarket();
-        const ids = new Set(paper.filter(item => item.liveId).map(item => item.liveId));
+        const ids = new Set(paper.filter(item => item.liveId && !item.settled).map(item => item.liveId));
         if (market) ids.add(market.id);
         if (!ids.size) { $('#advStatus').textContent = 'Nothing live to refresh — load live markets first.'; return; }
         $('#advStatus').textContent = 'Refreshing live prices…';
         let updated = 0;
+        let settledNow = 0;
         let failure = '';
         for (const id of ids) {
           try {
             const fresh = await fetchLiveMarket(id);
             updated += 1;
+            if (fresh.resolved) {
+              if (!fresh.outcome) { failure = `market ${id} closed, resolution pending`; continue; }
+              paper.forEach(item => {
+                if (item.liveId !== id || item.settled) return;
+                const { pnl } = M.settlePosition(item, fresh.outcome);
+                item.settled = { outcome: fresh.outcome, pnl, at: Date.now() };
+                settledNow += 1;
+              });
+              const gone = advisorMarkets.findIndex(item => item.id === id);
+              if (gone >= 0) { advisorMarkets.splice(gone, 1); fillAdvisorMarkets(advisorMarkets); }
+              continue;
+            }
             paper.forEach(item => { if (item.liveId === id) item.lastYes = fresh.yesPrice; });
             const index = advisorMarkets.findIndex(item => item.id === id);
             if (index >= 0) advisorMarkets[index] = { ...advisorMarkets[index], ...fresh };
           } catch (error) { failure = error.message; }
         }
         syncAdvisorInputs();
-        if (market) askMetyu();
+        if (selectedAdvisorMarket()) askMetyu();
         renderPaper();
         saveStore();
-        $('#advStatus').textContent = `${updated}/${ids.size} live prices refreshed at ${new Date().toLocaleTimeString()}${failure ? ` · last error: ${failure}` : ''}`;
+        $('#advStatus').textContent = `${updated}/${ids.size} live prices refreshed at ${new Date().toLocaleTimeString()}${settledNow ? ` · ${settledNow} paper position(s) settled at resolution` : ''}${failure ? ` · last error: ${failure}` : ''}`;
       }
 
       $('#advMarket').addEventListener('change', () => { syncAdvisorInputs(); askMetyu(); });
@@ -790,6 +891,138 @@
       ['#advPrice', '#advBelief', '#advConfidence', '#advDays', '#advBankroll'].forEach(id => $(id).addEventListener('change', askMetyu));
       ['#kelly', '#maxLev', '#minEdge', '#stopLoss', '#maxDd', '#uncert', '#skill'].forEach(id => $(id).addEventListener('change', saveStore));
       window.addEventListener('pagehide', saveStore);
+
+      // ---------------- Training ----------------
+      const MODEL_KEY = 'metyuModel.v1';
+      let trainedModel = null;
+      let lastTraining = null;
+      try {
+        const saved = JSON.parse(localStorage.getItem(MODEL_KEY) || 'null');
+        if (saved && Number.isFinite(saved.a) && Number.isFinite(saved.b) && Array.isArray(saved.cov)) trainedModel = saved;
+      } catch (error) { /* ignore */ }
+
+      async function getJson(urls) {
+        let lastError = '';
+        for (const url of urls) {
+          try {
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+          } catch (error) { lastError = error.message; }
+        }
+        throw new Error(lastError || 'unavailable');
+      }
+
+      async function loadLiveTrainingMarkets(count, report) {
+        const resolved = [];
+        for (let offset = 0; resolved.length < count && offset < count * 4; offset += 100) {
+          report(`fetching resolved markets… ${resolved.length}/${count}`);
+          const data = await getJson([`/api/polymarket/resolved?limit=100&offset=${offset}`, `https://gamma-api.polymarket.com/markets?closed=true&limit=100&offset=${offset}&order=endDate&ascending=false`]);
+          const rows = Array.isArray(data) ? data : data.markets || [];
+          if (!rows.length) break;
+          rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => { if (resolved.length < count) resolved.push(market); });
+        }
+        let done = 0;
+        const queue = resolved.slice();
+        const worker = async () => {
+          while (queue.length) {
+            const market = queue.shift();
+            try {
+              const data = await getJson([`/api/polymarket/history?token_id=${encodeURIComponent(market.yesToken)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(market.yesToken)}&interval=max&fidelity=720`]);
+              market.history = M.normaliseHistory(data);
+            } catch (error) { market.history = []; }
+            done += 1;
+            report(`fetching price histories… ${done}/${resolved.length}`);
+          }
+        };
+        await Promise.all([worker(), worker(), worker(), worker()]);
+        return resolved.filter(market => market.history.length);
+      }
+
+      function setText(id, text) { $(id).textContent = text; }
+
+      function renderTraining(result, sourceLabel) {
+        $('#trainResults').hidden = false;
+        const { model, counts, test, paper } = result;
+        setText('#trainCounts', `${counts.markets} · ${counts.trainMarkets} / ${counts.testMarkets} (${counts.trainSamples} / ${counts.testSamples} samples)`);
+        setText('#trainModel', `a ${model.a.toFixed(3)} · b ${model.b.toFixed(3)} (±${Math.sqrt(model.cov[1][1]).toFixed(3)})`);
+        const slopeSe = Math.sqrt(model.cov[1][1]);
+        const meaning = model.b - 1 > 2 * slopeSe ? 'crowd too timid: longshots overpriced, favourites cheap'
+          : 1 - model.b > 2 * slopeSe ? 'crowd overconfident: extremes overpriced'
+          : 'crowd ≈ calibrated: no reliable edge';
+        setText('#trainMeaning', meaning);
+        const better = (crowd, mine) => `${crowd.toFixed(4)} → ${mine.toFixed(4)} ${mine < crowd ? '(better)' : '(not better)'}`;
+        setText('#trainBrier', better(test.brierMarket, test.brierModel));
+        setText('#trainLogLoss', better(test.logLossMarket, test.logLossModel));
+        const body = $('#trainReliability');
+        body.replaceChildren(...test.reliabilityMarket.map((row, index) => {
+          const tr = document.createElement('tr');
+          const modelRow = test.reliabilityModel[index];
+          const center = (row.from + row.to) / 2;
+          [`${Math.round(row.from * 100)}–${Math.round(row.to * 100)}¢`, String(row.n), row.n ? pct(row.forecast) : '—', row.n ? pct(row.observed) : '—', pct(M.predictCalibrated(model, center).probability)].forEach(value => {
+            const td = document.createElement('td'); td.textContent = value; tr.append(td);
+          });
+          return tr;
+        }));
+        setText('#trainEquity', `${formatMoney(paper.bankroll)} → ${formatMoney(paper.finalEquity)}`);
+        signed($('#trainReturn'), paper.totalReturn, `${pct(paper.totalReturn)} · DD ${pct(paper.maxDrawdown)}`);
+        setText('#trainTrades', paper.trades.length ? `${paper.trades.length} · ${paper.wins} (${Math.round(paper.wins / paper.trades.length * 100)}%)` : '0 · no edge found, Metyu sat out');
+        const log = $('#trainLog');
+        log.replaceChildren(...paper.trades.slice(-12).reverse().map(trade => {
+          const li = document.createElement('li');
+          li.className = trade.pnl > 0 ? 'act-OPEN' : 'act-CLOSE';
+          const head = document.createElement('b');
+          head.textContent = `${trade.side} ${trade.leverage}x `;
+          li.append(head, `@ ${cents(trade.price)} · model ${pct(trade.belief)} · ${trade.pnl >= 0 ? '+' : ''}${formatMoney(trade.pnl)}`);
+          return li;
+        }));
+        $('#trainStatus').textContent = `Trained on ${sourceLabel}. Test markets were never seen during fitting.`;
+      }
+
+      $('#trainBtn').addEventListener('click', async () => {
+        const button = $('#trainBtn');
+        button.disabled = true;
+        $('#trainUse').disabled = true;
+        const source = $('#trainSource').value;
+        const count = Math.max(40, Math.min(600, Number($('#trainCount').value) || 300));
+        const tradeHorizon = Number($('#trainHorizon').value) || 7;
+        const report = text => { $('#trainStatus').textContent = text; };
+        try {
+          let markets;
+          let label;
+          if (source === 'live') {
+            markets = await loadLiveTrainingMarkets(count, report);
+            label = `${markets.length} resolved Polymarket markets`;
+            if (markets.length < 20) throw new Error(`only ${markets.length} markets with price history`);
+          } else {
+            const bias = source === 'sim20' ? .2 : source === 'sim35' ? .35 : 0;
+            markets = M.simulatedResolvedMarkets(count, { seed: 41, longshotBias: bias });
+            label = `${count} simulated markets (${Math.round(bias * 100)}% longshot bias)`;
+          }
+          report('fitting model and paper-trading the held-out markets…');
+          await new Promise(resolve => setTimeout(resolve, 10));
+          const result = M.trainAndEvaluate(markets, { tradeHorizon, bankroll: 1000, config: config() });
+          lastTraining = { model: result.model, source: label, trainedAt: Date.now() };
+          renderTraining(result, label);
+          $('#trainUse').disabled = false;
+        } catch (error) {
+          report(`Training failed: ${error.message}. Live data needs "python server.py" and network access to Polymarket; simulated data always works.`);
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      $('#trainUse').addEventListener('click', () => {
+        if (!lastTraining) return;
+        trainedModel = { ...lastTraining.model, source: lastTraining.source, trainedAt: lastTraining.trainedAt };
+        try { localStorage.setItem(MODEL_KEY, JSON.stringify(trainedModel)); } catch (error) { /* ignore */ }
+        $('#advUseModel').disabled = false;
+        $('#advUseModel').checked = true;
+        $('#trainStatus').textContent = `Model (${trainedModel.source}) is now Metyu's belief in the live advisor.`;
+        askMetyu();
+      });
+      $('#advUseModel').addEventListener('change', askMetyu);
+      if (trainedModel) $('#advUseModel').disabled = false;
 
       resetAccount();
       loadStore();
