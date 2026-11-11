@@ -192,11 +192,15 @@ GitHub Pages does not run `server.py`, but every page still works there, live Po
 ## Tests
 
 ```bash
-python -m unittest discover -s tests -t .
-node --test tests/*.test.js
+python -m unittest discover -s tests -t .   # server: static files, API proxies, cache
+node --test tests/*.test.js                 # Metyu agent logic (npm test)
+npm install && npx playwright install chromium
+npm run test:e2e                            # browser end-to-end tests (Playwright)
 ```
 
-Both suites run automatically on every pull request and on pushes to `main` (`.github/workflows/tests.yml`).
+The browser tests start `server.py` on a free port and drive all three pages in Chromium: the game, the Prediction lab and the Live Board. They mock every Polymarket response, so they need no network, and they fail fast if a page tries to reach the real Polymarket.
+
+Every pull request and push to `main` runs all three suites (`.github/workflows/tests.yml`).
 
 ## Technology
 

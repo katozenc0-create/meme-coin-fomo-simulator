@@ -25,3 +25,21 @@ jobs:
         run: node --test tests/*.test.js
       - name: Syntax check browser scripts
         run: node --check metyu-agent.js
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Browser end-to-end tests (Polymarket mocked)
+        run: npm run test:e2e
