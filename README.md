@@ -93,6 +93,13 @@ For live markets, Metyu also reads the outcome's public CLOB order book and walk
 
 You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings. When a live market resolves, its paper positions settle automatically: winners pay $1 per share and losers $0, after any borrowed amount is repaid. The settled result moves into resolved P&L.
 
+**Training (virtual money):** the Training panel learns from markets that have already resolved. For each market it takes the YES price 1, 7 and 30 days before the end and whether YES won, then fits a calibration model, σ(a + b·logit p), on the older markets. It then paper-trades the newer markets it has never seen, with virtual money.
+
+- A slope near 1 means the crowd is calibrated: there is no edge and Metyu sits out.
+- A slope above 1 means longshots are overpriced.
+- The data can be live Polymarket data, through `/api/polymarket/resolved` and `/api/polymarket/history`, or simulated data. The simulated options are a calibrated control and 20% / 35% longshot bias.
+- A trained model can become Metyu's belief in the live advisor. It is saved in the browser.
+
 **Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
 
 The simulator's hidden probability is a calibrated martingale that resolves to 0 or 1, so results reflect real edge rather than model artifacts. No agent can guarantee profit: real-world edge is rare and small.
