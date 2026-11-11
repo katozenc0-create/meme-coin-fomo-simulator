@@ -1,8 +1,29 @@
 # Meme Coin FOMO Simulator
 
-A browser-based crypto trading practice game for learning charts, volatility, liquidity, position sizing, slippage, and meme-coin risk without using real money.
+A browser-based practice ecosystem for trading with **virtual money only**. It has three parts: a meme-coin game, a prediction-market lab with the Metyu agent, and a live board.
 
-## Features
+## Ecosystem
+
+| Page | What it is for |
+|---|---|
+| `index.html` · **FOMO simulator** | A meme-coin trading game. Covers charts, liquidity, slippage, position sizing, stop-loss / take-profit and rug pulls. |
+| `polymarket.html` · **Metyu Prediction Lab** | Metyu, an agent for YES/NO prediction markets. Includes autopilot, leverage with liquidation, a backtest lab, a live advisor (order-book aware), training on resolved Polymarket markets, and a knowledge base. |
+| `board.html` · **Metyu Live Board** | Metyu trades eight markets at once from one virtual account, in demo or live mode. Includes portfolio limits, manual control, an equity curve and CSV export. |
+
+How the pieces fit:
+
+```text
+index.html ─┐
+polymarket.html ─┼─> metyu-agent.js   (shared, dependency-free logic: pricing, Kelly, leverage,
+board.html ─┘                          decisions, simulator, training, order book, CSV, data client)
+       │
+       └─ data: /api/polymarket/* on server.py (cache + rate limiting)
+                └─ falls back to gamma-api / clob.polymarket.com directly (CORS), e.g. on GitHub Pages
+```
+
+All Polymarket access is **read-only**: no wallet, no keys, and no orders, ever. Polymarket itself has no leverage; leverage here is a simulated margin account. Access to Polymarket is restricted in some countries. Nothing here is financial advice.
+
+## Features (FOMO simulator)
 
 - Dark trading-terminal interface inspired by professional market dashboards
 - Responsive layout for phones, tablets, laptops, and desktop screens
@@ -51,11 +72,18 @@ The Polymarket proxy endpoints are read-only and polite to the upstream API:
 - Successful responses are cached briefly: 5s for order books, 10s for single markets, 30s for market lists, 5 min for resolved lists, and 1 hour for price histories.
 - Errors are never cached.
 
-The server also provides a health endpoint:
+### API (read-only)
 
-```text
-http://127.0.0.1:8000/api/health
-```
+| Endpoint | Returns | Cache |
+|---|---|---|
+| `GET /api/health` | `{"status": "ok", "realFunds": false}` | – |
+| `GET /api/polymarket/markets?limit=N` | active markets, busiest first | 30 s |
+| `GET /api/polymarket/market?id=<numeric>` | one market (price, or resolution once closed) | 10 s |
+| `GET /api/polymarket/book?token_id=<numeric>` | CLOB order book, best levels first | 5 s |
+| `GET /api/polymarket/resolved?limit=N&offset=M` | closed markets, most recent first | 5 min |
+| `GET /api/polymarket/history?token_id=<numeric>&fidelity=<min>` | price history `[{t, p}]` | 1 h |
+
+Ids are validated as numeric (anything else gets a 400). Responses carry only the fields the pages use, plus a flat `eventId`. If Polymarket is unreachable, the endpoints return 502.
 
 ## How to Use the Simulator
 
