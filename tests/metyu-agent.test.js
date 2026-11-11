@@ -185,3 +185,16 @@ test('portfolio guard caps gross exposure and open positions', () => {
   assert.equal(M.capToPortfolio({ equity: 1000, openNotional: 1500, margin: 100, leverage: 2 }).margin, 0);
   assert.equal(M.capToPortfolio({ equity: 1000, openCount: 6, margin: 10 }).margin, 0);
 });
+
+test('CSV export quotes properly and neutralises formula injection', () => {
+  const csv = M.toCsv([
+    { q: '=HYPERLINK("http://evil","x")', pnl: -12.5 },
+    { q: 'Comma, "quotes"\nnewline', pnl: 3 },
+    { q: '@SUM(A1)', pnl: NaN }
+  ], [{ key: 'q', label: 'Market' }, { key: 'pnl', label: 'P&L' }]);
+  const lines = csv.split('\r\n');
+  assert.equal(lines[0], 'Market,P&L');
+  assert.equal(lines[1], `"'=HYPERLINK(""http://evil"",""x"")",-12.5`);
+  assert.ok(lines[2].startsWith('"Comma, ""quotes""'));
+  assert.equal(csv.split('\r\n').pop(), "'@SUM(A1),");
+});

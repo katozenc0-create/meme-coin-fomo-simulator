@@ -73,6 +73,7 @@
         <button class="btn" id="startBtn">Start board</button>
         <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
         <button class="btn secondary" id="flattenBtn">Flatten all</button>
+        <button class="btn secondary" id="exportBtn">Export trades (CSV)</button>
         <button class="btn secondary" id="resetBtn">Reset account</button>
       </div>
       <p class="note" id="modeNote">Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu's research accuracy sets how much it knows beyond the price.</p>
@@ -128,7 +129,7 @@
 
       function freshAccount() {
         const bankroll = Math.max(100, Number($('#bankroll').value) || 10000);
-        return { bankroll, cash: bankroll, peak: bankroll, realized: 0, trades: 0, wins: 0, resolved: 0, halted: false, curve: [bankroll] };
+        return { bankroll, cash: bankroll, peak: bankroll, realized: 0, trades: 0, wins: 0, resolved: 0, halted: false, curve: [bankroll], history: [] };
       }
       function save() {
         try { localStorage.setItem(STORE_KEY, JSON.stringify({ account: { ...account, cash: account.cash + slots.reduce((sum, slot) => sum + (slot.position ? slot.position.margin : 0), 0) } })); } catch (error) { /* ignore */ }
@@ -139,6 +140,7 @@
           if (saved && saved.account && Number.isFinite(saved.account.cash) && saved.account.cash >= 0) {
             account = { ...freshAccount(), ...saved.account };
             account.curve = Array.isArray(account.curve) ? account.curve.slice(-300) : [account.cash];
+            account.history = Array.isArray(account.history) ? account.history.slice(-1000) : [];
             $('#bankroll').value = account.bankroll;
             return;
           }
@@ -211,15 +213,26 @@
         }
         const yesPrice = slot.prices[slot.prices.length - 1];
         slot.position = M.openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread: slot.spread });
+        slot.position.openedAt = new Date().toISOString();
+        slot.position.fairAtEntry = decision.fair;
         account.cash -= margin;
         slot.last = `bought ${decision.side} @ ${cents(slot.position.entry)} · ${decision.leverage}x`;
         slot.flash = true;
         feed('OPEN', `${slot.question} — ${decision.side} ${decision.leverage}x @ ${cents(slot.position.entry)} · ${formatMoney(margin)} margin · ${guard.reason || decision.reasons[decision.reasons.length - 1]}`);
       }
 
-      function closeOn(slot, kind, payout, note) {
+      function closeOn(slot, kind, payout, note, exitPrice = null) {
         const position = slot.position;
         const pnl = payout - position.margin;
+        const lastYes = slot.prices[slot.prices.length - 1];
+        account.history.push({
+          openedAt: position.openedAt || '', closedAt: new Date().toISOString(), mode: slot.kind, market: slot.question, marketId: slot.id,
+          side: position.side, leverage: position.leverage, entry: +position.entry.toFixed(4),
+          exit: +(exitPrice ?? M.sidePriceOf(position, lastYes)).toFixed(4), fairAtEntry: position.fairAtEntry === undefined ? null : +position.fairAtEntry.toFixed(4),
+          margin: +position.margin.toFixed(2), notional: +position.notional.toFixed(2), pnl: +pnl.toFixed(2),
+          returnOnMargin: +(pnl / position.margin).toFixed(4), kind, note
+        });
+        if (account.history.length > 1000) account.history.shift();
         account.cash += payout;
         account.realized += pnl;
         account.trades += 1;
@@ -257,7 +270,7 @@
         account.resolved += 1;
         if (slot.position) {
           const { payout } = M.settlePosition(slot.position, outcome);
-          closeOn(slot, 'SETTLE', payout, `resolved ${outcome}`);
+          closeOn(slot, 'SETTLE', payout, `resolved ${outcome}`, slot.position.side === outcome ? 1 : 0);
         } else {
           feed('SETTLE', `${slot.question} — resolved ${outcome} (Metyu was flat)`);
         }
@@ -471,6 +484,26 @@
         open.forEach(slot => { closeOn(slot, 'CLOSE', markOf(slot), 'flatten all'); slot.manualHold = 5; });
         feed('INFO', open.length ? `flattened ${open.length} position(s)` : 'nothing to flatten');
         afterTick();
+      });
+      const CSV_COLUMNS = [
+        { key: 'openedAt', label: 'opened_at' }, { key: 'closedAt', label: 'closed_at' }, { key: 'mode', label: 'mode' },
+        { key: 'market', label: 'market' }, { key: 'marketId', label: 'market_id' }, { key: 'side', label: 'side' },
+        { key: 'leverage', label: 'leverage' }, { key: 'entry', label: 'entry_price' }, { key: 'exit', label: 'exit_price' },
+        { key: 'fairAtEntry', label: 'metyu_fair_at_entry' }, { key: 'margin', label: 'margin_usd' }, { key: 'notional', label: 'notional_usd' },
+        { key: 'pnl', label: 'pnl_usd' }, { key: 'returnOnMargin', label: 'return_on_margin' }, { key: 'kind', label: 'close_type' }, { key: 'note', label: 'reason' }
+      ];
+      $('#exportBtn').addEventListener('click', () => {
+        if (!account.history.length) { feed('INFO', 'no closed trades to export yet'); return; }
+        const csv = M.toCsv(account.history, CSV_COLUMNS);
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `metyu-trades-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        feed('INFO', `exported ${account.history.length} closed trade(s) — virtual money`);
       });
       $('#startBtn').addEventListener('click', start);
       $('#pauseBtn').addEventListener('click', pause);

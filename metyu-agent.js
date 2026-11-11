@@ -778,9 +778,27 @@
     return markets;
   }
 
+  /**
+   * RFC 4180 CSV with spreadsheet formula-injection protection: text cells that start with
+   * = + - @ (or tab / carriage return) get a leading apostrophe, because market questions
+   * come from outside and a spreadsheet would otherwise execute them as formulas.
+   */
+  function toCsv(rows, columns) {
+    const cell = value => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+      let text = String(value);
+      if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const lines = [columns.map(column => cell(column.label)).join(',')];
+    for (const row of rows) lines.push(columns.map(column => cell(row[column.key])).join(','));
+    return lines.join('\r\n');
+  }
+
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });
