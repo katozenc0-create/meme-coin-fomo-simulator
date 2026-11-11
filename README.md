@@ -127,14 +127,21 @@ For live markets, Metyu also reads the outcome's public CLOB order book and walk
 
 You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings. When a live market resolves, its paper positions settle automatically: winners pay $1 per share and losers $0, after any borrowed amount is repaid. The settled result moves into resolved P&L.
 
-**Training (virtual money):** the Training panel learns from markets that have already resolved. For each market it takes the YES price 1, 7 and 30 days before the end and whether YES won, then fits a calibration model, σ(a + b·logit p), on the older markets. It then paper-trades the newer markets it has never seen, with virtual money.
+**Training and the evidence gate (virtual money):** the Training panel learns from markets that have already resolved. It takes the YES price 1–30 days before each market's **scheduled** end and whether YES won. Two models are available:
 
-- A slope near 1 means the crowd is calibrated: there is no edge and Metyu sits out.
-- A slope above 1 means longshots are overpriced.
-- The data can be live Polymarket data, through `/api/polymarket/resolved` and `/api/polymarket/history`, or simulated data. The simulated options are a calibrated control and 20% / 35% longshot bias.
-- Candidates of the same event are not independent: in a "who will win" event exactly one resolves YES. They stay on one side of the train/test split, each event counts once in the fit, and paper trading takes at most one trade per event.
-  - On real Polymarket data, about 1,000 recently resolved markets come from only about 180 events.
-- A trained model can become Metyu's belief in the live advisor. It is saved in the browser.
+- **Calibration:** σ(a + b·logit p).
+- **Rich:** also uses the horizon, 3-day momentum, category and grouped-event flag. Final volume is deliberately left out, because it is only known after the market closes.
+
+How the models are judged:
+
+- **Walk-forward:** events are ordered in time, and each block is paper-traded by a model fitted only on earlier events. Trades go through Metyu's `advise()` and pay the spread and the taker fee.
+- **Evidence gate:** opens only if the 95% interval of the out-of-sample return per $1 is above zero, over at least 30 trades. A stress run at double the spread labels an open gate *robust* or *fragile*.
+- **Gate closed:** the advisor shows Metyu's view but never trades on the model, and the Live Board watches without trading.
+- **Gate open:** the live order book still has to confirm the price.
+- **Grouped events:** candidates of one event count once and get at most one trade. Samples after a market's actual close are dropped, because early closes leak the outcome.
+- **Data:** live Polymarket data (up to 6,000 markets, sampled by scheduled end date over months) or simulated data (a calibrated control and longshot bias).
+
+What the research found on real data is written up in [`research/README.md`](research/README.md). In short, there is a small edge that is fragile to execution cost, and two apparent edges that turned out to be data leaks.
 
 **Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
 
