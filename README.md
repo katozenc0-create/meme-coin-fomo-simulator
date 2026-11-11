@@ -141,7 +141,7 @@ How the models are judged:
 - **Grouped events:** candidates of one event count once and get at most one trade. Samples after a market's actual close are dropped, because early closes leak the outcome.
 - **Data:** live Polymarket data (up to 6,000 markets, sampled by scheduled end date over months) or simulated data (a calibrated control and longshot bias).
 
-What the research found on real data is written up in [`research/README.md`](research/README.md). In short, one sample showed a small edge that disappears at higher execution cost and did **not** reproduce on an independent sample. Two other apparent edges turned out to be data leaks. With the current data, Metyu's evidence gate stays closed.
+What the research found on real data is written up in [`research/README.md`](research/README.md). In short, one sample showed a small edge that disappears at higher execution cost. Tested as a fixed hypothesis, it did **not** replicate on two independent samples. Two other apparent edges turned out to be data leaks. With the current data, Metyu's evidence gate stays closed.
 
 **Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
 

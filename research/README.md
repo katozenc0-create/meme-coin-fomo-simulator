@@ -35,21 +35,31 @@ node research/evaluate.js data/dataset.json         # walk-forward, same code as
 
 The full output comes from `node research/evaluate.js`.
 
-## Reproduction check: it did **not** reproduce
+## Replication: it did **not** replicate
 
-The Prediction lab ran the same walk-forward in the browser on a separately drawn sample of real markets. It used the calibration model, a 7-day horizon and a 2¢ spread. The sample was 5,979 markets in 1,061 events, with price histories at 12 h resolution only.
+The hypothesis from the sample above was **fixed in advance**: calibration model, 2¢ spread, 7 days (and 30 days) before the end. It was then tested on two independent samples drawn from different days.
 
-- The slope was 1.09 ± 0.09, similar to the research sample.
-- Metyu made only **32** trades, averaging **−13.6%** per $1, with a 95% interval of [−34.9%, +7.0%]. **The gate stayed closed.**
+| Test | Sample | 7 d: mean / $1 · 95% interval · gate | 30 d: mean / $1 · 95% interval · gate |
+|---|---|---|---|
+| Discovery | `collect.py`, 5,998 markets, 1,265 events | +14.4% · [+6.7%, +22.0%] · **open** | +14.7% · [+2.5%, +26.5%] · **open** |
+| Replication 1 | `collect.py 6000 3` (days shifted by 3), 5,999 markets, 1,309 events | +6.2% · [−1.5%, +13.4%] · closed | +10.2% · [−2.1%, +21.4%] · closed |
+| Replication 2 | Prediction lab in the browser, 5,979 markets, 1,061 events, 12 h histories | −13.6% (32 trades) · [−34.9%, +7.0%] · closed | – |
 
-The research sample's +14.4% therefore did not survive a different draw of markets and a coarser history. Treat the edge below as **not established**. The evidence gate exists to catch exactly this.
+At a 4¢ spread, replication 1 makes no trades at all. Two side checks did not explain the discovery result:
+
+- **History resolution:** cutting the discovery sample to 12 h histories still opens the gate (+13.7%).
+- **Day clustering:** a bootstrap clustered by end day gives [+5.8%, +22.5%].
+
+Neither caveat explains the discovery result away. The sample itself does.
+
+**Conclusion: the edge is not established.** The research samples lean positive, which hints that prices may be slightly too timid. That lean is not significant on independent data and reverses on the lab's sample. Metyu's evidence gate correctly stays closed.
 
 ## What it means
 
 - **Real:** Polymarket prices are slightly too timid. The calibration slope is about 1.07–1.14 at every horizon.
   - A recalibrated forecast beats the crowd's Brier score out of sample: 0.168 → 0.163.
   - Most profitable trades are buying **NO** on mid-priced YES (about 35–50¢), often sports markets that can end in a draw.
-- **Fragile, and not reproduced:** in the research sample the edge clears its costs only if execution costs about 1¢ per share, and it did not survive the lab's independent sample (above). At 2¢ per share (4¢ spread) it is no longer statistically distinguishable from luck.
+- **Not replicated:** in the discovery sample the edge clears its costs only if execution costs about 1¢ per share, and it did not replicate on two independent samples (above). At 2¢ per share (4¢ spread) it is no longer statistically distinguishable from luck.
   - Many configurations were tried, which raises the chance of a lucky result.
   - Price histories are trade/mid prices, not guaranteed fills.
   - Metyu therefore still checks the **live order book** before trading, and the lab labels a gate that closes at double the spread as *fragile*.
