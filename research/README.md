@@ -35,12 +35,21 @@ node research/evaluate.js data/dataset.json         # walk-forward, same code as
 
 The full output comes from `node research/evaluate.js`.
 
+## Reproduction check: it did **not** reproduce
+
+The Prediction lab ran the same walk-forward in the browser on a separately drawn sample of real markets. It used the calibration model, a 7-day horizon and a 2¢ spread. The sample was 5,979 markets in 1,061 events, with price histories at 12 h resolution only.
+
+- The slope was 1.09 ± 0.09, similar to the research sample.
+- Metyu made only **32** trades, averaging **−13.6%** per $1, with a 95% interval of [−34.9%, +7.0%]. **The gate stayed closed.**
+
+The research sample's +14.4% therefore did not survive a different draw of markets and a coarser history. Treat the edge below as **not established**. The evidence gate exists to catch exactly this.
+
 ## What it means
 
 - **Real:** Polymarket prices are slightly too timid. The calibration slope is about 1.07–1.14 at every horizon.
   - A recalibrated forecast beats the crowd's Brier score out of sample: 0.168 → 0.163.
   - Most profitable trades are buying **NO** on mid-priced YES (about 35–50¢), often sports markets that can end in a draw.
-- **Fragile:** the edge clears its costs only if execution costs about 1¢ per share. At 2¢ per share (4¢ spread) it is no longer statistically distinguishable from luck.
+- **Fragile, and not reproduced:** in the research sample the edge clears its costs only if execution costs about 1¢ per share, and it did not survive the lab's independent sample (above). At 2¢ per share (4¢ spread) it is no longer statistically distinguishable from luck.
   - Many configurations were tried, which raises the chance of a lucky result.
   - Price histories are trade/mid prices, not guaranteed fills.
   - Metyu therefore still checks the **live order book** before trading, and the lab labels a gate that closes at double the spread as *fragile*.
