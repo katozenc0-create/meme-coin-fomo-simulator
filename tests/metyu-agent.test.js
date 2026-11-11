@@ -176,3 +176,12 @@ test('training: parses resolved Gamma markets with YES token and end time', () =
   assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
   assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
 });
+
+test('portfolio guard caps gross exposure and open positions', () => {
+  assert.deepEqual(M.capToPortfolio({ equity: 1000, openNotional: 0, margin: 100, leverage: 3 }), { margin: 100, reason: null });
+  const cut = M.capToPortfolio({ equity: 1000, openNotional: 1350, margin: 100, leverage: 3 });   // room 150 → margin 50
+  close(cut.margin, 50);
+  assert.match(cut.reason, /size cut/);
+  assert.equal(M.capToPortfolio({ equity: 1000, openNotional: 1500, margin: 100, leverage: 2 }).margin, 0);
+  assert.equal(M.capToPortfolio({ equity: 1000, openCount: 6, margin: 10 }).margin, 0);
+});

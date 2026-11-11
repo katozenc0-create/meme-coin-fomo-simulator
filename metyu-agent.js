@@ -454,6 +454,20 @@
     };
   }
 
+  /**
+   * Portfolio guard for many simultaneous positions: caps a new position's margin so total
+   * notional stays within maxGross × equity and the number of open positions within maxOpen.
+   * Returns { margin, reason } — margin 0 means the trade must be skipped.
+   */
+  function capToPortfolio({ equity, openNotional = 0, openCount = 0, margin, leverage = 1, maxGross = 1.5, maxOpen = 6 }) {
+    if (openCount >= maxOpen) return { margin: 0, reason: `max ${maxOpen} open positions reached` };
+    const room = maxGross * equity - openNotional;
+    const lev = Math.max(1, leverage);
+    if (room < lev) return { margin: 0, reason: `gross exposure cap ${maxGross}x of equity reached` };
+    if (margin * lev > room) return { margin: room / lev, reason: `size cut to stay within ${maxGross}x gross exposure` };
+    return { margin, reason: null };
+  }
+
   /** How sure the user is about their own estimate → log-odds variance of that estimate. */
   const CONFIDENCE_VARIANCE = Object.freeze({ low: .6, medium: .2, high: .06 });
 
@@ -767,6 +781,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, capToPortfolio, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, predictCalibrated, brierScore, logLoss, reliability, trainAndEvaluate, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
   };
 });

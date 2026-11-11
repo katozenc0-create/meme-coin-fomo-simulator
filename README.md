@@ -113,6 +113,8 @@ Open `board.html`, or use **Live Board** in the navigation. Metyu trades eight m
   - Metyu's belief comes from the model trained in the Prediction lab.
   - Without a trained model, or when the model sees no edge, Metyu watches and does not trade.
 - **Board view:** equity, P&L, cash and open positions, win rate, drawdown, an equity curve, and a decision feed.
+- **Portfolio limits:** a cap on total notional (1x–3x of equity) and on the number of open positions. Trades that would break a limit are cut down or skipped, and the feed says why.
+- **Manual control:** every card has a **Close** button, and **Flatten all** closes every position. Metyu waits a few ticks before it re-enters a market you closed by hand.
 - **Saved state:** the account is kept in the browser.
 
 ## Market Scenarios

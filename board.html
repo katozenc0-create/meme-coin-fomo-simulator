@@ -24,7 +24,8 @@
     .field input[type=range] { padding: 0; accent-color: var(--acid); }
     .btn { padding: 10px 14px; background: var(--acid); color: var(--ink); box-shadow: 3px 3px 0 #466d18; }
     .btn.secondary { background: var(--panel-2); color: var(--text); box-shadow: none; border: 1px solid var(--line); }
-    .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 12px 0; }
+    .stats { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin: 12px 0; }
+    .card .close-btn { padding: 3px 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); font-size: 10px; }
     .stat { padding: 10px 12px; border: 1px solid var(--line); background: #0a140e; }
     .stat span { display: block; color: var(--muted); font: 10px Consolas, monospace; text-transform: uppercase; }
     .stat strong { display: block; margin-top: 4px; font: 800 18px Consolas, monospace; }
@@ -50,7 +51,7 @@
     .equity polyline { fill: none; stroke: var(--acid); stroke-width: 2; vector-effect: non-scaling-stroke; }
     .note { margin: 6px 0 0; color: var(--muted); font: 11px/1.45 Consolas, monospace; }
     [hidden] { display: none !important; }
-    @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(4, 1fr); } }
     @media (max-width: 560px) { .stats { grid-template-columns: 1fr 1fr; } }
   </style>
 </head>
@@ -66,9 +67,12 @@
         <div class="field" id="skillField"><label for="skill">Research accuracy <output id="skillOut">70%</output></label><input id="skill" type="range" min="0" max="100" value="70"></div>
         <div class="field"><label for="bankroll">Virtual bankroll $</label><input id="bankroll" type="number" min="100" step="100" value="10000" style="width:120px"></div>
         <div class="field"><label for="maxLev">Max leverage</label><select id="maxLev"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option></select></div>
+        <div class="field"><label for="maxGross">Max gross exposure</label><select id="maxGross"><option value="1">1x equity</option><option value="1.5" selected>1.5x equity</option><option value="2">2x equity</option><option value="3">3x equity</option></select></div>
+        <div class="field"><label for="maxOpen">Max open positions</label><input id="maxOpen" type="number" min="1" max="8" value="6" style="width:90px"></div>
         <div class="field" id="speedField"><label for="speed">Speed <output id="speedOut">2x</output></label><input id="speed" type="range" min="1" max="10" value="2"></div>
         <button class="btn" id="startBtn">Start board</button>
         <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
+        <button class="btn secondary" id="flattenBtn">Flatten all</button>
         <button class="btn secondary" id="resetBtn">Reset account</button>
       </div>
       <p class="note" id="modeNote">Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu's research accuracy sets how much it knows beyond the price.</p>
@@ -80,6 +84,7 @@
       <div class="stat"><span>Cash · open</span><strong id="sCash">$10,000 · 0</strong></div>
       <div class="stat"><span>Trades · win rate</span><strong id="sTrades">0 · —</strong></div>
       <div class="stat"><span>Drawdown</span><strong id="sDd">0.0%</strong></div>
+      <div class="stat"><span>Gross exposure</span><strong id="sGross">0.00x</strong></div>
       <div class="stat"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
     </div>
 
@@ -188,15 +193,28 @@
       }
       function equity() { return account.cash + slots.reduce((sum, slot) => sum + markOf(slot), 0); }
 
+      function grossNotional() { return slots.reduce((sum, slot) => sum + (slot.position ? slot.position.notional : 0), 0); }
+      function limits() {
+        return { maxGross: Number($('#maxGross').value) || 1.5, maxOpen: Math.max(1, Math.min(8, Number($('#maxOpen').value) || 6)) };
+      }
+
       function openOn(slot, decision) {
-        const margin = Math.min(decision.margin, account.cash);
-        if (margin < 1) return;
+        const { maxGross, maxOpen } = limits();
+        const guard = M.capToPortfolio({
+          equity: equity(), openNotional: grossNotional(), openCount: slots.filter(item => item.position).length,
+          margin: Math.min(decision.margin, account.cash), leverage: decision.leverage, maxGross, maxOpen
+        });
+        const margin = guard.margin;
+        if (margin < 1) {
+          if (slot.last !== `skipped: ${guard.reason}`) { slot.last = `skipped: ${guard.reason}`; feed('HOLD', `${slot.question} — ${decision.side} edge ${(decision.edge * 100).toFixed(1)} pts skipped: ${guard.reason}`); }
+          return;
+        }
         const yesPrice = slot.prices[slot.prices.length - 1];
         slot.position = M.openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread: slot.spread });
         account.cash -= margin;
         slot.last = `bought ${decision.side} @ ${cents(slot.position.entry)} · ${decision.leverage}x`;
         slot.flash = true;
-        feed('OPEN', `${slot.question} — ${decision.side} ${decision.leverage}x @ ${cents(slot.position.entry)} · ${formatMoney(margin)} margin · ${decision.reasons[decision.reasons.length - 1]}`);
+        feed('OPEN', `${slot.question} — ${decision.side} ${decision.leverage}x @ ${cents(slot.position.entry)} · ${formatMoney(margin)} margin · ${guard.reason || decision.reasons[decision.reasons.length - 1]}`);
       }
 
       function closeOn(slot, kind, payout, note) {
@@ -229,6 +247,7 @@
         slot.edge = decision.edge;
         if (account.halted) return;
         if (decision.action === 'HALT') { account.halted = true; feed('HALT', 'kill-switch: drawdown limit hit — no new trades until reset'); return; }
+        if (slot.manualHold > 0) { slot.manualHold -= 1; if (!slot.position) return; }
         if (decision.action === 'OPEN' && !slot.position) openOn(slot, decision);
         else if (decision.action === 'CLOSE' && slot.position) closeOn(slot, 'CLOSE', Math.max(0, M.markPosition(slot.position, yesPrice, { spread: slot.spread }).equity), decision.reasons[decision.reasons.length - 1]);
       }
@@ -348,6 +367,23 @@
           last.textContent = slot.kind === 'demo' ? `T-${Math.max(0, DEMO_STEPS - slot.step)} · ${slot.last}` : slot.last;
           bottom.append(badge, last);
           card.append(title, top, svg, bottom);
+          if (slot.position) {
+            const closeButton = document.createElement('button');
+            closeButton.className = 'close-btn';
+            closeButton.textContent = 'Close';
+            closeButton.setAttribute('aria-label', `Close position on ${slot.question}`);
+            closeButton.addEventListener('click', () => {
+              if (!slot.position) return;
+              closeOn(slot, 'CLOSE', markOf(slot), 'closed manually by you');
+              slot.manualHold = 5;   // give the user's decision a few ticks before Metyu re-enters
+              afterTick();
+            });
+            const actions = document.createElement('div');
+            actions.className = 'row';
+            actions.style.marginTop = '6px';
+            actions.append(document.createElement('span'), closeButton);
+            card.append(actions);
+          }
           return card;
         }));
       }
@@ -365,6 +401,9 @@
         $('#sDd').textContent = pct(dd);
         $('#sDd').className = dd > .15 ? 'negative' : '';
         $('#sResolved').textContent = String(account.resolved);
+        const gross = eq > 0 ? grossNotional() / eq : 0;
+        $('#sGross').textContent = `${gross.toFixed(2)}x / ${limits().maxGross}x`;
+        $('#sGross').className = gross > limits().maxGross * .9 ? 'negative' : '';
         const curve = account.curve;
         const min = Math.min(...curve);
         const max = Math.max(...curve);
@@ -427,6 +466,12 @@
         $('#statusNote').textContent = 'Paused.';
       }
 
+      $('#flattenBtn').addEventListener('click', () => {
+        const open = slots.filter(slot => slot.position);
+        open.forEach(slot => { closeOn(slot, 'CLOSE', markOf(slot), 'flatten all'); slot.manualHold = 5; });
+        feed('INFO', open.length ? `flattened ${open.length} position(s)` : 'nothing to flatten');
+        afterTick();
+      });
       $('#startBtn').addEventListener('click', start);
       $('#pauseBtn').addEventListener('click', pause);
       $('#resetBtn').addEventListener('click', () => {
