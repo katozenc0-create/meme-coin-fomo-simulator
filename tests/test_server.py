@@ -117,6 +117,35 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("owner", book)
         self.assertEqual(seen, [server.POLYMARKET_CLOB_BOOK_URL + "?token_id=12345"])
 
+    def test_training_endpoints(self) -> None:
+        seen = []
+
+        def fake(url: str, timeout: float = 8.0) -> object:
+            seen.append(url)
+            if "prices-history" in url:
+                return {"history": [{"t": 100, "p": 0.4}, {"t": "bad"}, {"t": 200, "p": "0.6"}]}
+            return [{"id": "7", "question": "Done?", "closed": True, "outcomes": '["Yes","No"]', "outcomePrices": '["1","0"]', "clobTokenIds": '["1","2"]', "secret": 1}]
+
+        original = server._http_get_json
+        server._http_get_json = fake
+        try:
+            status, body, _ = self.get("/api/polymarket/resolved?limit=5&offset=10")
+            hist_status, hist_body, _ = self.get("/api/polymarket/history?token_id=1&fidelity=60")
+            bad_status, _, _ = self.get("/api/polymarket/history?token_id=abc")
+        finally:
+            server._http_get_json = original
+        self.assertEqual(status, 200)
+        market = json.loads(body)["markets"][0]
+        self.assertEqual(market["clobTokenIds"], '["1","2"]')
+        self.assertNotIn("secret", market)
+        self.assertIn("closed=true", seen[0])
+        self.assertIn("offset=10", seen[0])
+        self.assertEqual(hist_status, 200)
+        self.assertEqual(json.loads(hist_body)["history"], [{"t": 100, "p": 0.4}, {"t": 200, "p": 0.6}])
+        self.assertIn("market=1", seen[1])
+        self.assertIn("fidelity=60", seen[1])
+        self.assertEqual(bad_status, 400)
+
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})
         with urllib.request.urlopen(request) as response:

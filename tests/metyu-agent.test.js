@@ -151,3 +151,28 @@ test('advisor uses the order book: deep book keeps the trade, thin book shrinks 
   const tokens = M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["0.4","0.6"]', clobTokenIds: '["111","222"]' }).tokenIds;
   assert.deepEqual(tokens, { YES: '111', NO: '222' });
 });
+
+test('training: history lookup and sample building respect time', () => {
+  const history = M.normaliseHistory({ history: [{ t: 300, p: .7 }, { t: 100, p: .4 }, { t: 200, p: 1.5 }] });
+  assert.deepEqual(history.map(point => point.t), [100, 300]);
+  assert.equal(M.priceAt(history, 250), .4);
+  assert.equal(M.priceAt(history, 50), null);
+  const samples = M.buildTrainingSamples([{ id: 'm', endTs: 10 * 86400, outcome: 'YES', history: [{ t: 0, p: .3 }, { t: 9 * 86400, p: .8 }] }], [1, 7, 30]);
+  assert.deepEqual(samples.map(sample => [sample.horizon, sample.p]), [[1, .8], [7, .3]]);   // no 30-day sample: market too young
+});
+
+test('training: calibration fit finds no edge in a calibrated crowd and finds longshot bias', () => {
+  const fair = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: 0 }));
+  assert.ok(Math.abs(fair.model.b - 1) < .25, `calibrated slope ${fair.model.b}`);
+  const biased = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: .35 }));
+  assert.ok(biased.model.b > 1.25, `biased slope ${biased.model.b}`);
+  assert.ok(biased.test.brierModel < biased.test.brierMarket, 'model beats the biased crowd out of sample');
+  assert.ok(biased.paper.trades.length > fair.paper.trades.length, 'more trades when there is something to exploit');
+});
+
+test('training: parses resolved Gamma markets with YES token and end time', () => {
+  const parsed = M.parseResolvedForTraining({ id: 5, question: 'Q', closed: true, outcomes: '["No","Yes"]', outcomePrices: '["0","1"]', clobTokenIds: '["11","22"]', closedTime: '2026-01-02T00:00:00Z' });
+  assert.deepEqual(parsed, { id: '5', question: 'Q', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22' });
+  assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
+  assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
+});

@@ -22,6 +22,7 @@ PORT = int(os.environ.get("PORT", "8000"))
 # Only static assets the game needs are served; source files, dotfiles and .git stay private.
 POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets"
 POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
+POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
 SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
 
 
@@ -79,6 +80,32 @@ def fetch_polymarket_market(market_id: str) -> dict:
     return {key: payload.get(key) for key in keys if key in payload}
 
 
+def fetch_resolved_markets(limit: int = 100, offset: int = 0) -> list[dict]:
+    """Read-only list of closed Polymarket markets (most recently ended first) for training."""
+    query = urlencode({"closed": "true", "limit": max(1, min(limit, 500)), "offset": max(0, min(offset, 100000)), "order": "endDate", "ascending": "false"})
+    payload = _http_get_json(f"{POLYMARKET_GAMMA_URL}?{query}")
+    markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
+    keys = ("id", "question", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum")
+    return [{key: market.get(key) for key in keys if key in market} for market in markets if isinstance(market, dict)]
+
+
+def fetch_price_history(token_id: str, fidelity: int = 720) -> list[dict]:
+    """Read-only CLOB price history ([{t, p}]) for one outcome token."""
+    if not TOKEN_ID.match(token_id):
+        raise ValueError("token id must be numeric")
+    query = urlencode({"market": token_id, "interval": "max", "fidelity": max(1, min(fidelity, 10080))})
+    payload = _http_get_json(f"{POLYMARKET_CLOB_HISTORY_URL}?{query}")
+    rows = payload.get("history", []) if isinstance(payload, dict) else []
+    history = []
+    for row in rows:
+        if isinstance(row, dict):
+            try:
+                history.append({"t": int(row["t"]), "p": float(row["p"])})
+            except (KeyError, TypeError, ValueError):
+                continue
+    return history
+
+
 class SimulatorHandler(BaseHTTPRequestHandler):
     server_version = "FomoPractice/1.0"
 
@@ -125,6 +152,33 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 self._send_json({"source": "polymarket-gamma", "readOnly": True, "market": fetch_polymarket_market(market_id)})
             except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
                 self._send_json({"error": f"Polymarket data unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
+            return
+        if route == "/api/polymarket/resolved":
+            query = parse_qs(urlparse(self.path).query)
+            try:
+                limit = int(query.get("limit", ["100"])[0])
+                offset = int(query.get("offset", ["0"])[0])
+            except ValueError:
+                limit, offset = 100, 0
+            try:
+                self._send_json({"source": "polymarket-gamma", "readOnly": True, "markets": fetch_resolved_markets(limit, offset)})
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
+                self._send_json({"error": f"Polymarket data unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
+            return
+        if route == "/api/polymarket/history":
+            query = parse_qs(urlparse(self.path).query)
+            token_id = query.get("token_id", [""])[0]
+            if not TOKEN_ID.match(token_id):
+                self._send_json({"error": "token_id must be a numeric CLOB token id"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                fidelity = int(query.get("fidelity", ["720"])[0])
+            except ValueError:
+                fidelity = 720
+            try:
+                self._send_json({"source": "polymarket-clob", "readOnly": True, "history": fetch_price_history(token_id, fidelity)})
+            except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
+                self._send_json({"error": f"Polymarket price history unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
             return
         if route == "/api/polymarket/book":
             token_id = parse_qs(urlparse(self.path).query).get("token_id", [""])[0]
