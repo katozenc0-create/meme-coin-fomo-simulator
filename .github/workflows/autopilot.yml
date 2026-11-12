@@ -1,0 +1,51 @@
+name: autopilot
+
+# Metyu, 24/7 on GitHub's runners, with VIRTUAL money only (read-only Polymarket data; no wallet,
+# no keys, no orders). Every 15 minutes: restore the state from the `autopilot-data` branch, run one
+# tick of autopilot.js (self-training daily, learning book on), and save the state plus a public
+# status.json back to that branch. The Live Board on GitHub Pages reads status.json from there.
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"     # every 15 min, off the top of the hour (busy on GitHub)
+  workflow_dispatch:
+
+permissions:
+  contents: write                    # only to update the autopilot-data branch
+
+concurrency:
+  group: autopilot                   # one tick at a time; a slow tick is never overlapped
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Restore the state from the autopilot-data branch
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin autopilot-data; then
+            git show FETCH_HEAD:autopilot.json > data/autopilot.json || rm -f data/autopilot.json
+          else
+            echo "No autopilot-data branch yet: first run starts a fresh virtual account."
+          fi
+      - name: One tick (virtual money; trains itself every 24 h; learning book on)
+        run: node autopilot.js --once --train 1500 --retrain 24 --learn --state data/autopilot.json --status-out data/status.json
+      - name: Save the state to the autopilot-data branch
+        run: |
+          test -s data/autopilot.json
+          cd data
+          git init -q -b autopilot-data
+          git config user.name "metyu-autopilot"
+          git config user.email "metyu-autopilot@users.noreply.github.com"
+          printf '%s\n' "# Metyu autopilot state (virtual money)" "" "Written every 15 minutes by .github/workflows/autopilot.yml on main." "status.json is what the Live Board shows; autopilot.json is the full state." > README.md
+          git add autopilot.json status.json README.md
+          git commit -qm "autopilot tick $(date -u +%Y-%m-%dT%H:%MZ)"
+          # One commit, replaced each time: the state file itself carries the full trade history.
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" autopilot-data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

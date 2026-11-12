@@ -851,7 +851,7 @@
    * date. Whole EVENTS are fetched (5 per window), never a cut-off list of markets: keeping an
    * event's losers but not its winner would bias the sample toward NO.
    */
-  async function loadResolvedMarkets(fetchJsonImpl, { count = 300, report = () => {}, now = Date.now(), maxWindows = 400 } = {}) {
+  async function loadResolvedMarkets(fetchJsonImpl, { count = 300, report = () => {}, now = Date.now(), maxWindows = 400, retries = 2, retryDelayMs = 600 } = {}) {
     const resolved = [];
     const seen = new Set();
     const day = 86400000;
@@ -860,12 +860,25 @@
       const endMax = now - day - window * 6 * day;
       const from = isoDay(endMax - day);
       const to = isoDay(endMax);
-      const data = await fetchJsonImpl([`/api/polymarket/resolved?limit=5&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=5&end_date_min=${from}&end_date_max=${to}`]);
-      return { from, rows: flattenEvents(Array.isArray(data) ? data : data.markets || []) };
+      // A brief upstream hiccup (502, reset) must not sink a whole training run: retry, then skip.
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const data = await fetchJsonImpl([`/api/polymarket/resolved?limit=5&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=5&end_date_min=${from}&end_date_max=${to}`]);
+          return { from, rows: flattenEvents(Array.isArray(data) ? data : data.markets || []) };
+        } catch (error) {
+          if (attempt >= retries) { failedWindows += 1; lastError = error; return { from, rows: [] }; }
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs * (attempt + 1)));
+        }
+      }
     };
+    let failedWindows = 0;
+    let triedWindows = 0;
+    let lastError = null;
     // Four windows at a time, added in window order; whole windows are kept (so whole events).
     for (let window = 0; resolved.length < count && window < maxWindows; window += 4) {
       const batch = await Promise.all([0, 1, 2, 3].map(offset => window + offset).filter(index => index < maxWindows).map(fetchWindow));
+      triedWindows += batch.length;
+      if (failedWindows === triedWindows && triedWindows >= 4) throw lastError || new Error('resolved markets unavailable');
       for (const { rows } of batch) {
         rows.map(parseResolvedForTraining).filter(Boolean).forEach(market => {
           if (!seen.has(market.id)) { seen.add(market.id); resolved.push(market); }

@@ -175,6 +175,20 @@ node autopilot.js --api http://127.0.0.1:8000 --train 1500 --retrain 24   # trai
 
 Its state (account, positions, trade history and log) lives in `data/autopilot.json`, which is git-ignored. The file is written atomically after every tick and on Ctrl-C, so a restart continues where it left off. The `model.json` is a model trained in the Prediction Lab and saved with its **Download model (autopilot)** button. Currently every honest model's gate is closed (see `research/README.md`), so the autopilot will watch rather than trade, which is the correct behaviour.
 
+**24/7 on GitHub (no computer needed):** `.github/workflows/autopilot.yml` runs one tick every 15 minutes on GitHub's own runners, which is free for public repositories. Each run:
+1. restores the state from the `autopilot-data` branch;
+2. runs `node autopilot.js --once --train 1500 --retrain 24 --learn`;
+3. saves the state and a public `status.json` back to that branch.
+
+The Live Board on GitHub Pages reads that `status.json`, so the iPhone app shows the running autopilot. To start it at once, open **Actions → autopilot → Run workflow**; otherwise it starts at the next quarter hour. GitHub pauses scheduled workflows in a repository with no activity for 60 days; re-enable them on the same Actions page.
+
+**Learning book and the forward test:** while the evidence gate is closed, `--learn` lets Metyu trade a separate, clearly tagged learning book, so it gains real experience instead of only watching:
+- positions are 1% of equity and never leveraged;
+- it trades only where the self-trained model, taken at medium confidence, sees an edge after fees and spread;
+- every other rule stays on: exposure and category caps, gap guard, kill-switch and exit rules.
+
+Its closed trades form a **forward test**: each decision was made before its outcome existed, which is the strongest evidence there is. The panel shows "Forward test · day N/14", the number of trades, the mean return per $1 and a 95% interval. The result counts as convincing only with 30+ trades and an interval above zero, the same bar as the evidence gate. After two weeks this record says whether Metyu's model has real value.
+
 **Watching it:** open the Live Board through `python3 server.py`. The **Autopilot · 24/7** panel at the top shows the running autopilot, read-only and refreshed every 30 s:
 - equity, with open positions marked by Metyu's own accounting;
 - realized P&L, trades and win rate;

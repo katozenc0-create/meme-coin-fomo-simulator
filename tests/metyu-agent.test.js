@@ -525,3 +525,19 @@ test('reviewPosition: Metyu manages positions it recommended with the same exit 
   assert.equal(M.reviewPosition({ ...base, lastYes: .45, belief: undefined }, { now }), null, 'saved without a belief: no made-up verdict');
   assert.equal(M.reviewPosition({ ...base, lastYes: .45, settled: { outcome: 'YES' } }, { now }), null);
 });
+
+test('training data loader retries a flaky window and only gives up when every window fails', async () => {
+  let calls = 0;
+  const raw = id => ({ id: String(id), eventId: `e${id}`, question: 'Q?', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: JSON.stringify([String(9000 + id), String(8000 + id)]), endDate: '2026-01-01T00:00:00Z' });
+  const flaky = async urls => {
+    if (urls[0].startsWith('/api/polymarket/resolved')) {
+      calls += 1;
+      if (calls % 3 === 1) throw new Error('HTTP 502');                 // every window fails once first
+      return { markets: [raw(calls)] };
+    }
+    return { history: [{ t: 1, p: .5 }] };
+  };
+  const markets = await M.loadResolvedMarkets(flaky, { count: 4, retryDelayMs: 1 });
+  assert.ok(markets.length >= 4, `a 502 is retried, not fatal (${markets.length} markets)`);
+  await assert.rejects(M.loadResolvedMarkets(async () => { throw new Error('down'); }, { count: 4, retryDelayMs: 1 }), /down/, 'all windows failing is reported');
+});

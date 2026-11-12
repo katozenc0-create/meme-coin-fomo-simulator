@@ -41,9 +41,12 @@ async function start() {
   return {
     base,
     browser,
-    async page(viewport = { width: 1366, height: 900 }) {
+    // view: the Live Board opens in the terminal view by default; most tests look at the cards, so
+    // they start there unless a test asks for 'terminal' (a choice the page saves itself is kept).
+    async page(viewport = { width: 1366, height: 900 }, { view = 'cards' } = {}) {
       const context = await browser.newContext({ viewport, acceptDownloads: true });
       const page = await context.newPage();
+      if (view) await page.addInitScript(choice => { try { if (!localStorage.getItem('metyuBoard.view')) localStorage.setItem('metyuBoard.view', choice); } catch (error) { /* ignore */ } }, view);
       page.errors = [];
       page.on('pageerror', error => page.errors.push(error.message));
       page.on('console', message => { if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) page.errors.push(message.text()); });

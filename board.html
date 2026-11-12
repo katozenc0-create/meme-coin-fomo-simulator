@@ -62,6 +62,54 @@
     [hidden] { display: none !important; }
     @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(4, 1fr); } }
     .disclaimer .short { display: none; }
+    /* ---------- Terminal view: Metyu's decision pipeline, every step with its reason ---------- */
+    .term { border: 1px solid var(--line); background: #070d0a; margin-bottom: 12px; font: 12px/1.45 Consolas, monospace; }
+    .term-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+    .term-bar .dots i { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: #ff5f56; } .term-bar .dots i:nth-child(2) { background: #ffbd2e; } .term-bar .dots i:nth-child(3) { background: #27c93f; }
+    .term-chip { display: inline-block; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; font: 800 9px Consolas, monospace; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+    .term-chip.on { border-color: var(--acid); color: var(--acid); } .term-chip.warn { border-color: var(--red); color: var(--red); } .term-chip.blue { border-color: #58a6ff; color: #58a6ff; } .term-chip.amber { border-color: var(--amber); color: var(--amber); }
+    .term-head { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 14px; border-bottom: 1px solid var(--line); }
+    .term-logo { width: 56px; height: 56px; border-radius: 50%; background: #0a140e; border: 1px solid var(--line); }
+    .term-title { margin: 0; color: var(--text); font: 900 22px system-ui, sans-serif; } .term-title .term-chip { margin-left: 6px; vertical-align: middle; }
+    .term-run { margin-top: 4px; color: var(--acid); } .term-run.paused { color: var(--muted); } .term-run b::before { content: '● '; }
+    .term-tag { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .term-kpis { display: grid; grid-template-columns: auto auto; gap: 2px 18px; text-align: left; }
+    .term-kpis strong { display: block; font: 800 22px Consolas, monospace; color: var(--text); } .term-kpis span { color: var(--muted); font-size: 10px; text-transform: lowercase; }
+    .term-kpis .big strong { font-size: 28px; }
+    .term-body { display: grid; grid-template-columns: 250px minmax(0, 1fr); }
+    .term-agents { border-right: 1px solid var(--line); padding: 10px; display: grid; gap: 8px; align-content: start; }
+    .term-agents h4 { grid-column: 1 / -1; }
+    .agent { min-width: 0; }
+    .term-agents h4, .term-main h4 { margin: 0 0 4px; color: var(--muted); font: 800 10px Consolas, monospace; text-transform: uppercase; display: flex; justify-content: space-between; }
+    .agent { padding: 9px; border: 1px solid var(--line); background: #0a140e; transition: border-color .3s, box-shadow .3s; }
+    .agent.alert { border-color: var(--red); box-shadow: 0 0 0 1px rgba(255,92,92,.35), 0 0 18px rgba(255,92,92,.18); }
+    .agent .row1 { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .agent .name { color: var(--text); font: 900 13px system-ui, sans-serif; text-transform: uppercase; }
+    .agent .what { color: var(--muted); font-size: 10px; } .agent .rule { margin-top: 4px; color: #b98cff; font-size: 11px; } .agent .last { margin-top: 3px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .term-main { padding: 10px; display: grid; gap: 10px; min-width: 0; }
+    .flow-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .flow-chip { padding: 6px 8px; border: 1px solid #2b3f6b; background: #0b1424; overflow: hidden; } .flow-chip b { display: block; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .flow-chip small { color: var(--muted); }
+    .flow-chip.pos { border-color: var(--green); } .flow-chip.neg { border-color: var(--red); }
+    .stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .stage { padding: 8px; border: 1px solid var(--line); background: #0a140e; } .stage span { color: var(--muted); font-size: 10px; text-transform: uppercase; } .stage strong { display: block; font: 800 18px Consolas, monospace; color: var(--text); } .stage small { color: var(--muted); font-size: 10px; }
+    .stage.filter span { color: var(--red); } .stage.sizer span { color: #b98cff; } .stage.logger span { color: var(--amber); } .stage.equity span { color: #58a6ff; }
+    .term-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+    .term-box { padding: 10px; border: 1px solid var(--line); background: #0a140e; min-width: 0; }
+    .term-trade .market { font: 900 20px system-ui, sans-serif; color: var(--text); }
+    .term-kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; margin-top: 6px; } .term-kv span { color: var(--muted); } .term-kv b { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .term-tail { margin: 0; padding: 0; list-style: none; color: #8fb5a0; font-size: 11px; } .term-tail li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .term-tail .FILTER { color: var(--red); } .term-tail .ENTER { color: var(--acid); } .term-tail .EXIT { color: var(--amber); }
+    .term-result .bar { height: 6px; margin: 4px 0 8px; background: #13231a; } .term-result .bar i { display: block; height: 100%; background: var(--acid); }
+    .term-log { margin: 0; padding: 0; list-style: none; } .term-log li { display: grid; grid-template-columns: 44px 64px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 6px 0; border-top: 1px solid var(--line); }
+    .term-log li.FILTER { background: linear-gradient(90deg, rgba(255,92,92,.10), transparent 60%); }
+    .term-log .t { color: var(--muted); } .term-log .m b { color: var(--text); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .term-log .m small { color: var(--muted); display: block; } .term-log .v { text-align: right; font-weight: 800; }
+    .view-toggle { margin-left: auto; }
+    @media (max-width: 760px) {
+      .term-body { grid-template-columns: minmax(0, 1fr); } .term-agents { border-right: 0; border-bottom: 1px solid var(--line); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .term-head { grid-template-columns: auto 1fr; } .term-kpis { grid-column: 1 / -1; grid-template-columns: repeat(4, auto); justify-content: space-between; }
+      .flow-chips, .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } .term-split { grid-template-columns: minmax(0, 1fr); }
+      .agent .rule { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .agent .what { display: none; }
+    }
     .install-hint { position: relative; margin: 0 0 10px; padding: 10px 34px 10px 12px; border: 1px solid var(--acid); background: #13230f; color: var(--text); font: 12px/1.5 Consolas, monospace; }
     .install-hint button { position: absolute; top: 6px; right: 6px; padding: 2px 7px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
     .trades { margin: 0; padding: 0; list-style: none; font: 11px/1.45 Consolas, monospace; }
@@ -108,6 +156,7 @@
         <button class="btn" id="startBtn">Start board</button>
         <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
         <button class="btn secondary" id="flattenBtn">Flatten all</button>
+        <button class="btn secondary view-toggle" id="viewBtn" type="button">Cards view</button>
       </div>
       <details class="settings" id="settings" open>
         <summary>Settings &amp; limits</summary>
@@ -124,6 +173,68 @@
       </div>
       <p class="note" id="modeNote">Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu's research accuracy sets how much it knows beyond the price.</p>
       </details>
+    </section>
+
+    <section class="term" id="terminal" aria-label="Metyu terminal">
+      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span>Metyu terminal · six agents · log first</span><span class="term-chip on" id="tMode">paper · demo</span></div>
+      <div class="term-head">
+        <img class="term-logo" src="icons/icon.svg" alt="" />
+        <div>
+          <h3 class="term-title">Metyu Terminal<span class="term-chip on">v1 · virtual</span></h3>
+          <div class="term-run paused" id="tRun"><b>paused</b> · <span id="tClock">--:--:--</span></div>
+          <div class="term-tag" id="tTag">every trade gets a reason</div>
+        </div>
+        <div class="term-kpis">
+          <div class="big"><strong id="tBalance">$0</strong><span>balance</span></div>
+          <div><strong id="tTrades">0</strong><span>trades</span></div>
+          <div><strong id="tWins" class="positive">0</strong><span>wins</span></div>
+          <div><strong id="tLosses" class="negative">0</strong><span>losses</span></div>
+        </div>
+      </div>
+      <div class="term-body">
+        <div class="term-agents">
+          <h4><span>Agents</span><span id="tOnline">6 online</span></h4>
+          <div class="agent" id="agScanner"><div class="row1"><span class="name">Scanner</span><span class="term-chip" id="agScannerChip">idle</span></div><div class="what">watches the markets · edge vs price</div><div class="rule">flags only, never trades</div><div class="last" id="agScannerLast">—</div></div>
+          <div class="agent" id="agRisk"><div class="row1"><span class="name">Risk check</span><span class="term-chip" id="agRiskChip">idle</span></div><div class="what">evidence gate · gap guard · category &amp; exposure caps</div><div class="rule">nothing opens without a pass</div><div class="last" id="agRiskLast">—</div></div>
+          <div class="agent" id="agSizer"><div class="row1"><span class="name">Sizer</span><span class="term-chip" id="agSizerChip">idle</span></div><div class="what">fractional Kelly from account equity</div><div class="rule">never a fixed ticket</div><div class="last" id="agSizerLast">—</div></div>
+          <div class="agent" id="agExec"><div class="row1"><span class="name">Executor</span><span class="term-chip" id="agExecChip">idle</span></div><div class="what">opens + closes · fees &amp; spread counted</div><div class="rule">exits on Metyu's rules</div><div class="last" id="agExecLast">—</div></div>
+          <div class="agent" id="agLogger"><div class="row1"><span class="name">Logger</span><span class="term-chip amber" id="agLoggerChip">write</span></div><div class="what">writes every decision</div><div class="rule">no trade without a reason</div><div class="last" id="agLoggerLast">line #0</div></div>
+          <div class="agent" id="agEquity"><div class="row1"><span class="name">Equity</span><span class="term-chip blue" id="agEquityChip">update</span></div><div class="what">balance + curve · kill-switch</div><div class="rule">updates on every close</div><div class="last" id="agEquityLast">—</div></div>
+        </div>
+        <div class="term-main">
+          <div>
+            <h4><span>Live flow · scan → check → size → exec → log</span><span id="tChecked">checked 0</span></h4>
+            <div class="flow-chips" id="tFlow"></div>
+          </div>
+          <div class="stages">
+            <div class="stage filter"><span>▲ Filtered</span><strong id="tFiltered">0</strong><small id="tFilteredSub">blocked by a rule</small></div>
+            <div class="stage sizer"><span>◆ Sizer</span><strong id="tSizer">—</strong><small id="tSizerSub">of equity</small></div>
+            <div class="stage logger"><span>● Logger</span><strong id="tLine">line #0</strong><small>each with a reason</small></div>
+            <div class="stage equity"><span>◆ Equity</span><strong id="tEquityPnl">$0</strong><small>session P&amp;L</small></div>
+          </div>
+          <div class="term-split">
+            <div class="term-box term-trade">
+              <h4><span>Trade · entry vs now</span><span class="term-chip" id="tTradeChip">flat</span></h4>
+              <div class="market" id="tTradeMarket">no open position</div>
+              <div class="term-kv" id="tTradeKv"></div>
+            </div>
+            <div class="term-box">
+              <h4><span>$ tail -f metyu.log</span><span id="tTailCount">0 lines</span></h4>
+              <ul class="term-tail" id="tTail"></ul>
+            </div>
+          </div>
+          <div class="term-box term-result">
+            <h4><span>Result · start vs now</span><span id="tSince">this session</span></h4>
+            <div class="term-kv"><span>start</span><b id="tStart">$0</b><span>now</span><b id="tNow">$0</b></div>
+            <div class="bar"><i id="tBar" style="width:50%"></i></div>
+            <small class="note" id="tWL">0 W / 0 L</small>
+          </div>
+          <div class="term-box">
+            <h4><span>Log</span><span>reading the log</span></h4>
+            <ul class="term-log" id="tLog"></ul>
+          </div>
+        </div>
+      </div>
     </section>
 
     <div class="stats">
@@ -145,6 +256,7 @@
     <section class="panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
       <h2>Autopilot · 24/7 · virtual money</h2>
       <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
+      <p class="trades-summary" id="apForward" hidden></p>
       <div class="stats" id="apStats" hidden>
         <div class="stat"><span>Equity</span><strong id="apEquity">—</strong></div>
         <div class="stat"><span>Realized P&amp;L</span><strong id="apRealized">—</strong></div>
@@ -271,6 +383,15 @@
         return slot.kind === 'live' ? M.marketCluster(slot) : null;
       }
 
+      // ---------- terminal: every pipeline step with its reason ----------
+      const term = { line: 0, scanned: 0, candidates: 0, filtered: 0, events: [], lastFilterAt: 0, sizePct: null, started: Date.now() };
+      function termEvent(kind, market, reason, value = '') {
+        term.line += 1;
+        term.events.unshift({ at: Date.now(), kind, market, reason, value });
+        if (term.events.length > 80) term.events.pop();
+        if (kind === 'FILTER') { term.filtered += 1; term.lastFilterAt = Date.now(); }
+      }
+
       function openOn(slot, decision) {
         const { maxGross, maxOpen, maxPerCluster } = limits();
         const cluster = clusterOf(slot);
@@ -281,7 +402,11 @@
         });
         const margin = guard.margin;
         if (margin < 1) {
-          if (slot.last !== `skipped: ${guard.reason}`) { slot.last = `skipped: ${guard.reason}`; feed('HOLD', `${slot.question} — ${decision.side} edge ${(decision.edge * 100).toFixed(1)} pts skipped: ${guard.reason}`); }
+          if (slot.last !== `skipped: ${guard.reason}`) {
+            slot.last = `skipped: ${guard.reason}`;
+            feed('HOLD', `${slot.question} — ${decision.side} edge ${(decision.edge * 100).toFixed(1)} pts skipped: ${guard.reason}`);
+            termEvent('FILTER', slot.question, guard.reason, 'not traded');
+          }
           return;
         }
         const yesPrice = slot.prices[slot.prices.length - 1];
@@ -292,6 +417,11 @@
         slot.last = `bought ${decision.side} @ ${cents(slot.position.entry)} · ${decision.leverage}x`;
         slot.flash = true;
         feed('OPEN', `${slot.question} — ${decision.side} ${decision.leverage}x @ ${cents(slot.position.entry)} · ${formatMoney(margin)} margin · ${guard.reason || decision.reasons[decision.reasons.length - 1]}`);
+        const eqNow = Math.max(1, equity());
+        term.sizePct = slot.position.notional / eqNow;
+        slot.position.reason = guard.reason || decision.reasons[decision.reasons.length - 1];
+        termEvent('SIZE', slot.question, `${decision.side} ${decision.leverage}x · ${(term.sizePct * 100).toFixed(0)}% of equity (Kelly)`, formatMoney(margin));
+        termEvent('ENTER', slot.question, slot.position.reason, `size ${(term.sizePct * 100).toFixed(0)}%`);
         save();
       }
 
@@ -315,6 +445,7 @@
         slot.last = `${kind.toLowerCase()} ${pnl >= 0 ? '+' : ''}${formatMoney(pnl)}`;
         slot.flash = true;
         feed(kind, `${slot.question} — ${position.side} ${pnl >= 0 ? '+' : ''}${formatMoney(pnl)} · ${note}`);
+        termEvent('EXIT', slot.question, note, `${pnl >= 0 ? '+' : ''}${formatMoney(pnl)}`);
         save();
       }
 
@@ -346,7 +477,15 @@
           const open = slots.filter(item => item.position);
           open.forEach(item => closeOn(item, 'CLOSE', markOf(item), 'kill-switch: drawdown limit hit'));
           feed('HALT', `kill-switch: drawdown limit hit — flattened ${open.length} position(s); no new trades until reset`);
+          termEvent('HALT', 'account', `kill-switch: drawdown limit — flattened ${open.length}`, 'halted');
           return;
+        }
+        term.scanned += 1;
+        if (decision.action === 'OPEN' && !slot.position) {
+          term.candidates += 1;
+          // An edge the risk check will not let through: say so once per market and reason.
+          const blocked = !allowOpen ? 'evidence gate closed: no trained model may trade' : account.halted ? 'kill-switch: account halted' : null;
+          if (blocked && slot.lastBlocked !== blocked) { slot.lastBlocked = blocked; termEvent('FILTER', slot.question, blocked, 'not traded'); }
         }
         if (slot.manualHold > 0) { slot.manualHold -= 1; if (!slot.position) return; }
         if (decision.action === 'OPEN' && !slot.position && allowOpen && !account.halted) openOn(slot, decision);
@@ -494,14 +633,32 @@
 
       // ---------- autopilot (server-side, read-only view) ----------
       const signed = (element, value, text) => { element.textContent = text; element.className = value > 0 ? 'positive' : value < 0 ? 'negative' : ''; };
+      // Where the 24/7 autopilot publishes its status: the local server.py, or, on GitHub Pages
+      // (owner.github.io/repo), the autopilot-data branch that the GitHub Actions workflow writes.
+      // ?autopilot=<url> overrides both.
+      function autopilotSources() {
+        const override = new URLSearchParams(location.search).get('autopilot');
+        if (override) return [override];
+        const sources = ['/api/autopilot/status'];
+        if (location.hostname.endsWith('.github.io')) {
+          const owner = location.hostname.split('.')[0];
+          const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
+          sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/status.json`);
+        }
+        return sources;
+      }
       async function refreshAutopilot() {
-        let status;
-        try {
-          const response = await fetch('/api/autopilot/status', { headers: { Accept: 'application/json' } });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          status = await response.json();
-        } catch (error) {
-          $('#autopilotPanel').hidden = true;            // no server here (GitHub Pages): nothing to show
+        let status = null;
+        for (const source of autopilotSources()) {
+          try {
+            const response = await fetch(source, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            if (!response.ok) continue;
+            status = await response.json();
+            break;
+          } catch (error) { /* try the next source */ }
+        }
+        if (!status) {
+          $('#autopilotPanel').hidden = true;            // no autopilot anywhere: nothing to show
           return false;
         }
         $('#autopilotPanel').hidden = false;
@@ -513,7 +670,19 @@
         const gate = status.model && status.model.gate;
         const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
         $('#apStats').hidden = false;
-        $('#apStatus').textContent = `${age < 15 ? 'Running' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : 'watching only (no model with an open evidence gate)'}`;
+        const learningOpen = status.positions.filter(held => held.learning).length;
+        const learningEver = learningOpen + (status.history || []).filter(trade => trade.learning).length;
+        // The GitHub Actions autopilot ticks every 15 minutes: "running" means seen within ~40 minutes.
+        $('#apStatus').textContent = `${age < 40 ? 'Running 24/7' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : learningEver ? 'learning book: small unlevered test trades (evidence gate closed)' : 'watching only (no model with an open evidence gate)'}`;
+        const forward = status.forward && status.forward.learning;
+        $('#apForward').hidden = !forward;
+        if (forward) {
+          const day = status.createdAt ? Math.floor((Date.now() - Date.parse(status.createdAt)) / 86400000) + 1 : 1;
+          $('#apForward').textContent = forward.trades
+            ? `Forward test · day ${day}/14 · ${forward.trades} closed learning trades · ${forward.wins} won · mean ${(forward.meanReturn * 100).toFixed(1)}% per $1 · 95% [${(forward.ci[0] * 100).toFixed(1)}%, ${(forward.ci[1] * 100).toFixed(1)}%] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
+            : `Forward test · day ${day}/14 · no closed learning trades yet`;
+          $('#apForward').className = `trades-summary ${forward.trades && forward.meanReturn > 0 ? 'positive' : forward.trades && forward.meanReturn < 0 ? 'negative' : ''}`;
+        }
         signed($('#apEquity'), equityNow - account.bankroll, `${formatMoney(equityNow)}`);
         signed($('#apRealized'), account.realized, `${account.realized >= 0 ? '+' : ''}${formatMoney(account.realized)}`);
         $('#apTrades').textContent = account.trades ? `${account.trades} · ${Math.round(account.wins / account.trades * 100)}%` : '0 · —';
@@ -526,7 +695,7 @@
         renderTrades($('#apTradeList'), $('#apTradeSummary'), (status.history || []).map(trade => ({
           closedAt: trade.closedAt, market: trade.market, side: trade.side, leverage: trade.leverage, entry: trade.entry,
           exit: trade.outcome === 'YES' || trade.outcome === 'NO' ? (trade.side === trade.outcome ? 1 : 0) : (trade.side === 'YES' ? trade.exitYes : 1 - trade.exitYes),
-          pnl: trade.pnl, margin: trade.margin, note: trade.outcome === 'CLOSED' ? trade.reason : `resolved ${trade.outcome}`
+          pnl: trade.pnl, margin: trade.margin, note: `${trade.learning ? 'learning · ' : ''}${trade.outcome === 'CLOSED' ? trade.reason : `resolved ${trade.outcome}`}`
         })));
         $('#apFeed').replaceChildren(...status.log.slice(0, 40).map(entry => {
           const item = document.createElement('li');
@@ -647,11 +816,118 @@
         $('#equityLine').setAttribute('points', curve.map((value, index) => `${(index / n * 300).toFixed(1)},${(85 - (value - min) / span * 80).toFixed(1)}`).join(' '));
       }
 
+      const shortName = text => String(text).replace(/^Will (the )?/i, '').replace(/\?$/, '');
+      function renderTerminal() {
+        if ($('#terminal').hidden) return;
+        const eq = equity();
+        const pnl = eq - account.bankroll;
+        const losses = account.trades - account.wins;
+        const open = slots.filter(slot => slot.position);
+        $('#tMode').textContent = `paper · ${mode()}`;
+        $('#tBalance').textContent = formatMoney(eq);
+        $('#tTrades').textContent = String(account.trades);
+        $('#tWins').textContent = String(account.wins);
+        $('#tLosses').textContent = String(losses);
+        $('#tRun').className = `term-run${running ? '' : ' paused'}`;
+        $('#tRun').firstChild.textContent = account.halted ? 'halted' : running ? 'running' : 'paused';
+        const lastFilter = term.events.find(event => event.kind === 'FILTER');
+        $('#tTag').textContent = lastFilter ? `risk check · filtered ${shortName(lastFilter.market).slice(0, 28)}` : 'every trade gets a reason';
+        // Agents
+        const ranked = slots.filter(slot => !slot.done && Number.isFinite(slot.edge)).sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge));
+        $('#agScannerChip').textContent = running ? 'scan' : 'idle';
+        $('#agScannerChip').className = `term-chip${running ? ' on' : ''}`;
+        $('#agScannerLast').textContent = ranked[0] ? `next ${shortName(ranked[0].question).slice(0, 22)} · edge ${(ranked[0].edge * 100).toFixed(1)}` : `${slots.length} markets`;
+        const recentFilter = Date.now() - term.lastFilterAt < 12000;
+        $('#agRisk').classList.toggle('alert', recentFilter);
+        $('#agRiskChip').textContent = recentFilter ? 'filter' : running ? 'pass' : 'idle';
+        $('#agRiskChip').className = `term-chip${recentFilter ? ' warn' : running ? ' on' : ''}`;
+        $('#agRiskLast').textContent = lastFilter ? `${shortName(lastFilter.market).slice(0, 14)}: ${lastFilter.reason}` : 'no candidate blocked yet';
+        const lastSize = term.events.find(event => event.kind === 'SIZE');
+        $('#agSizerChip').textContent = lastSize && Date.now() - lastSize.at < 12000 ? 'size' : 'idle';
+        $('#agSizerChip').className = `term-chip${lastSize && Date.now() - lastSize.at < 12000 ? ' on' : ''}`;
+        $('#agSizerLast').textContent = term.sizePct === null ? 'waiting for a passed candidate' : `${(term.sizePct * 100).toFixed(0)}% of ${formatMoney(eq)}`;
+        const lastExec = term.events.find(event => event.kind === 'ENTER' || event.kind === 'EXIT');
+        $('#agExecChip').textContent = open.length ? 'live' : 'idle';
+        $('#agExecChip').className = `term-chip${open.length ? ' blue' : ''}`;
+        $('#agExecLast').textContent = lastExec ? `${lastExec.kind.toLowerCase()} ${shortName(lastExec.market).slice(0, 20)} · ${lastExec.value}` : `${open.length} open`;
+        $('#agLoggerLast').textContent = `line #${term.line}`;
+        $('#agEquityLast').textContent = `${formatMoney(eq)} · ${account.trades} closes`;
+        $('#tOnline').textContent = `${running ? 6 : 0} online`;
+        // Flow
+        $('#tChecked').textContent = `checked ${term.scanned}`;
+        $('#tFlow').replaceChildren(...ranked.slice(0, 4).map(slot => {
+          const chip = document.createElement('div');
+          chip.className = `flow-chip${slot.position ? ' pos' : ''}`;
+          const name = document.createElement('b');
+          name.textContent = shortName(slot.question);
+          const sub = document.createElement('small');
+          sub.textContent = `${cents(slot.prices[slot.prices.length - 1])} · edge ${(slot.edge * 100).toFixed(1)}${slot.position ? ` · ${slot.position.side}` : ''}`;
+          chip.append(name, sub);
+          return chip;
+        }));
+        $('#tFiltered').textContent = String(term.filtered);
+        $('#tFilteredSub').textContent = `of ${term.candidates} candidates`;
+        $('#tSizer').textContent = term.sizePct === null ? '—' : `${(term.sizePct * 100).toFixed(0)}% eq`;
+        $('#tSizerSub').textContent = term.sizePct === null ? 'of equity' : formatMoney(term.sizePct * eq);
+        $('#tLine').textContent = `line #${term.line}`;
+        $('#tEquityPnl').textContent = `${pnl >= 0 ? '+' : ''}${formatMoney(pnl)}`;
+        $('#tEquityPnl').className = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : '';
+        // Current trade: the newest open position
+        const held = open.sort((a, b) => String(b.position.openedAt).localeCompare(String(a.position.openedAt)))[0];
+        const kv = $('#tTradeKv');
+        if (held) {
+          const yes = held.prices[held.prices.length - 1];
+          const marked = M.markPosition(held.position, yes, { spread: held.spread });
+          $('#tTradeMarket').textContent = shortName(held.question);
+          $('#tTradeChip').textContent = `${held.position.side} ${held.position.leverage}x · ${marked.returnOnMargin >= 0 ? '+' : ''}${(marked.returnOnMargin * 100).toFixed(1)}%`;
+          $('#tTradeChip').className = `term-chip ${marked.returnOnMargin >= 0 ? 'on' : 'warn'}`;
+          const rows = [['entry', cents(held.position.entry)], ['now', cents(M.sidePriceOf(held.position, yes))], ['size', `${(held.position.notional / Math.max(1, eq) * 100).toFixed(0)}% of equity`], ['P&L', `${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)}`], ['reason', held.position.reason || '—']];
+          kv.replaceChildren(...rows.flatMap(([label, value]) => { const a = document.createElement('span'); a.textContent = label; const b = document.createElement('b'); b.textContent = value; b.title = value; return [a, b]; }));
+        } else {
+          $('#tTradeMarket').textContent = 'no open position';
+          $('#tTradeChip').textContent = 'flat';
+          $('#tTradeChip').className = 'term-chip';
+          kv.replaceChildren();
+        }
+        // tail -f
+        const time = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        $('#tTailCount').textContent = `${term.line} lines`;
+        $('#tTail').replaceChildren(...term.events.slice(0, 7).map(event => {
+          const li = document.createElement('li');
+          li.className = event.kind;
+          li.textContent = `${time(event.at)} ${event.kind.padEnd(6)} ${shortName(event.market).slice(0, 18)} ${event.value}`;
+          return li;
+        }));
+        // Result
+        $('#tStart').textContent = formatMoney(account.bankroll);
+        $('#tNow').textContent = formatMoney(eq);
+        $('#tNow').className = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : '';
+        $('#tBar').style.width = `${Math.max(2, Math.min(100, eq / (account.bankroll * 2) * 100)).toFixed(1)}%`;
+        $('#tWL').textContent = `${account.wins} W / ${losses} L · ${term.filtered} filtered · ${term.line} log lines`;
+        // Log
+        $('#tLog').replaceChildren(...term.events.slice(0, 12).map(event => {
+          const li = document.createElement('li');
+          li.className = event.kind;
+          const t = document.createElement('span'); t.className = 't'; t.textContent = time(event.at);
+          const chip = document.createElement('span'); chip.className = `term-chip ${event.kind === 'FILTER' || event.kind === 'HALT' ? 'warn' : event.kind === 'ENTER' ? 'on' : event.kind === 'EXIT' ? 'amber' : 'blue'}`; chip.textContent = event.kind === 'FILTER' ? 'filtered' : event.kind.toLowerCase();
+          const m = document.createElement('span'); m.className = 'm';
+          const name = document.createElement('b'); name.textContent = event.market;
+          const why = document.createElement('small'); why.textContent = `reason: ${event.reason}`;
+          m.append(name, why);
+          const v = document.createElement('span'); v.className = 'v'; v.textContent = event.value;
+          if (/^\+/.test(event.value)) v.classList.add('positive'); else if (/^-/.test(event.value)) v.classList.add('negative');
+          li.append(t, chip, m, v);
+          return li;
+        }));
+      }
+      setInterval(() => { $('#tClock').textContent = new Date().toLocaleTimeString(); }, 1000);
+
       function afterTick() {
         account.curve.push(equity());
         if (account.curve.length > 300) account.curve.shift();
         renderBoard();
         renderStats();
+        renderTerminal();
         saveSoon();
       }
 
@@ -760,6 +1036,20 @@
       $('#speed').addEventListener('input', () => { $('#speedOut').textContent = `${$('#speed').value}x`; if (running && mode() === 'demo') schedule(); });
       window.addEventListener('pagehide', save);
 
+      // Terminal or cards: the same engine, two views. The choice is remembered.
+      const VIEW_KEY = 'metyuBoard.view';
+      function setView(view) {
+        const terminal = view !== 'cards';
+        $('#terminal').hidden = !terminal;
+        document.querySelector('.stats').hidden = terminal;
+        $('#lastTradesPanel').hidden = terminal;
+        document.querySelector('.layout').hidden = terminal;
+        $('#viewBtn').textContent = terminal ? 'Cards view' : 'Terminal view';
+        try { localStorage.setItem(VIEW_KEY, terminal ? 'terminal' : 'cards'); } catch (error) { /* ignore */ }
+        if (terminal) renderTerminal(); else { renderBoard(); renderStats(); }
+      }
+      $('#viewBtn').addEventListener('click', () => setView($('#terminal').hidden ? 'terminal' : 'cards'));
+
       // Settings survive a reload (a phone reopening the app comes back to its mode and limits).
       const SETTINGS_KEY = 'metyuBoard.settings.v1';
       const SETTING_IDS = ['mode', 'skill', 'maxLev', 'maxGross', 'maxOpen', 'maxCluster', 'speed'];
@@ -801,6 +1091,9 @@
       load();
       renderBoard();
       renderStats();
+      let savedView = 'terminal';
+      try { savedView = localStorage.getItem(VIEW_KEY) || 'terminal'; } catch (error) { /* ignore */ }
+      setView(savedView);
 
       let wasRunning = false;
       try { wasRunning = localStorage.getItem(RUNNING_KEY) === '1'; } catch (error) { /* ignore */ }
