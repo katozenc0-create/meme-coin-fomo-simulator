@@ -730,9 +730,13 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         feed('INFO', `exported ${account.history.length} closed trade(s) — virtual money`);
       });
-      $('#startBtn').addEventListener('click', start);
-      $('#pauseBtn').addEventListener('click', pause);
+      // Like an app: if the board was running when it was closed, it resumes when it is opened again.
+      const RUNNING_KEY = 'metyuBoard.running';
+      const rememberRunning = value => { try { localStorage.setItem(RUNNING_KEY, value ? '1' : '0'); } catch (error) { /* ignore */ } };
+      $('#startBtn').addEventListener('click', () => { rememberRunning(true); start(); });
+      $('#pauseBtn').addEventListener('click', () => { rememberRunning(false); pause(); });
       $('#resetBtn').addEventListener('click', () => {
+        rememberRunning(false);
         pause();
         slots = [];
         account = freshAccount();
@@ -797,6 +801,16 @@
       load();
       renderBoard();
       renderStats();
+
+      let wasRunning = false;
+      try { wasRunning = localStorage.getItem(RUNNING_KEY) === '1'; } catch (error) { /* ignore */ }
+      if (wasRunning) start();
+
+      // iOS freezes timers while the app is in the background: when it comes back, refresh live
+      // prices at once instead of showing stale ones until the next 30-second tick.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && running && mode() === 'live') liveTick();
+      });
     })();
   </script>
   <script>

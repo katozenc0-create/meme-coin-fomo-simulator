@@ -200,7 +200,7 @@ Metyu is an **installable web app** for iPhone and iPad. iOS does not install ap
 1. **One-time setup:** turn on GitHub Pages for this repository (see [GitHub Pages](#github-pages)). Until it is on, the address below and the QR code return "404".
 2. On the iPhone, open `https://katozenc0-create.github.io/meme-coin-fomo-simulator/board.html` in **Safari**, or scan the QR code with the camera.
 3. Tap **Share** (the square with the arrow) → **Add to Home Screen** → **Add**. While the board runs in Safari it shows this tip itself; the tip disappears once you dismiss it or open Metyu from the home screen.
-4. Open **Metyu** from the home screen. Live mode reads Polymarket prices directly; the board, the Lab and the game also open offline.
+4. Open **Metyu** from the home screen. If the board was running when you left, it resumes by itself, and it refreshes live prices the moment you come back to it (iOS pauses apps in the background). Live mode reads Polymarket prices directly; the board, the Lab and the game also open offline.
 
 How it works:
 - `manifest.webmanifest` describes the app; `icons/` holds its icons (iOS needs PNG touch icons).
