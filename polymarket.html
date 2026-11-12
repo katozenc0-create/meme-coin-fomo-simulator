@@ -97,6 +97,13 @@
     [hidden] { display: none !important; }
     @media (max-width: 960px) { .grid, header, .advisor { grid-template-columns: 1fr; } .kb { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 560px) { .kb, .row2 { grid-template-columns: 1fr; } .chart-wrap { height: 230px; } .prices { width: 100%; } .price-box { flex: 1; } }
+    /* iPhone / iPad: no text inflation when rotated, and 16px form fields on touch screens
+       (smaller ones make Safari zoom the whole page every time a field is tapped). */
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    @media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
+    /* Home-screen app (status bar black-translucent, viewport-fit=cover): keep clear of the notch,
+       the status bar and the home indicator. */
+    body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   </style>
 </head>
 <body>

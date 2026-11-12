@@ -191,40 +191,23 @@ It reads `GET /api/autopilot/status`, which summarises the state file (`--autopi
 
 Stopping it (Ctrl-C, `systemctl stop`, SIGTERM) saves the state first.
 
-## Metyu Board on iPhone / iPad (and any phone): install from the browser
+## Metyu on iPhone / iPad: install from Safari
 
-iOS does not install apps from downloaded files. A native App Store or TestFlight app needs a paid Apple Developer account and signing on a Mac. Metyu is instead an **installable web app (PWA)** that runs on iOS and Android alike:
+Metyu is an **installable web app** for iPhone and iPad. iOS does not install apps from downloaded files: a native App Store or TestFlight app needs a paid Apple Developer account and signing on a Mac. Installed from Safari, Metyu still behaves like an app: its own icon on the home screen, full screen, and it opens without a network.
 
-1. Open the Live Board over HTTPS. One option is your GitHub Pages address (see [GitHub Pages](#github-pages)), for example `https://YOUR-USERNAME.github.io/meme-coin-fomo-simulator/board.html`. Another is your own `server.py` behind HTTPS.
-2. **iPhone / iPad (Safari):** tap **Share → Add to Home Screen → Add**. **Android (Chrome):** tap **⋮ → Install app**.
-   On an iPhone the Live Board shows this tip itself (until you dismiss it or open Metyu from the home screen), and the Android link is hidden there. `icons/iphone-qr.svg` is a QR code for the GitHub Pages board of this repository.
-3. Open **Metyu** from the home screen. It opens full screen with its own icon. Live mode reads Polymarket directly, and the board, the Lab and the game also open without a network.
+<img src="icons/iphone-qr.svg" alt="QR code: open the Metyu Live Board" width="160" align="right">
+
+1. **One-time setup:** turn on GitHub Pages for this repository (see [GitHub Pages](#github-pages)). Until it is on, the address below and the QR code return "404".
+2. On the iPhone, open `https://katozenc0-create.github.io/meme-coin-fomo-simulator/board.html` in **Safari**, or scan the QR code with the camera.
+3. Tap **Share** (the square with the arrow) → **Add to Home Screen** → **Add**. While the board runs in Safari it shows this tip itself; the tip disappears once you dismiss it or open Metyu from the home screen.
+4. Open **Metyu** from the home screen. Live mode reads Polymarket prices directly; the board, the Lab and the game also open offline.
 
 How it works:
-- `manifest.webmanifest` describes the app.
-- `icons/` holds the app icons, as PNGs because iOS needs them.
-- `sw.js` is a service worker. It keeps the pages available offline, but it never caches live market data (`/api/…`, Polymarket), so prices are never stale.
-- Each page carries the iOS home-screen tags.
+- `manifest.webmanifest` describes the app; `icons/` holds its icons (iOS needs PNG touch icons).
+- `sw.js` is a service worker. It keeps the pages available offline but never caches live market data (`/api/…`, Polymarket), so prices are never stale.
+- Each page carries the iOS home-screen tags and respects the iPhone's safe areas (notch and home indicator).
 
-The service worker runs only on `https://` or `localhost`. Inside the Android APK, which serves its pages as files, the pages work as before. To see a running autopilot on the phone, open the board from your `server.py` (`--host 0.0.0.0`); the autopilot panel appears when the server is reachable.
-
-## Metyu Board for Android (APK)
-
-**Metyu Board** is an Android app for watching the Live Board on your phone. It trades virtual money only: market data is read-only, and it has no wallet and never places an order.
-
-<img src="icons/apk-qr.svg" alt="QR code: download the Metyu Board APK" width="160" align="right">
-
-**Quickest:** scan the QR code with the phone camera; it downloads the latest `metyu-board.apk`. The Live Board's top menu also has an **Android app ⬇** link to the same file, so a phone that opened the web version can install the app in one tap.
-
-**Download:** on your phone, open the repository's [Releases](../../releases/tag/apk-latest) page and download `metyu-board.apk`. Allow installing apps from that source when Android asks, then open **Metyu Board**. Every change to `main` rebuilds the APK and replaces the file under the same link, and a newer build installs over the old one.
-
-**Two ways to use it:**
-- **Built-in board (default):** the APK contains the same pages as the website (the Live Board, the Prediction Lab and the game). Live mode reads Polymarket prices directly from the phone, so you don't need a computer.
-- **Your server:** choose **⋮ → Connect to my server…** and enter your `server.py` address, for example `http://192.168.1.20:8000`. Start the server with `python3 server.py --host 0.0.0.0` so the phone on the same network can reach it. The board then also shows the **Autopilot · 24/7** panel of your running `autopilot.js`. **⋮ → Use the built-in board** switches back.
-
-Links to polymarket.com open in the phone's browser, and the screen stays on while the board is open.
-
-**How it is built:** the source is in `android/`. It is a plain-Java WebView app with no third-party libraries. The pages are copied from the repository at build time, so they are never duplicated in git. `.github/workflows/android.yml` builds the APK on GitHub's runners, which include the Android SDK. It also checks that the pages are inside the APK and publishes the result. To build locally with the Android SDK installed, run `gradle -p android assembleDebug`.
+To see a running autopilot on the iPhone, open the board from your own `server.py` (`--host 0.0.0.0`, over HTTPS for installing); the autopilot panel appears when the server is reachable.
 
 ## Metyu Live Board (virtual money)
 
@@ -295,7 +278,7 @@ The static browser version can be hosted with GitHub Pages:
 6. Select the `main` branch and the root folder.
 7. Click **Save**.
 
-Pages serves over HTTPS, which is what lets iPhones and Android phones install Metyu from the browser (see "Metyu Board on iPhone / iPad").
+Pages serves over HTTPS, which is what lets an iPhone install Metyu from Safari (see "Metyu on iPhone / iPad").
 
 GitHub will provide a public address similar to:
 
