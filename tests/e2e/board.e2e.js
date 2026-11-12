@@ -65,7 +65,7 @@ test('live mode: one market per event, settles resolutions, no trades without a 
   const end = new Date(Date.now() + 40 * 86400000).toISOString();
   const markets = Array.from({ length: 12 }, (_, index) => ({
     id: String(700 + index), eventId: index < 3 ? 'fed' : `ev${index}`, question: `Live market ${index + 1}?`,
-    outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([String(0.1 + index * 0.06), String(0.9 - index * 0.06)]), bestBid: '0.1', bestAsk: '0.12', endDate: end
+    outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([String(0.1 + index * 0.06), String(0.9 - index * 0.06)]), bestBid: '0.1', bestAsk: '0.12', endDate: end, slug: `live-market-${index + 1}`
   }));
   let polls = 0;
   await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets } }));
@@ -84,6 +84,9 @@ test('live mode: one market per event, settles resolutions, no trades without a 
   assert.equal(questions.length, 8);
   assert.equal(questions.filter(question => ['Live market 1?', 'Live market 2?', 'Live market 3?'].includes(question)).length, 1, 'only one market of the shared event');
   assert.ok(polls >= 8);
+  const links = await page.$$eval('#board .card a.pm-link', anchors => anchors.map(anchor => anchor.href));
+  assert.equal(links.length, 8, 'every live card links to its market on polymarket.com');
+  assert.ok(links.every(href => /^https:\/\/polymarket\.com\/market\/live-market-\d+$/.test(href)), links.join(' '));
   assert.match(await text(page, '#feed'), /resolved NO/);
   assert.doesNotMatch(await text(page, '#feed'), / OPEN /, 'no trained model, no trades');
   assert.deepEqual(page.errors, []);

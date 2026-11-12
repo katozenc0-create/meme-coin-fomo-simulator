@@ -59,7 +59,7 @@ class ServerTests(unittest.TestCase):
 
     def test_polymarket_proxy_returns_compact_markets(self) -> None:
         original = server._http_get_json
-        server._http_get_json = lambda url, timeout=8.0: [{"id": "1", "question": "Q?", "outcomes": '["Yes","No"]', "outcomePrices": '["0.4","0.6"]', "secret": "x"}]
+        server._http_get_json = lambda url, timeout=8.0: [{"id": "1", "question": "Q?", "outcomes": '["Yes","No"]', "outcomePrices": '["0.4","0.6"]', "slug": "q-market", "events": [{"id": 9, "slug": "q-event", "description": "x" * 500}], "secret": "x"}]
         try:
             status, body, _ = self.get("/api/polymarket/markets?limit=5")
         finally:
@@ -69,6 +69,10 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(data["readOnly"])
         self.assertEqual(data["markets"][0]["question"], "Q?")
         self.assertNotIn("secret", data["markets"][0])
+        # the event slug survives compaction (it builds the polymarket.com link); the nested events do not
+        self.assertEqual(data["markets"][0]["eventSlug"], "q-event")
+        self.assertEqual(data["markets"][0]["eventId"], "9")
+        self.assertNotIn("events", data["markets"][0])
 
     def test_polymarket_proxy_reports_upstream_failure(self) -> None:
         original = server._http_get_json

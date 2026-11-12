@@ -559,6 +559,10 @@
       id: String(raw.id ?? raw.slug ?? raw.question),
       question: String(raw.question || 'Untitled market'),
       slug: raw.slug ? String(raw.slug) : '',
+      eventSlug: (() => {
+        const eventSlug = raw.eventSlug ?? (Array.isArray(raw.events) && raw.events[0] && raw.events[0].slug);
+        return eventSlug ? String(eventSlug) : '';
+      })(),
       outcomes: yesIndex >= 0 ? ['Yes', 'No'] : outcomes,
       yesPrice,
       spread: Number.isFinite(bid) && Number.isFinite(ask) && ask > bid ? ask - bid : .02,
@@ -578,6 +582,19 @@
         return { YES: ids[y], NO: ids[1 - y] };
       })()
     };
+  }
+
+  /**
+   * Link to a market's page on polymarket.com, where the user can place an order themselves
+   * (Metyu never does). Only well-formed slugs are used, so the link always stays on
+   * polymarket.com. Returns null when the market has no usable slug.
+   */
+  function polymarketUrl(market) {
+    const clean = value => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,250}$/i.test(value) ? value.toLowerCase() : '';
+    const slug = clean(market && market.slug);
+    const eventSlug = clean(market && market.eventSlug);
+    if (eventSlug) return `https://polymarket.com/event/${eventSlug}${slug && slug !== eventSlug ? `/${slug}` : ''}`;
+    return slug ? `https://polymarket.com/market/${slug}` : null;
   }
 
   /**
@@ -1101,6 +1118,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });

@@ -23,6 +23,8 @@ board.html ─┘                          decisions, simulator, training, order
 
 All Polymarket access is **read-only**: no wallet, no keys, and no orders, ever. Polymarket itself has no leverage; leverage here is a simulated margin account. Access to Polymarket is restricted in some countries. Nothing here is financial advice.
 
+**Metyu advises, you execute.** Every live market in the Prediction Lab (advisor verdict and open paper positions) and on the Live Board links to its page on polymarket.com (`Metyu.polymarketUrl`, built only from well-formed slugs). If you choose to act on a suggestion, you place the order yourself, in your own account; Metyu never sees a wallet or key. On Polymarket your margin buys shares without leverage. Note that with all leaks closed the evidence gate stays closed (see `research/README.md`), so Metyu does not currently find trades worth taking.
+
 ## Features (FOMO simulator)
 
 - Dark trading-terminal interface inspired by professional market dashboards

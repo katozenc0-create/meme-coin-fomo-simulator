@@ -44,7 +44,7 @@ test('advisor: no-trade vs buy, live market, paper position, refresh, settlement
   let closed = false;
   const end = END();
   await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets: [
-    { id: '501', question: 'Will the test event happen?', outcomes: '["Yes","No"]', outcomePrices: '["0.40","0.60"]', bestBid: '0.39', bestAsk: '0.41', endDate: end },
+    { id: '501', question: 'Will the test event happen?', outcomes: '["Yes","No"]', outcomePrices: '["0.40","0.60"]', bestBid: '0.39', bestAsk: '0.41', endDate: end, slug: 'test-market', eventSlug: 'test-event' },
     { id: '502', question: 'Multi-outcome market', outcomes: '["A","B","C"]', outcomePrices: '["0.2","0.3","0.5"]' }
   ] } }));
   await page.route('**/api/polymarket/market?id=*', route => route.fulfill({ json: { market: {
@@ -66,8 +66,14 @@ test('advisor: no-trade vs buy, live market, paper position, refresh, settlement
   assert.equal(await page.inputValue('#advPrice'), '40.0');
   await page.fill('#advBelief', '62'); await page.dispatchEvent('#advBelief', 'change');
   await page.waitForTimeout(200);
+  await page.click('#advAsk');
+  const link = page.locator('#advVerdict a.pm-link');
+  assert.equal(await link.getAttribute('href'), 'https://polymarket.com/event/test-event/test-market', 'verdict links to the market on polymarket.com');
+  assert.equal(await link.getAttribute('rel'), 'noopener noreferrer');
+  assert.match(await link.textContent(), /yourself on Polymarket/);
   await page.click('#advTrack');
   assert.match(await text(page, '#paperList'), /Will the test event happen\?/);
+  assert.equal(await page.locator('#paperList a.pm-link').count(), 1, 'open paper position links to Polymarket');
 
   livePrice = '0.50';
   await page.click('#advRefresh');

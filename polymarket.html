@@ -81,6 +81,8 @@
     .verdict .reasons { margin: 8px 0 0; color: var(--muted); font: 11px/1.5 Consolas, monospace; }
     .paper-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font: 12px Consolas, monospace; }
     .paper-row small { display: block; color: var(--muted); }
+    .pm-link { display: inline-block; margin-top: 8px; color: var(--green); font: 700 12px Consolas, monospace; text-decoration: underline; }
+    .paper-row .pm-link { margin-top: 2px; font-size: 11px; }
     .paper-row button { padding: 6px 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
     [hidden] { display: none !important; }
     @media (max-width: 960px) { .grid, header, .advisor { grid-template-columns: 1fr; } .kb { grid-template-columns: 1fr 1fr; } }
@@ -709,6 +711,17 @@
         };
       }
 
+      // Metyu only advises: the order itself is placed by the user on polymarket.com.
+      function polymarketLink(url, label) {
+        const link = document.createElement('a');
+        link.className = 'pm-link';
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = label;
+        return link;
+      }
+
       function renderVerdict(advice, inputs) {
         const box = $('#advVerdict');
         box.className = `verdict ${advice.action === 'OPEN' ? 'go' : advice.action === 'HALT' ? 'stop' : 'wait'}`;
@@ -746,7 +759,11 @@
         const reasons = document.createElement('p');
         reasons.className = 'reasons';
         reasons.textContent = advice.reasons.join(' · ');
-        box.replaceChildren(title, ...metricRows, reasons);
+        const url = inputs.market ? M.polymarketUrl(inputs.market) : null;
+        const extra = url ? [polymarketLink(url, advice.action === 'OPEN'
+          ? `Place this ${advice.side} order yourself on Polymarket ↗ (no leverage there: ${formatMoney(advice.maxLoss)} buys ~${(advice.maxLoss / Math.max(.01, advice.entry)).toFixed(1)} shares)`
+          : 'Open this market on Polymarket ↗')] : [];
+        box.replaceChildren(title, ...metricRows, reasons, ...extra);
         $('#advTrack').disabled = advice.action !== 'OPEN' || inputs.execution === 'checking';
       }
 
@@ -837,6 +854,7 @@
             : `entry ${cents(item.entry)} · now ${cents(M.sidePriceOf(item, item.lastYes))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})${item.liquidation > 0 ? ` · liq ${cents(item.liquidation)}` : ''}${item.liveId ? '' : ' · manual price'}`;
           detail.style.color = marked.pnl >= 0 ? 'var(--green)' : 'var(--red)';
           info.append(title, detail);
+          if (item.url && !item.settled) info.append(polymarketLink(item.url, 'Polymarket ↗'));
           const remove = document.createElement('button');
           remove.textContent = item.settled ? 'Remove' : 'Close';
           remove.addEventListener('click', () => {
@@ -904,7 +922,7 @@
         if (!lastAdvice || lastAdvice.advice.action !== 'OPEN') return;
         const { advice, inputs } = lastAdvice;
         paper.unshift({
-          question: inputs.question, liveId: inputs.market ? inputs.market.id : null, side: advice.side, leverage: advice.leverage,
+          question: inputs.question, liveId: inputs.market ? inputs.market.id : null, url: inputs.market ? M.polymarketUrl(inputs.market) : null, side: advice.side, leverage: advice.leverage,
           entry: advice.entry, shares: advice.shares, margin: advice.maxLoss, borrowed: advice.notional - advice.maxLoss,
           liquidation: advice.liquidation, spread: inputs.spread, takerRate: inputs.market ? inputs.market.feeRate || 0 : 0, lastYes: inputs.yesPrice, openedAt: Date.now()
         });

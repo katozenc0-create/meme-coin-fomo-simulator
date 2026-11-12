@@ -179,6 +179,8 @@ def _compact_market(market: dict, keys: tuple[str, ...]) -> dict:
     events = market.get("events")
     if isinstance(events, list) and events and isinstance(events[0], dict) and events[0].get("id") is not None:
         compact["eventId"] = str(events[0]["id"])
+        if isinstance(events[0].get("slug"), str):
+            compact["eventSlug"] = events[0]["slug"]
     return compact
 
 
