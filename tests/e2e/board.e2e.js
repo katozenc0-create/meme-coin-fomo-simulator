@@ -21,7 +21,9 @@ test('demo mode trades, replaces resolved markets, persists, exports CSV', async
   await page.waitForTimeout(400);
   assert.equal(await page.locator('#board .card').count(), 8);
   await page.waitForFunction(() => document.querySelector('#sResolved').textContent !== '0', null, { timeout: 40000 });
-  await page.waitForFunction(() => /CLOSE|SETTLE|LIQ/.test([...document.querySelectorAll('#feed li b')].map(b => b.textContent).join(' ')), null, { timeout: 40000 });
+  // Metyu is selective: the first market to resolve may have been one it stayed out of, so wait
+  // for an actual round trip (an OPEN, then a closed or settled trade) rather than for any resolution.
+  await page.waitForFunction(() => / OPEN /.test(document.querySelector('#feed').textContent) && !document.querySelector('#sTrades').textContent.startsWith('0 '), null, { timeout: 90000 });
   assert.match(await text(page, '#feed'), /OPEN/, 'Metyu opened trades');
   assert.equal(await page.locator('#board .card').count(), 8, 'resolved markets are replaced');
 
