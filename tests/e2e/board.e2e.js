@@ -315,6 +315,55 @@ test('live mode refreshes the moment the app comes back to the foreground', asyn
   assert.deepEqual(page.errors, []);
 });
 
+test('terminal view: every pipeline step is logged with its reason', async () => {
+  const page = await env.page({ width: 390, height: 844 }, { view: null });   // the app's own default
+  await page.route('**/api/autopilot/status', route => route.abort());
+  await page.goto(`${env.base}/board.html`);
+  assert.ok(await page.locator('#terminal').isVisible(), 'the terminal is the default view');
+  assert.ok(await page.locator('#board').isHidden(), 'cards hidden behind the toggle');
+  await setValues(page, { '#speed': 10, '#skill': 90 });
+  await page.click('#startBtn');
+  await page.waitForFunction(() => /exit/.test(document.querySelector('#tLog').textContent) && /enter/.test(document.querySelector('#tLog').textContent), null, { timeout: 90000 });
+  assert.match(await text(page, '#tRun'), /running/);
+  assert.match(await text(page, '#tLog'), /reason: /, 'every logged step carries a reason');
+  assert.match(await text(page, '#tTail'), /ENTER/);
+  const trades = Number(await text(page, '#tTrades'));
+  assert.equal(trades, Number(await text(page, '#tWins')) + Number(await text(page, '#tLosses')), 'trades = wins + losses');
+  assert.match(await text(page, '#tSizer'), /% eq/);
+  assert.equal((await page.$$('#tFlow .flow-chip')).length, 4);
+  assert.ok(await noHorizontalScroll(page), 'fits a phone');
+  await page.click('#viewBtn');
+  assert.ok(await page.locator('#board').isVisible(), 'Cards view toggles back');
+  await page.reload();
+  assert.ok(await page.locator('#terminal').isHidden(), 'the chosen view is remembered');
+  assert.deepEqual(page.errors, []);
+});
+
+test('terminal: a candidate the risk check blocks is logged as FILTERED with the rule', async () => {
+  const page = await env.page({ width: 1366, height: 900 }, { view: 'terminal' });
+  const end = new Date(Date.now() + 40 * 86400000).toISOString();
+  const now = Math.floor(Date.now() / 1000);
+  const markets = Array.from({ length: 4 }, (_, index) => ({
+    id: String(960 + index), eventId: `f${index}`, question: `Will Bitcoin be above ${100 + index}k USD?`, outcomes: '["Yes","No"]',
+    outcomePrices: '["0.30","0.70"]', bestBid: '0.295', bestAsk: '0.305', endDate: end, clobTokenIds: JSON.stringify([String(9600 + index), String(9700 + index)])
+  }));
+  await page.route('**/api/autopilot/status', route => route.abort());
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets } }));
+  await page.route('**/api/polymarket/market?id=*', route => route.fulfill({ json: { market: markets.find(item => item.id === new URL(route.request().url()).searchParams.get('id')) } }));
+  await page.route('**/api/polymarket/history?*', route => route.fulfill({ json: { history: Array.from({ length: 60 }, (_, i) => ({ t: now - (59 - i) * 43200, p: .30 })) } }));
+  await page.addInitScript(() => {
+    localStorage.setItem('metyuModel.v1', JSON.stringify({ kind: 'calib', a: 1.2, b: 1, cov: [[.0005, 0], [0, .0005]], gate: { open: true, meanReturn: .1, ci: [.02, .2] }, source: 'test' }));
+  });
+  await page.goto(`${env.base}/board.html`);
+  await page.selectOption('#mode', 'live');
+  await page.click('#startBtn');
+  await page.waitForFunction(() => /filtered/.test(document.querySelector('#tLog').textContent), null, { timeout: 20000 });
+  assert.match(await text(page, '#tLog'), /reason: max 2 open positions in crypto/, 'the third Bitcoin market is filtered by the category rule');
+  assert.equal(await text(page, '#tFiltered'), '2', 'four candidates, two filtered');
+  assert.equal(await text(page, '#agRiskChip'), 'filter');
+  assert.deepEqual(page.errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);
