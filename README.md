@@ -160,7 +160,7 @@ The simulator's hidden probability is a calibrated martingale that resolves to 0
 Open `board.html`, or use **Live Board** in the navigation. Metyu trades eight markets at once from one virtual account.
 
 - **Demo mode:** simulated markets stream continuously. When one resolves, a new one takes its place. A slider sets how accurate Metyu's research is.
-- **Live mode:** follows the eight busiest open Polymarket binary markets, with read-only prices refreshed every 30s. Positions settle when a market resolves.
+- **Live mode:** follows the eight busiest open Polymarket binary markets, with read-only prices refreshed every 30s. Positions settle when a market resolves. Live decisions follow the same rules as the live advisor. The gap guard reads each market's 12-hourly CLOB history, because 30-second ticks hide real jumps. Simulator momentum/fade and the staleness discount, which is for a person's view and not a model's, are switched off.
   - Metyu's belief comes from the model trained in the Prediction lab.
   - Without a trained model, or when the model sees no edge, Metyu watches and does not trade.
 - **Board view:** equity, P&L, cash and open positions, win rate, drawdown, an equity curve, and a decision feed.

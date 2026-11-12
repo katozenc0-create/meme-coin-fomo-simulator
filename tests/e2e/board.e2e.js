@@ -21,7 +21,9 @@ test('demo mode trades, replaces resolved markets, persists, exports CSV', async
   await page.waitForTimeout(400);
   assert.equal(await page.locator('#board .card').count(), 8);
   await page.waitForFunction(() => document.querySelector('#sResolved').textContent !== '0', null, { timeout: 40000 });
-  await page.waitForFunction(() => /CLOSE|SETTLE|LIQ/.test([...document.querySelectorAll('#feed li b')].map(b => b.textContent).join(' ')), null, { timeout: 40000 });
+  // Metyu is selective: the first market to resolve may have been one it stayed out of, so wait
+  // for an actual round trip (an OPEN, then a closed or settled trade) rather than for any resolution.
+  await page.waitForFunction(() => / OPEN /.test(document.querySelector('#feed').textContent) && !document.querySelector('#sTrades').textContent.startsWith('0 '), null, { timeout: 90000 });
   assert.match(await text(page, '#feed'), /OPEN/, 'Metyu opened trades');
   assert.equal(await page.locator('#board .card').count(), 8, 'resolved markets are replaced');
 
@@ -89,6 +91,37 @@ test('live mode: one market per event, settles resolutions, no trades without a 
   assert.ok(links.every(href => /^https:\/\/polymarket\.com\/market\/live-market-\d+$/.test(href)), links.join(' '));
   assert.match(await text(page, '#feed'), /resolved NO/);
   assert.doesNotMatch(await text(page, '#feed'), / OPEN /, 'no trained model, no trades');
+  assert.deepEqual(page.errors, []);
+});
+
+test('live mode with an open-gate model: real 12-hourly history decides leverage', async () => {
+  const page = await env.page();
+  const end = new Date(Date.now() + 40 * 86400000).toISOString();
+  const now = Math.floor(Date.now() / 1000);
+  // Even markets jumped 15c every 12 h; odd ones were flat.
+  const markets = Array.from({ length: 8 }, (_, index) => ({
+    id: String(800 + index), eventId: `e${index}`, question: `${index % 2 ? 'Calm' : 'Jumpy'} market ${index}?`, outcomes: '["Yes","No"]',
+    outcomePrices: '["0.30","0.70"]', bestBid: '0.295', bestAsk: '0.305', endDate: end, clobTokenIds: JSON.stringify([String(9100 + index), String(9200 + index)])
+  }));
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets } }));
+  await page.route('**/api/polymarket/market?id=*', route => route.fulfill({ json: { market: markets.find(item => item.id === new URL(route.request().url()).searchParams.get('id')) } }));
+  await page.route('**/api/polymarket/history?*', route => {
+    const index = Number(new URL(route.request().url()).searchParams.get('token_id')) - 9100;
+    return route.fulfill({ json: { history: Array.from({ length: 60 }, (_, i) => ({ t: now - (59 - i) * 43200, p: index % 2 ? .30 : (i % 2 ? .30 : .45) })) } });
+  });
+  await page.addInitScript(() => {
+    // A (deliberately optimistic) calibration model whose evidence gate is open.
+    localStorage.setItem('metyuModel.v1', JSON.stringify({ kind: 'calib', a: 1.2, b: 1, cov: [[.0005, 0], [0, .0005]], gate: { open: true, meanReturn: .1, ci: [.02, .2] }, source: 'test' }));
+  });
+  await page.goto(`${env.base}/board.html`);
+  await page.click('#resetBtn');
+  await page.selectOption('#mode', 'live');
+  await page.click('#startBtn');
+  await page.waitForFunction(() => /live prices refreshed/.test(document.querySelector('#statusNote').textContent), null, { timeout: 20000 });
+  const opens = [...(await text(page, '#feed')).matchAll(/(Calm|Jumpy) market \d\? — YES (\d+)x/g)].map(match => [match[1], Number(match[2])]);
+  assert.ok(opens.some(([kind]) => kind === 'Jumpy') && opens.some(([kind]) => kind === 'Calm'), `both kinds traded: ${JSON.stringify(opens)}`);
+  assert.ok(opens.filter(([kind]) => kind === 'Jumpy').every(([, lev]) => lev === 1), 'after 15c jumps: never leveraged');
+  assert.ok(opens.filter(([kind]) => kind === 'Calm').some(([, lev]) => lev > 1), 'a calm market may use leverage');
   assert.deepEqual(page.errors, []);
 });
 

@@ -244,7 +244,9 @@
 
       // allowOpen: false when nothing justifies a new position (live mode without an open evidence
       // gate); open positions are still managed and closed.
-      function decideOn(slot, research, researchVariance, timeLeft, allowOpen = true) {
+      // history: prices the gap guard / momentum read (demo: the simulated path; live: 12-hourly CLOB
+      // history, because 30-second ticks hide the real jumps). rules: config overrides (live markets).
+      function decideOn(slot, research, researchVariance, timeLeft, allowOpen = true, history = slot.prices.slice(-40), rules = {}) {
         const yesPrice = slot.prices[slot.prices.length - 1];
         if (slot.position) {
           M.accrueInterest(slot.position, 1 / 365, M.DEFAULT_CONFIG.annualInterest);
@@ -255,10 +257,10 @@
         account.peak = Math.max(account.peak, eq);
         const decision = M.decide({
           // taker fee per share is a cost like half the spread
-          yesPrice, spread: slot.spread + 2 * M.feePerShare(slot.feeRate || 0, yesPrice, slot.feeExponent ?? 1), history: slot.prices.slice(-40), research, researchVariance,
+          yesPrice, spread: slot.spread + 2 * M.feePerShare(slot.feeRate || 0, yesPrice, slot.feeExponent ?? 1), history, research, researchVariance,
           // The fee is already in the spread above, so the position decide() marks must not pay it again.
           equity: eq, peakEquity: account.peak, position: slot.position && { ...slot.position, takerRate: 0 }, volatility: .05, timeLeft
-        }, cfg());
+        }, { ...cfg(), ...rules });
         slot.fairs.push(decision.fair);
         slot.edge = decision.edge;
         const killSwitch = decision.action === 'HALT' || (decision.reasons || []).some(reason => reason.startsWith('KILL-SWITCH'));
@@ -308,6 +310,9 @@
       // ---------- live poll ----------
       // 3-day momentum exactly as the rich model was trained on it (shared with the Prediction lab).
       const threeDayMomentum = M.createMomentumTracker(M.fetchJson);
+      // Real markets, same rules as the live advisor: no simulator-calibrated momentum/fade, and no
+      // staleness discount (the belief is a model estimate computed from the current price).
+      const LIVE_RULES = Object.freeze({ momentumWeight: 0, fadeWeight: 0, stalenessWeight: 0 });
 
       async function loadLiveSlots() {
         const data = await getJson(['/api/polymarket/markets?limit=40', 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=40&order=volume24hr&ascending=false']);
@@ -356,6 +361,10 @@
             const daysLeft = Number.isFinite(Date.parse(slot.endDate)) ? Math.max(0, (Date.parse(slot.endDate) - Date.now()) / 86400000) : 30;
             slot.feeRate = fresh.feeRate || 0;
             slot.feeExponent = fresh.feeExponent ?? 1;
+            // 12-hourly real history (cached 6 h) for the gap guard; the 30 s ticks are a fallback.
+            const gapHistory = slot.tokenIds ? await threeDayMomentum.recentPrices(slot.tokenIds.YES, fresh.yesPrice) : [];
+            if (stale()) return;
+            const liveHistory = gapHistory.length >= 2 ? gapHistory : slot.prices.slice(-40);
             if (M.modelMayTrade(trainedModel)) {
               const mom = trainedModel.kind === 'rich' && slot.tokenIds ? await threeDayMomentum(slot.tokenIds.YES, fresh.yesPrice) : 0;
               if (stale()) return;
@@ -363,10 +372,10 @@
                 p: fresh.yesPrice, horizon: Math.max(1, daysLeft), mom,
                 neg: fresh.negRisk ? 1 : 0, cat: M.marketCategory(`${fresh.question} ${fresh.slug || ''}`)
               });
-              decideOn(slot, prediction.probability, prediction.variance, M.clamp(daysLeft / 30, 0, 1));
+              decideOn(slot, prediction.probability, prediction.variance, M.clamp(daysLeft / 30, 0, 1), true, liveHistory, LIVE_RULES);
             } else {
               // No trained model, or its evidence gate is closed: manage open positions, open none.
-              decideOn(slot, null, null, M.clamp(daysLeft / 30, 0, 1), false);
+              decideOn(slot, null, null, M.clamp(daysLeft / 30, 0, 1), false, liveHistory, LIVE_RULES);
             }
           } catch (error) { slot.last = `refresh failed: ${error.message}`; }
         }
