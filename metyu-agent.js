@@ -120,7 +120,9 @@
       if (config.stalenessWeight > 0 && history.length >= 4) {
         const recent = history.slice(-11).map(logit);
         const moved = recent.slice(1).reduce((sum, value, i) => sum + Math.pow(value - recent[i], 2), 0);
-        researchVariance += config.stalenessWeight * moved;
+        const added = config.stalenessWeight * moved;
+        if (added > .25 * researchVariance) reasons.push(`market moved recently: research may predate it, so it counts for less (variance +${added.toFixed(2)})`);
+        researchVariance += added;
       }
       // Precision-weighted (Bayesian) combination of two noisy estimates of the same quantity.
       const weight = config.marketVariance / (config.marketVariance + researchVariance);
@@ -568,8 +570,13 @@
    * returns Metyu's verdict plus the numbers a trader should see before clicking anything.
    * daysLeft maps to the decision's time-to-resolution (leverage is cut inside ~7 days).
    */
-  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null, feeRate = 0, feeExponent = 1 }, userConfig = {}) {
-    const config = { ...DEFAULT_CONFIG, ...userConfig };
+  // history: recent YES prices (oldest first) for the gap guard and the staleness rule.
+  // staleBelief: false when the belief is computed from the current price (a trained model),
+  // so it cannot predate the market's moves.
+  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null, feeRate = 0, feeExponent = 1, history = [], staleBelief = true }, userConfig = {}) {
+    // Momentum and fade are calibrated on the simulator only: never applied to real markets.
+    const config = { ...DEFAULT_CONFIG, momentumWeight: 0, fadeWeight: 0, ...userConfig };
+    if (!staleBelief) config.stalenessWeight = 0;
     // The taker fee (per share, same for YES and NO) is a cost like half the spread: fold it in.
     const fee = feePerShare(feeRate, yesPrice, feeExponent);
     const quotedSpread = spread;
@@ -577,7 +584,7 @@
     const researchVariance = Number.isFinite(beliefVariance) && beliefVariance > 0 ? beliefVariance : (CONFIDENCE_VARIANCE[confidence] ?? CONFIDENCE_VARIANCE.medium);
     const timeLeft = clamp(daysLeft / 30, 0, 1);
     const decision = decide({
-      yesPrice, spread, research: clampProb(belief), researchVariance,
+      yesPrice, spread, research: clampProb(belief), researchVariance, history: Array.isArray(history) ? history.filter(Number.isFinite) : [],
       equity: bankroll, peakEquity: peakEquity ?? bankroll, volatility: .05, timeLeft
     }, config);
     const result = { ...decision, yesPrice, belief: clampProb(belief), daysLeft, feePerShare: fee };
@@ -1164,8 +1171,9 @@
    */
   function createMomentumTracker(fetchJsonImpl, { ttlMs = 6 * 3600 * 1000, retryMs = 5 * 60 * 1000, now = () => Date.now() } = {}) {
     const cache = new Map();
-    return async function threeDayMomentum(tokenId, priceNow) {
-      if (!tokenId) return 0;
+    // One cached 12-hourly CLOB history per token, shared by momentum and recentPrices.
+    async function historyOf(tokenId) {
+      if (!tokenId) return [];
       let entry = cache.get(tokenId);
       if (!entry || now() - entry.at > (entry.failed ? retryMs : ttlMs)) {
         try {
@@ -1174,9 +1182,27 @@
         } catch (error) { entry = { at: now(), history: [], failed: true }; }   // retried soon, not in 6 h
         cache.set(tokenId, entry);
       }
-      const before = priceAt(entry.history, now() / 1000 - 3 * 86400);
+      return entry.history;
+    }
+    async function threeDayMomentum(tokenId, priceNow) {
+      if (!tokenId) return 0;
+      const before = priceAt(await historyOf(tokenId), now() / 1000 - 3 * 86400);
       return before === null ? 0 : priceNow - before;
-    };
+    }
+    /** The last `points` prices at 12 h steps (oldest first), ending with priceNow. */
+    threeDayMomentum.recentPrices = async (tokenId, priceNow, points = 30) => recentPrices(await historyOf(tokenId), { nowSec: now() / 1000, priceNow, points });
+    return threeDayMomentum;
+  }
+
+  /** Samples a [{t, p}] history every `stepSec` back from nowSec (oldest first), ending with priceNow. */
+  function recentPrices(history, { nowSec, priceNow, points = 30, stepSec = 12 * 3600 }) {
+    const out = [];
+    for (let i = points - 1; i >= 1; i -= 1) {
+      const value = priceAt(history || [], nowSec - i * stepSec);
+      if (value !== null && Number.isFinite(value)) out.push(clamp(value, .001, .999));
+    }
+    if (Number.isFinite(priceNow)) out.push(priceNow);
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -1225,6 +1251,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });

@@ -203,6 +203,25 @@ test('switching markets closes an open position; closing a paper position realiz
   assert.deepEqual(page.errors, []);
 });
 
+test('live advisor reads the market history: a view after big moves counts for less', async () => {
+  const page = await env.page();
+  const now = Math.floor(Date.now() / 1000);
+  const swings = Array.from({ length: 60 }, (_, i) => ({ t: now - (59 - i) * 43200, p: i % 2 ? .40 : .55 }));
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets: [
+    { id: '701', question: 'Volatile market?', outcomes: '["Yes","No"]', outcomePrices: '["0.40","0.60"]', bestBid: '0.39', bestAsk: '0.41', endDate: END(), clobTokenIds: '["7001","7002"]' }] } }));
+  await page.route('**/api/polymarket/history?*', route => route.fulfill({ json: { history: swings } }));
+  await page.route('**/api/polymarket/book?*', route => route.fulfill({ json: { book: { tokenId: '7001', asks: [{ price: .41, size: 1e6 }], bids: [] } } }));
+  await page.goto(`${env.base}/polymarket.html`);
+  await page.click('#loadLive');
+  await page.waitForFunction(() => /loaded/.test(document.querySelector('#liveNote').textContent));
+  await page.selectOption('#advMarket', '0');
+  await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
+  await page.click('#advAsk');
+  await page.waitForFunction(() => /market moved recently/.test(document.querySelector('#advVerdict').textContent));
+  assert.equal(await text(page, '#advVerdict h3'), 'No trade');
+  assert.deepEqual(page.errors, []);
+});
+
 test('scenario stress test runs every scenario', async () => {
   const page = await env.page();
   await page.goto(`${env.base}/polymarket.html`);
