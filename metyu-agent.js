@@ -844,6 +844,65 @@
   // Training on resolved markets (virtual money only)
   // ---------------------------------------------------------------------------
 
+  /**
+   * Resolved Polymarket markets with price histories, sampled for training (shared by the
+   * Prediction Lab and the autopilot). One day of SCHEDULED end dates every six days, going back
+   * from yesterday, so the data spans months and every market had its whole life before its end
+   * date. Whole EVENTS are fetched (5 per window), never a cut-off list of markets: keeping an
+   * event's losers but not its winner would bias the sample toward NO.
+   */
+  async function loadResolvedMarkets(fetchJsonImpl, { count = 300, report = () => {}, now = Date.now(), maxWindows = 400 } = {}) {
+    const resolved = [];
+    const seen = new Set();
+    const day = 86400000;
+    const isoDay = time => new Date(time).toISOString().slice(0, 10);
+    const fetchWindow = async window => {
+      const endMax = now - day - window * 6 * day;
+      const from = isoDay(endMax - day);
+      const to = isoDay(endMax);
+      const data = await fetchJsonImpl([`/api/polymarket/resolved?limit=5&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=5&end_date_min=${from}&end_date_max=${to}`]);
+      return { from, rows: flattenEvents(Array.isArray(data) ? data : data.markets || []) };
+    };
+    // Four windows at a time, added in window order; whole windows are kept (so whole events).
+    for (let window = 0; resolved.length < count && window < maxWindows; window += 4) {
+      const batch = await Promise.all([0, 1, 2, 3].map(offset => window + offset).filter(index => index < maxWindows).map(fetchWindow));
+      for (const { rows } of batch) {
+        rows.map(parseResolvedForTraining).filter(Boolean).forEach(market => {
+          if (!seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
+        });
+      }
+      report(`fetching resolved markets… ${resolved.length}/${count} (ended ${batch[batch.length - 1].from})`);
+    }
+    let done = 0;
+    const queue = resolved.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const market = queue.shift();
+        try {
+          const data = await fetchJsonImpl([`/api/polymarket/history?token_id=${encodeURIComponent(market.yesToken)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(market.yesToken)}&interval=max&fidelity=720`]);
+          market.history = normaliseHistory(data);
+        } catch (error) { market.history = []; }
+        done += 1;
+        report(`fetching price histories… ${done}/${resolved.length}`);
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    return resolved.filter(market => market.history.length);
+  }
+
+  /**
+   * One training run as the Prediction Lab does it: walk-forward on the markets, then the evidence
+   * gate (95% interval of out-of-sample returns above 0 with enough trades) and a stress run at a
+   * wider spread. Returns { model (with .gate, .source, .trainedAt), result, stress }.
+   */
+  function trainModel(markets, { kind = 'calib', tradeHorizon = 7, spread = .02, config = {}, source = 'training', now = Date.now() } = {}) {
+    const stressSpread = Math.max(spread * 2, spread + .02);    // at 0c, "2x" would be no stress at all
+    const result = walkForward(markets, { kind, tradeHorizon, spread, bankroll: 1000, config, stressSpreads: [stressSpread] });
+    const stress = { evidence: result.stress[0] };
+    const gate = { open: result.evidence.gateOpen, robust: result.evidence.gateOpen && stress.evidence.gateOpen, meanReturn: result.evidence.meanReturn, ci: result.evidence.ci, trades: result.evidence.trades, spread, tradeHorizon };
+    return { model: { ...result.model, source, trainedAt: now, gate }, result, stress };
+  }
+
   /** Gamma /events rows → their markets, each tagged with the event id (whole events only). */
   function flattenEvents(rows) {
     const out = [];
@@ -1378,6 +1437,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, reviewPosition, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, reviewPosition, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, loadResolvedMarkets, trainModel, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });

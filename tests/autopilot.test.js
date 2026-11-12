@@ -110,11 +110,85 @@ test('a deep drawdown trips the kill-switch: everything is flattened and nothing
 });
 
 test('command line and data access', () => {
-  assert.deepEqual(parseArgs(['--state', 's.json', '--interval', '10', '--once']), { state: 's.json', interval: 30, api: null, model: null, bankroll: undefined, once: true });
+  assert.deepEqual(parseArgs(['--state', 's.json', '--interval', '10', '--once']), { state: 's.json', interval: 30, api: null, model: null, bankroll: undefined, once: true, train: 0, retrain: 24 });
+  assert.equal(parseArgs(['--train', '99999', '--retrain', '0']).train, 6000, 'training size is capped');
+  assert.equal(parseArgs(['--train', '1500', '--retrain', '0']).retrain, 24);
   assert.throws(() => parseArgs(['--wallet', 'x']), /unknown option/);
   const seen = [];
   const fetchJson = makeFetchJson({ api: 'http://127.0.0.1:8000/', fetchImpl: async url => { seen.push(url); return { ok: true, status: 200, json: async () => ({}) }; } });
   return fetchJson(['/api/polymarket/markets?limit=1', 'https://gamma-api.polymarket.com/markets']).then(() => {
     assert.equal(seen[0], 'http://127.0.0.1:8000/api/polymarket/markets?limit=1', 'proxy URLs go to the local server');
   });
+});
+
+// Resolved markets for self-training, served like the proxy's /resolved windows, from the simulator.
+function withResolved(fake, { count, bias, seed = 7 }) {
+  const M = require('../metyu-agent.js');
+  const sim = M.simulatedResolvedMarkets(count, { seed, longshotBias: bias });
+  const rows = sim.map((market, index) => ({
+    raw: { id: String(5000 + index), eventId: `r${index}`, question: market.question, closed: true, outcomes: '["Yes","No"]',
+      outcomePrices: market.outcome === 'YES' ? '["1","0"]' : '["0","1"]', clobTokenIds: JSON.stringify([String(700000 + index), String(800000 + index)]),
+      closedTime: new Date(market.endTs * 1000).toISOString() },
+    history: market.history
+  }));
+  const histories = Object.fromEntries(rows.map((row, index) => [String(700000 + index), row.history]));
+  let windows = 0;
+  const base = fake.fetchJson;
+  return async urls => {
+    const url = new URL(urls[0], 'http://local');
+    if (url.pathname === '/api/polymarket/resolved') { const start = (100 * windows++) % rows.length; return { markets: rows.slice(start, start + 100).map(row => row.raw) }; }
+    if (url.pathname === '/api/polymarket/history' && histories[url.searchParams.get('token_id')]) return { history: histories[url.searchParams.get('token_id')] };
+    return base(urls);
+  };
+}
+
+test('self-training: a calibrated crowd keeps the gate closed; retrains only when due', async () => {
+  let clock = 1.9e12;
+  const fake = fakePolymarket({ now: () => clock });
+  fake.add('100', 'Will the Senate pass the bill?', .30);
+  const state = freshState();
+  const pilot = createAutopilot({ fetchJson: withResolved(fake, { count: 300, bias: 0 }), now: () => clock, state, options: { train: 300, retrainHours: 24 } });
+  const first = await pilot.tick();
+  assert.ok(state.model && /autopilot · \d+ resolved markets/.test(state.model.source), 'trained its own model');
+  assert.equal(state.model.gate.open, false, 'no edge in a calibrated crowd');
+  assert.equal(first.mayOpen, false);
+  assert.equal(state.trainings.length, 1);
+  assert.match(state.log.map(entry => entry.text).join(' '), /retrained on \d+ resolved markets · evidence gate closed/);
+  clock += 3600000;
+  await pilot.tick();
+  assert.equal(state.trainings.length, 1, 'not retrained within 24 h');
+  clock += 24 * 3600000;
+  await pilot.tick();
+  assert.equal(state.trainings.length, 2, 'retrained once the model is a day old');
+});
+
+test('self-training: when the gate opens on real evidence, the autopilot may trade', async () => {
+  const clock = 1.9e12;
+  const fake = fakePolymarket({ now: () => clock });
+  fake.add('100', 'Will the Senate pass the bill?', .08);
+  const state = freshState();
+  const pilot = createAutopilot({ fetchJson: withResolved(fake, { count: 700, bias: .5, seed: 3 }), now: () => clock, state, options: { train: 700 } });
+  const result = await pilot.tick();
+  assert.equal(state.model.gate.open, true, `strong longshot bias: gate ${JSON.stringify(state.model.gate)}`);
+  assert.equal(result.mayOpen, true);
+});
+
+test('self-training failures are logged and retried after an hour, not every tick', async () => {
+  let clock = 1.9e12;
+  const fake = fakePolymarket({ now: () => clock });
+  fake.add('100', 'Will the Senate pass the bill?', .30);
+  let calls = 0;
+  const failing = async urls => { if (urls[0].startsWith('/api/polymarket/resolved')) { calls += 1; throw new Error('upstream down'); } return fake.fetchJson(urls); };
+  const state = freshState();
+  const pilot = createAutopilot({ fetchJson: failing, now: () => clock, state, options: { train: 300 } });
+  await pilot.tick();
+  assert.match(state.log.map(entry => entry.text).join(' '), /training failed: upstream down/);
+  const after = calls;
+  clock += 5 * 60000;
+  await pilot.tick();
+  assert.equal(calls, after, 'not retried 5 minutes later');
+  clock += 3600000;
+  await pilot.tick();
+  assert.ok(calls > after, 'retried after an hour');
+  assert.equal(state.model, null);
 });

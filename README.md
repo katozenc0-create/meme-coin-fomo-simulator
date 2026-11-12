@@ -168,7 +168,10 @@ The simulator's hidden probability is a calibrated martingale that resolves to 0
 python3 server.py --port 8000 &                       # read-only proxy (or omit --api to call Polymarket directly)
 node autopilot.js --api http://127.0.0.1:8000 --model model.json --interval 300
 node autopilot.js --once                              # one tick, then exit (for cron)
+node autopilot.js --api http://127.0.0.1:8000 --train 1500 --retrain 24   # trains itself
 ```
+
+**Self-training:** with `--train N`, the autopilot retrains every `--retrain` hours (24 by default) on N freshly sampled resolved markets. It uses the Prediction Lab's exact pipeline: `Metyu.loadResolvedMarkets` and `Metyu.trainModel`, meaning walk-forward plus the evidence gate. The new model replaces the old one, and its gate alone decides whether it may trade. Each run is recorded in `trainings` and the log. A failed run is retried after an hour. On a real run with `--train 300`, it trained on 407 resolved markets in about 35 s; the gate stayed closed with 0 out-of-sample trades, so the autopilot kept watching.
 
 Its state (account, positions, trade history and log) lives in `data/autopilot.json`, which is git-ignored. The file is written atomically after every tick and on Ctrl-C, so a restart continues where it left off. The `model.json` is a model trained in the Prediction Lab and saved with its **Download model (autopilot)** button. Currently every honest model's gate is closed (see `research/README.md`), so the autopilot will watch rather than trade, which is the correct behaviour.
 

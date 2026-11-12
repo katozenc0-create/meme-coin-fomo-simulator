@@ -1044,49 +1044,8 @@
 
       const getJson = M.fetchJson;
 
-      async function loadLiveTrainingMarkets(count, report) {
-        // Sample one day of SCHEDULED end dates every six days, going back from yesterday, so
-        // the data spans months and every market had its whole life before its end date.
-        // Whole EVENTS are fetched (5 per window, so the sample spans about a year), never a cut-off list of markets: keeping an
-        // event's losers but not its winner would bias the sample toward NO.
-        const resolved = [];
-        const seen = new Set();
-        const day = 86400000;
-        const isoDay = time => new Date(time).toISOString().slice(0, 10);
-        const fetchWindow = async window => {
-          const endMax = Date.now() - day - window * 6 * day;
-          const from = isoDay(endMax - day);
-          const to = isoDay(endMax);
-          const data = await getJson([`/api/polymarket/resolved?limit=5&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=5&end_date_min=${from}&end_date_max=${to}`]);
-          return { from, rows: M.flattenEvents(Array.isArray(data) ? data : data.markets || []) };
-        };
-        // Four windows at a time (like the histories below), added in window order.
-        for (let window = 0; resolved.length < count && window < 400; window += 4) {
-          const batch = await Promise.all([0, 1, 2, 3].map(offset => window + offset).filter(index => index < 400).map(fetchWindow));
-          for (const { rows } of batch) {
-            // Keep whole windows (and so whole events), even if that overshoots `count` a little.
-            rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => {
-              if (!seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
-            });
-          }
-          report(`fetching resolved markets… ${resolved.length}/${count} (ended ${batch[batch.length - 1].from})`);
-        }
-        let done = 0;
-        const queue = resolved.slice();
-        const worker = async () => {
-          while (queue.length) {
-            const market = queue.shift();
-            try {
-              const data = await getJson([`/api/polymarket/history?token_id=${encodeURIComponent(market.yesToken)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(market.yesToken)}&interval=max&fidelity=720`]);
-              market.history = M.normaliseHistory(data);
-            } catch (error) { market.history = []; }
-            done += 1;
-            report(`fetching price histories… ${done}/${resolved.length}`);
-          }
-        };
-        await Promise.all([worker(), worker(), worker(), worker()]);
-        return resolved.filter(market => market.history.length);
-      }
+      // Same loader as the autopilot (metyu-agent.js loadResolvedMarkets).
+      const loadLiveTrainingMarkets = (count, report) => M.loadResolvedMarkets(getJson, { count, report });
 
       function setText(id, text) { $(id).textContent = text; }
 
@@ -1168,14 +1127,9 @@
           await new Promise(resolve => setTimeout(resolve, 10));
           const kind = $('#trainKind').value === 'rich' ? 'rich' : 'calib';
           const spread = Math.max(0, Math.min(.1, (Number($('#trainSpread').value) || 0) / 100));
-          const options = { kind, tradeHorizon, spread, bankroll: 1000, config: config() };
-          const stressSpread = Math.max(spread * 2, spread + .02);    // at 0c, "2x" would be no stress at all
-          const result = M.walkForward(markets, { ...options, stressSpreads: [stressSpread] });
-          const stress = { evidence: result.stress[0] };
-          lastTraining = {
-            model: result.model, source: label, trainedAt: Date.now(),
-            gate: { open: result.evidence.gateOpen, robust: result.evidence.gateOpen && stress.evidence.gateOpen, meanReturn: result.evidence.meanReturn, ci: result.evidence.ci, trades: result.evidence.trades, spread, tradeHorizon }
-          };
+          // Same training step as the autopilot (metyu-agent.js trainModel).
+          const { model, result, stress } = M.trainModel(markets, { kind, tradeHorizon, spread, config: config(), source: label });
+          lastTraining = { model, source: label, trainedAt: model.trainedAt, gate: model.gate };
           renderTraining(result, stress, label);
           $('#trainUse').disabled = false;
         } catch (error) {
