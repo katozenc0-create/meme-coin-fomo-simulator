@@ -1,9 +1,12 @@
 name: autopilot
 
-# Metyu, 24/7 on GitHub's runners, with VIRTUAL money only (read-only Polymarket data; no wallet,
-# no keys, no orders). Every 15 minutes: restore the state from the `autopilot-data` branch, run one
-# tick of autopilot.js (self-training daily, learning book on), and save the state plus a public
-# status.json back to that branch. The Live Board on GitHub Pages reads status.json from there.
+# Metyu, 24/7 on GitHub's runners, with VIRTUAL money only (read-only public market data; no wallet,
+# no exchange account, no keys, no orders). Every 15 minutes: restore the state from the
+# `autopilot-data` branch, run one tick of each autopilot (self-training daily, learning books on):
+#   - autopilot.js           Polymarket prediction markets  -> status.json
+#   - exchange-autopilot.js  crypto on live Coinbase prices -> exchange-status.json
+# and save the states plus the public status files back to that branch. The Live Board on GitHub
+# Pages reads the status files from there. One autopilot failing never stops the other.
 on:
   schedule:
     - cron: "7,22,37,52 * * * *"     # every 15 min, off the top of the hour (busy on GitHub)
@@ -29,21 +32,34 @@ jobs:
         run: |
           mkdir -p data
           if git fetch --depth=1 origin autopilot-data; then
-            git show FETCH_HEAD:autopilot.json > data/autopilot.json || rm -f data/autopilot.json
+            # States and the last published status files (a failed tick keeps showing the last one).
+            for f in autopilot.json status.json exchange.json exchange-status.json; do
+              git show "FETCH_HEAD:$f" > "data/$f" 2>/dev/null || rm -f "data/$f"
+            done
           else
             echo "No autopilot-data branch yet: first run starts a fresh virtual account."
           fi
-      - name: One tick (virtual money; trains itself every 24 h; learning book on)
+      - name: Polymarket tick (virtual money; trains itself every 24 h; learning book on)
+        continue-on-error: true
         run: node autopilot.js --once --train 1500 --retrain 24 --learn --state data/autopilot.json --status-out data/status.json
+      - name: Crypto exchange tick (virtual money; live Coinbase prices; trains itself every 24 h; learning book on)
+        continue-on-error: true
+        run: node exchange-autopilot.js --once --learn --train-bars 3000 --retrain 24 --state data/exchange.json --status-out data/exchange-status.json
       - name: Save the state to the autopilot-data branch
+        if: always()
         run: |
-          test -s data/autopilot.json
           cd data
+          # Only files that exist and are non-empty: a failed first tick must not publish garbage.
+          files=""
+          for f in autopilot.json status.json exchange.json exchange-status.json; do
+            if [ -s "$f" ]; then files="$files $f"; fi
+          done
+          if [ -z "$files" ]; then echo "nothing to save"; exit 1; fi
           git init -q -b autopilot-data
           git config user.name "metyu-autopilot"
           git config user.email "metyu-autopilot@users.noreply.github.com"
-          printf '%s\n' "# Metyu autopilot state (virtual money)" "" "Written every 15 minutes by .github/workflows/autopilot.yml on main." "status.json is what the Live Board shows; autopilot.json is the full state." > README.md
-          git add autopilot.json status.json README.md
+          printf '%s\n' "# Metyu autopilot state (virtual money)" "" "Written every 15 minutes by .github/workflows/autopilot.yml on main." "status.json / exchange-status.json are what the Live Board shows; autopilot.json / exchange.json are the full states." > README.md
+          git add $files README.md
           git commit -qm "autopilot tick $(date -u +%Y-%m-%dT%H:%MZ)"
           # One commit, replaced each time: the state file itself carries the full trade history.
           git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" autopilot-data

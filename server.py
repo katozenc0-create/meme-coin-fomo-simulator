@@ -27,6 +27,7 @@ POLYMARKET_GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
 AUTOPILOT_STATE = Path(os.environ.get("AUTOPILOT_STATE", str(ROOT / "data" / "autopilot.json")))
+EXCHANGE_STATUS = Path(os.environ.get("EXCHANGE_STATUS", str(ROOT / "data" / "exchange-status.json")))
 mimetypes.add_type("application/manifest+json", ".webmanifest")   # PWA manifest (home-screen install)
 SERVED_EXTENSIONS = {".webmanifest", ".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
 
@@ -212,6 +213,19 @@ def autopilot_status(path: Path) -> dict:
     }
 
 
+def exchange_status(path: Path) -> dict:
+    """The crypto exchange autopilot's public status (virtual money), as written by --status-out."""
+    try:
+        status = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"available": False, "reason": "no exchange status yet: run node exchange-autopilot.js --status-out data/exchange-status.json"}
+    except (OSError, ValueError) as error:
+        return {"available": False, "reason": f"exchange status unreadable: {error}"}
+    if not isinstance(status, dict) or status.get("kind") != "exchange" or not isinstance(status.get("account"), dict):
+        return {"available": False, "reason": "exchange status has an unexpected shape"}
+    return status
+
+
 class SimulatorHandler(BaseHTTPRequestHandler):
     server_version = "FomoPractice/1.0"
 
@@ -244,6 +258,9 @@ class SimulatorHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/autopilot/status":
             self._send_json(autopilot_status(self.server.autopilot_state if hasattr(self.server, "autopilot_state") else AUTOPILOT_STATE))
+            return
+        if route == "/api/exchange/status":
+            self._send_json(exchange_status(getattr(self.server, "exchange_status", EXCHANGE_STATUS)))
             return
         if route == "/api/polymarket/markets":
             try:
@@ -338,9 +355,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", default=HOST, help=f"interface to bind (default: {HOST})")
     parser.add_argument("--port", type=int, default=PORT, help=f"port to listen on (default: {PORT})")
     parser.add_argument("--autopilot-state", default=str(AUTOPILOT_STATE), help="autopilot state file shown at /api/autopilot/status")
+    parser.add_argument("--exchange-status", default=str(EXCHANGE_STATUS), help="exchange autopilot status file shown at /api/exchange/status")
     args = parser.parse_args(argv)
     server = ThreadingHTTPServer((args.host, args.port), SimulatorHandler)
     server.autopilot_state = Path(args.autopilot_state)
+    server.exchange_status = Path(args.exchange_status)
     print(f"Meme Coin FOMO Simulator: http://{args.host}:{args.port}")
     print("Practice only: no wallet connection and no real funds.")
     try:

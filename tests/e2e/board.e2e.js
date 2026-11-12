@@ -386,6 +386,62 @@ test('autopilot panel reads a published status (GitHub Pages path) and shows the
   assert.deepEqual(page.errors, []);
 });
 
+test('exchange panel shows the crypto autopilot: chart with levels, positions, gates, forward test', async () => {
+  // A real status object, made by the autopilot's own statusOf from a synthetic market.
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const H = X.HOUR;
+  const now = Date.now();
+  const bars = Array.from({ length: 300 }, (_, i) => { const t = Math.floor(now / H) * H - (300 - i) * H; const p = 60000 + 3000 * Math.sin(i / 25) + 20 * i; return { t, o: p - 40, h: p + 120, l: p - 150, c: p + 30, v: 100 }; });
+  const state = freshState();
+  state.createdAt = new Date(now - 2 * X.DAY).toISOString();
+  state.lastTick = new Date(now - 5 * 60000).toISOString();
+  state.marks = { 'BTC-USD': { price: bars[299].c, at: state.lastTick, source: 'coinbase' }, 'ETH-USD': { price: bars[299].c / 30, at: state.lastTick, source: 'coinbase' } };
+  const entry = bars[299].c - 200;
+  state.positions.x1 = { id: 'x1', symbol: 'BTC-USD', strategy: 'trend', book: 'learning', side: 'LONG', entry, qty: .05, notional: entry * .05, margin: entry * .05 / 1.5, leverage: 1.5, stop: entry - 900, initialStop: entry - 900, target: entry + 1400, liquidation: entry * .34, entryFee: 3, risk: 25, atr: 400, openedAt: now - 3 * H, reason: 'uptrend pullback: RSI 48' };
+  state.account.cash -= state.positions.x1.margin;
+  state.history = [{ id: 'x0', symbol: 'ETH-USD', strategy: 'breakout', side: 'SHORT', book: 'learning', learning: true, leverage: 2, entry: 2100, exit: 2050, margin: 300, risk: 25, pnl: 21.5, r: .86, reason: 'take profit', openedAt: new Date(now - 9 * H).toISOString(), closedAt: new Date(now - 4 * H).toISOString() }];
+  state.model = { trainedAt: now - H, bars: 24000, symbols: ['BTC-USD'], strategies: {
+    trend: { label: 'Trend pullback', params: {}, gate: { open: false, trades: 150, wins: 51, meanR: -.13, ci: [-.28, .03] } },
+    breakout: { label: 'Range breakout', params: {}, gate: { open: false, trades: 158, wins: 46, meanR: -.27, ci: [-.42, -.13] } }
+  } };
+  state.log = [{ at: state.lastTick, kind: 'LEARN', text: 'BTC-USD LONG 1.5x @ 66000 · Trend pullback' }];
+  const status = statusOf(state, { now, series: { 'BTC-USD': bars, 'ETH-USD': bars.map(b => ({ ...b, o: b.o / 30, h: b.h / 30, l: b.l / 30, c: b.c / 30 })) } });
+
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#exchangePanel').hidden && /Running 24\/7/.test(document.querySelector('#exStatus').textContent));
+  assert.match(await text(page, '#exStatus'), /2 coins, live Coinbase prices · learning book: 0\.25% risk per trade, up to 2x/);
+  assert.match(await text(page, '#exForward'), /Forward test · day 3\/14 · 1 closed learning trades · 1 won · mean \+0\.86R per trade/);
+  assert.equal(await text(page, '#exGates'), '0/2 open');
+  assert.equal(await page.inputValue('#exSymbol'), 'BTC-USD', 'the coin with a position is shown first');
+  assert.ok(await page.locator('#exChart').isVisible(), 'the chart is visible');
+  assert.ok(await page.locator('#exChart rect').count() >= 120, 'candles drawn');
+  assert.equal(await page.locator('#exChart polyline').count(), 2, 'EMA20 and EMA50');
+  for (const cls of ['entry', 'stop', 'target']) assert.equal(await page.locator(`#exChart line.${cls}`).count(), 1, `${cls} line`);
+  assert.equal(await page.locator('#exChart line.liq').count(), 0, 'a far liquidation price is not drawn (it would squash the chart)');
+  assert.match(await text(page, '#exNotes'), /RSI \d+/);
+  assert.match(await text(page, '#exPositions'), /BTC-USD · LONG 1\.5x · learning.*stop \$.* target \$.* liq \$.* uptrend pullback/);
+  assert.match(await text(page, '#exStrategies'), /Trend pullback: gate closed · learning book ?150 out-of-sample trades · 51 won · mean -0\.13R/);
+  assert.match(await text(page, '#exStrategies'), /Range breakout: gate closed · not traded \(loses after costs\)/);
+  assert.match(await text(page, '#exTradeList'), /ETH-USD · breakout.*SHORT 2\.0x · learning · \$2,100 → \$2,050 · \+0\.86R · take profit/);
+  await page.selectOption('#exSymbol', 'ETH-USD');
+  assert.equal(await page.locator('#exChart line.entry').count(), 0, 'no position on ETH');
+  assert.ok(await noHorizontalScroll(page), 'fits the phone');
+  assert.deepEqual(page.errors, []);
+});
+
+test('exchange panel stays hidden when no exchange autopilot publishes anything', async () => {
+  const page = await env.page();
+  await page.route('**/api/exchange/status', route => route.fulfill({ status: 404, json: {} }));
+  await page.goto(`${env.base}/board.html`);
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('#exchangePanel').isHidden(), true);
+  assert.deepEqual(page.errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);
