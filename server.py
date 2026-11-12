@@ -27,7 +27,8 @@ POLYMARKET_GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
 AUTOPILOT_STATE = Path(os.environ.get("AUTOPILOT_STATE", str(ROOT / "data" / "autopilot.json")))
-SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
+mimetypes.add_type("application/manifest+json", ".webmanifest")   # PWA manifest (home-screen install)
+SERVED_EXTENSIONS = {".webmanifest", ".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
 
 
 def _http_get_json(url: str, timeout: float = 8.0) -> object:

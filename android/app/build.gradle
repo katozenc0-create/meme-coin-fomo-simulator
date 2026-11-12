@@ -36,7 +36,7 @@ android {
 // the shared agent. Nothing is duplicated in git; every build copies the current files.
 tasks.register("copyWebAssets", Copy) {
     from(rootProject.file("..")) {
-        include "*.html", "metyu-agent.js"
+        include "*.html", "metyu-agent.js", "icons/**"
     }
     into "$buildDir/generated/webassets/www"
 }

@@ -191,6 +191,22 @@ It reads `GET /api/autopilot/status`, which summarises the state file (`--autopi
 
 Stopping it (Ctrl-C, `systemctl stop`, SIGTERM) saves the state first.
 
+## Metyu Board on iPhone / iPad (and any phone): install from the browser
+
+iOS does not install apps from downloaded files. A native App Store or TestFlight app needs a paid Apple Developer account and signing on a Mac. Metyu is instead an **installable web app (PWA)** that runs on iOS and Android alike:
+
+1. Open the Live Board over HTTPS. One option is your GitHub Pages address (see [GitHub Pages](#github-pages)), for example `https://YOUR-USERNAME.github.io/meme-coin-fomo-simulator/board.html`. Another is your own `server.py` behind HTTPS.
+2. **iPhone / iPad (Safari):** tap **Share → Add to Home Screen → Add**. **Android (Chrome):** tap **⋮ → Install app**.
+3. Open **Metyu** from the home screen. It opens full screen with its own icon. Live mode reads Polymarket directly, and the board, the Lab and the game also open without a network.
+
+How it works:
+- `manifest.webmanifest` describes the app.
+- `icons/` holds the app icons, as PNGs because iOS needs them.
+- `sw.js` is a service worker. It keeps the pages available offline, but it never caches live market data (`/api/…`, Polymarket), so prices are never stale.
+- Each page carries the iOS home-screen tags.
+
+The service worker runs only on `https://` or `localhost`. Inside the Android APK, which serves its pages as files, the pages work as before. To see a running autopilot on the phone, open the board from your `server.py` (`--host 0.0.0.0`); the autopilot panel appears when the server is reachable.
+
 ## Metyu Board for Android (APK)
 
 **Metyu Board** is an Android app for watching the Live Board on your phone. It trades virtual money only: market data is read-only, and it has no wallet and never places an order.
@@ -273,6 +289,8 @@ The static browser version can be hosted with GitHub Pages:
 5. Choose **Deploy from a branch**.
 6. Select the `main` branch and the root folder.
 7. Click **Save**.
+
+Pages serves over HTTPS, which is what lets iPhones and Android phones install Metyu from the browser (see "Metyu Board on iPhone / iPad").
 
 GitHub will provide a public address similar to:
 
