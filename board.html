@@ -256,6 +256,7 @@
     <section class="panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
       <h2>Autopilot · 24/7 · virtual money</h2>
       <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
+      <p class="trades-summary" id="apForward" hidden></p>
       <div class="stats" id="apStats" hidden>
         <div class="stat"><span>Equity</span><strong id="apEquity">—</strong></div>
         <div class="stat"><span>Realized P&amp;L</span><strong id="apRealized">—</strong></div>
@@ -632,14 +633,32 @@
 
       // ---------- autopilot (server-side, read-only view) ----------
       const signed = (element, value, text) => { element.textContent = text; element.className = value > 0 ? 'positive' : value < 0 ? 'negative' : ''; };
+      // Where the 24/7 autopilot publishes its status: the local server.py, or, on GitHub Pages
+      // (owner.github.io/repo), the autopilot-data branch that the GitHub Actions workflow writes.
+      // ?autopilot=<url> overrides both.
+      function autopilotSources() {
+        const override = new URLSearchParams(location.search).get('autopilot');
+        if (override) return [override];
+        const sources = ['/api/autopilot/status'];
+        if (location.hostname.endsWith('.github.io')) {
+          const owner = location.hostname.split('.')[0];
+          const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
+          sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/status.json`);
+        }
+        return sources;
+      }
       async function refreshAutopilot() {
-        let status;
-        try {
-          const response = await fetch('/api/autopilot/status', { headers: { Accept: 'application/json' } });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          status = await response.json();
-        } catch (error) {
-          $('#autopilotPanel').hidden = true;            // no server here (GitHub Pages): nothing to show
+        let status = null;
+        for (const source of autopilotSources()) {
+          try {
+            const response = await fetch(source, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            if (!response.ok) continue;
+            status = await response.json();
+            break;
+          } catch (error) { /* try the next source */ }
+        }
+        if (!status) {
+          $('#autopilotPanel').hidden = true;            // no autopilot anywhere: nothing to show
           return false;
         }
         $('#autopilotPanel').hidden = false;
@@ -651,7 +670,19 @@
         const gate = status.model && status.model.gate;
         const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
         $('#apStats').hidden = false;
-        $('#apStatus').textContent = `${age < 15 ? 'Running' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : 'watching only (no model with an open evidence gate)'}`;
+        const learningOpen = status.positions.filter(held => held.learning).length;
+        const learningEver = learningOpen + (status.history || []).filter(trade => trade.learning).length;
+        // The GitHub Actions autopilot ticks every 15 minutes: "running" means seen within ~40 minutes.
+        $('#apStatus').textContent = `${age < 40 ? 'Running 24/7' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : learningEver ? 'learning book: small unlevered test trades (evidence gate closed)' : 'watching only (no model with an open evidence gate)'}`;
+        const forward = status.forward && status.forward.learning;
+        $('#apForward').hidden = !forward;
+        if (forward) {
+          const day = status.createdAt ? Math.floor((Date.now() - Date.parse(status.createdAt)) / 86400000) + 1 : 1;
+          $('#apForward').textContent = forward.trades
+            ? `Forward test · day ${day}/14 · ${forward.trades} closed learning trades · ${forward.wins} won · mean ${(forward.meanReturn * 100).toFixed(1)}% per $1 · 95% [${(forward.ci[0] * 100).toFixed(1)}%, ${(forward.ci[1] * 100).toFixed(1)}%] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
+            : `Forward test · day ${day}/14 · no closed learning trades yet`;
+          $('#apForward').className = `trades-summary ${forward.trades && forward.meanReturn > 0 ? 'positive' : forward.trades && forward.meanReturn < 0 ? 'negative' : ''}`;
+        }
         signed($('#apEquity'), equityNow - account.bankroll, `${formatMoney(equityNow)}`);
         signed($('#apRealized'), account.realized, `${account.realized >= 0 ? '+' : ''}${formatMoney(account.realized)}`);
         $('#apTrades').textContent = account.trades ? `${account.trades} · ${Math.round(account.wins / account.trades * 100)}%` : '0 · —';
@@ -664,7 +695,7 @@
         renderTrades($('#apTradeList'), $('#apTradeSummary'), (status.history || []).map(trade => ({
           closedAt: trade.closedAt, market: trade.market, side: trade.side, leverage: trade.leverage, entry: trade.entry,
           exit: trade.outcome === 'YES' || trade.outcome === 'NO' ? (trade.side === trade.outcome ? 1 : 0) : (trade.side === 'YES' ? trade.exitYes : 1 - trade.exitYes),
-          pnl: trade.pnl, margin: trade.margin, note: trade.outcome === 'CLOSED' ? trade.reason : `resolved ${trade.outcome}`
+          pnl: trade.pnl, margin: trade.margin, note: `${trade.learning ? 'learning · ' : ''}${trade.outcome === 'CLOSED' ? trade.reason : `resolved ${trade.outcome}`}`
         })));
         $('#apFeed').replaceChildren(...status.log.slice(0, 40).map(entry => {
           const item = document.createElement('li');

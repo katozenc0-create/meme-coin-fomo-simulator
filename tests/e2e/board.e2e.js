@@ -364,6 +364,28 @@ test('terminal: a candidate the risk check blocks is logged as FILTERED with the
   assert.deepEqual(page.errors, []);
 });
 
+test('autopilot panel reads a published status (GitHub Pages path) and shows the forward test', async () => {
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/status.json';
+  const now = new Date().toISOString();
+  await page.route('**/api/autopilot/status', route => route.fulfill({ status: 404, json: { error: 'no server' } }));
+  await page.route(published, route => route.fulfill({ json: {
+    available: true, virtualMoney: true, createdAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastTick: now, watching: 12,
+    account: { bankroll: 10000, cash: 9600, peak: 10010, halted: false, realized: 12, trades: 3, wins: 2 },
+    model: { source: 'autopilot · 1500 resolved markets', trainedAt: Date.now(), kind: 'calib', gate: { open: false, trades: 0 } },
+    positions: [{ id: '1', question: 'Learning position?', learning: true, lastYes: .4, spread: 0, position: { side: 'NO', shares: 160, borrowed: 0, interest: 0, margin: 96, leverage: 1, takerRate: 0 } }],
+    history: [{ closedAt: now, market: 'Closed learning trade?', side: 'NO', leverage: 1, entry: .6, exitYes: 0, outcome: 'NO', margin: 100, pnl: 66, reason: 'market resolved', learning: true }],
+    trainings: [], log: [{ at: now, kind: 'LEARN', text: 'Learning position? — NO 1x' }],
+    forward: { learning: { trades: 3, wins: 2, pnl: 12, meanReturn: .04, ci: [-.2, .3], days: 3, convincing: false }, gated: { trades: 0, wins: 0, pnl: 0, meanReturn: 0, ci: [0, 0], days: 0, convincing: false } }
+  } }));
+  await page.goto(`${env.base}/board.html?autopilot=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => /Running 24\/7/.test(document.querySelector('#apStatus').textContent));
+  assert.match(await text(page, '#apStatus'), /learning book: small unlevered test trades/);
+  assert.match(await text(page, '#apForward'), /Forward test · day 4\/14 · 3 closed learning trades · 2 won · mean 4\.0% per \$1 · 95% \[-20\.0%, 30\.0%\] · not convincing yet/);
+  assert.match(await text(page, '#apTradeList'), /learning · resolved NO/);
+  assert.deepEqual(page.errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);

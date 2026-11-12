@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createAutopilot, freshState, loadState, saveState, parseArgs, makeFetchJson } = require('../autopilot.js');
+const { createAutopilot, freshState, loadState, saveState, parseArgs, makeFetchJson, forwardEvidence, statusOf } = require('../autopilot.js');
 
 const DAY = 86400000;
 // A deliberately optimistic calibration model whose evidence gate is open (trades when allowed).
@@ -110,7 +110,10 @@ test('a deep drawdown trips the kill-switch: everything is flattened and nothing
 });
 
 test('command line and data access', () => {
-  assert.deepEqual(parseArgs(['--state', 's.json', '--interval', '10', '--once']), { state: 's.json', interval: 30, api: null, model: null, bankroll: undefined, once: true, train: 0, retrain: 24 });
+  assert.deepEqual(parseArgs(['--state', 's.json', '--interval', '10', '--once']), { state: 's.json', interval: 30, api: null, model: null, bankroll: undefined, once: true, train: 0, retrain: 24, learn: false, 'status-out': null });
+  const both = parseArgs(['--learn', '--status-out', 'public/status.json']);
+  assert.equal(both.learn, true);
+  assert.equal(both['status-out'], 'public/status.json');
   assert.equal(parseArgs(['--train', '99999', '--retrain', '0']).train, 6000, 'training size is capped');
   assert.equal(parseArgs(['--train', '1500', '--retrain', '0']).retrain, 24);
   assert.throws(() => parseArgs(['--wallet', 'x']), /unknown option/);
@@ -191,4 +194,62 @@ test('self-training failures are logged and retried after an hour, not every tic
   await pilot.tick();
   assert.ok(calls > after, 'retried after an hour');
   assert.equal(state.model, null);
+});
+
+// A model whose evidence gate is CLOSED but which still sees an edge (it reads 30c as ~59%).
+const CLOSED_MODEL = { ...OPEN_MODEL, gate: { open: false, meanReturn: 0, ci: [-.1, .1], trades: 0 } };
+
+test('learning book: with the gate closed, --learn opens small unlevered tagged positions; without it nothing opens', async () => {
+  const off = setup({ model: CLOSED_MODEL });
+  const watchOnly = await off.pilot.tick();
+  assert.equal(watchOnly.mayOpen, false);
+  assert.equal(Object.keys(off.state.positions).length, 0, 'gate closed and no learning: watch only');
+
+  let clock = 1.9e12;
+  const fake = fakePolymarket({ now: () => clock });
+  ['Will the Senate pass the bill?', 'Lakers vs Celtics', 'Will it snow in Paris?'].forEach((q, i) => fake.add(String(100 + i), q, .30));
+  const state = freshState({ bankroll: 10000 });
+  state.model = CLOSED_MODEL;
+  const pilot = createAutopilot({ fetchJson: fake.fetchJson, now: () => clock, state, options: { learn: true } });
+  const result = await pilot.tick();
+  assert.equal(result.learning, true);
+  const open = Object.values(state.positions);
+  assert.ok(open.length >= 1, 'learning trades open');
+  for (const held of open) {
+    assert.equal(held.learning, true, 'tagged as learning');
+    assert.equal(held.position.leverage, 1, 'never levered');
+    assert.ok(held.position.margin <= 100.0001, `1% of equity at most (${held.position.margin})`);
+  }
+  assert.match(state.log.map(entry => entry.kind).join(' '), /LEARN/);
+  // Resolution closes it; the history keeps the tag; forward evidence counts it.
+  const id = Object.keys(state.positions)[0];
+  Object.assign(fake.markets.get(id), { closed: true, price: 1 });
+  await pilot.tick();
+  const closed = state.history.find(trade => trade.outcome === 'YES');
+  assert.equal(closed.learning, true);
+  const evidence = forwardEvidence(state.history, { learning: true, now: clock });
+  assert.equal(evidence.trades, state.history.filter(trade => trade.learning).length);
+  assert.ok(evidence.pnl > 0);
+  assert.equal(evidence.convincing, false, 'one trade proves nothing');
+});
+
+test('forward evidence and public status', () => {
+  const now = Date.parse('2026-11-26T00:00:00Z');
+  const history = Array.from({ length: 40 }, (_, i) => ({ openedAt: '2026-11-12T00:00:00Z', closedAt: '2026-11-13T00:00:00Z', margin: 100, pnl: i % 4 === 0 ? -50 : 40, learning: true }));
+  const evidence = forwardEvidence(history, { learning: true, now });
+  assert.equal(evidence.trades, 40);
+  assert.equal(evidence.wins, 30);
+  assert.ok(Math.abs(evidence.meanReturn - .175) < 1e-9);
+  assert.ok(evidence.ci[0] > 0 && evidence.convincing, 'a consistent forward edge clears the bar');
+  assert.ok(Math.abs(evidence.days - 14) < 1e-9, 'two weeks of record');
+  assert.equal(forwardEvidence(history, { learning: false, now }).trades, 0, 'learning and gated books are separate');
+
+  const state = freshState();
+  state.model = { ...CLOSED_MODEL, source: 'autopilot · 400 resolved markets', trainedAt: now };
+  state.history = history;
+  const status = statusOf(state, { now });
+  assert.equal(status.available, true);
+  assert.deepEqual(Object.keys(status.model).sort(), ['gate', 'kind', 'source', 'trainedAt'], 'no model parameters in public');
+  assert.equal(status.forward.learning.trades, 40);
+  assert.equal(status.history.length, 40);
 });
