@@ -5,8 +5,10 @@
 // fees, order-book fills, gap guard, portfolio / category limits, kill-switch, position management
 // and settlement at resolution. State is a JSON file, so a restart continues where it left off.
 //
-//   node autopilot.js --model model.json [--state data/autopilot.json] [--interval 300]
-//                     [--api http://127.0.0.1:8000] [--bankroll 10000] [--once]
+//   node autopilot.js [--model model.json] [--train 1500 --retrain 24] [--state data/autopilot.json]
+//                     [--interval 300] [--api http://127.0.0.1:8000] [--bankroll 10000] [--once]
+// --train N retrains on N resolved markets every --retrain hours with the Prediction Lab's own
+// pipeline (walk-forward + evidence gate); the gate alone decides whether the model may trade.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,7 +19,8 @@ const DAY = 86400000;
 const LIVE_RULES = Object.freeze({ momentumWeight: 0, fadeWeight: 0, stalenessWeight: 0 });
 const DEFAULTS = Object.freeze({
   bankroll: 10000, slots: 12, maxGross: 1.5, maxOpen: 6, maxPerCluster: 2, maxLeverage: 3,
-  maxPositionPct: .1, refreshMarketsMs: 3600000, historyLimit: 1000, logLimit: 300
+  maxPositionPct: .1, refreshMarketsMs: 3600000, historyLimit: 1000, logLimit: 300,
+  train: 0, retrainHours: 24, trainKind: 'calib', trainSpread: .02, tradeHorizon: 7, trainRetryMs: 3600000
 });
 
 function freshState(options = {}) {
@@ -25,7 +28,7 @@ function freshState(options = {}) {
   return {
     version: 1, createdAt: null, lastTick: null, lastMarketsRefresh: 0,
     account: { bankroll, cash: bankroll, peak: bankroll, halted: false, realized: 0, trades: 0, wins: 0 },
-    watch: [], positions: {}, history: [], log: [], model: null
+    watch: [], positions: {}, history: [], log: [], model: null, trainings: [], lastTrainAttempt: 0
   };
 }
 
@@ -86,9 +89,32 @@ function createAutopilot({ fetchJson, now = () => Date.now(), state = freshState
     return M.predictModel(model, { p: market.yesPrice, horizon: Math.max(1, daysLeftOf(market)), mom, neg: market.negRisk ? 1 : 0, cat: M.marketCategory(`${market.question} ${market.slug || ''}`) });
   }
 
+  // Self-training: the Prediction Lab's pipeline on fresh resolved markets, every retrainHours.
+  async function retrainIfDue(started) {
+    if (!(opts.train > 0)) return;
+    const model = state.model;
+    const age = model && Number.isFinite(model.trainedAt) ? started - model.trainedAt : Infinity;
+    if (age < opts.retrainHours * 3600000) return;
+    if (started - (state.lastTrainAttempt || 0) < opts.trainRetryMs) return;   // a failed attempt waits
+    state.lastTrainAttempt = started;
+    try {
+      const markets = await M.loadResolvedMarkets(fetchJson, { count: opts.train, now: started });
+      if (markets.length < 20) throw new Error(`only ${markets.length} resolved markets with price history`);
+      const { model: trained } = M.trainModel(markets, { kind: opts.trainKind, tradeHorizon: opts.tradeHorizon, spread: opts.trainSpread, config, source: `autopilot · ${markets.length} resolved markets`, now: started });
+      state.model = trained;
+      const gate = trained.gate;
+      state.trainings.unshift({ at: new Date(started).toISOString(), markets: markets.length, open: gate.open, robust: gate.robust, meanReturn: gate.meanReturn, ci: gate.ci, trades: gate.trades });
+      state.trainings.length = Math.min(state.trainings.length, 60);
+      say('TRAIN', `retrained on ${markets.length} resolved markets · evidence gate ${gate.open ? 'OPEN' : 'closed'} · ${gate.trades} out-of-sample trades, mean ${(gate.meanReturn * 100).toFixed(1)}% [${(gate.ci[0] * 100).toFixed(1)}%, ${(gate.ci[1] * 100).toFixed(1)}%]`);
+    } catch (error) {
+      say('ERROR', `training failed: ${error.message} (retry in ${Math.round(opts.trainRetryMs / 60000)} min)`);
+    }
+  }
+
   async function tick() {
     const started = now();
     if (!state.createdAt) state.createdAt = new Date(started).toISOString();
+    await retrainIfDue(started);
     if (!state.watch.length || started - state.lastMarketsRefresh > opts.refreshMarketsMs) {
       try { await refreshWatchlist(); } catch (error) { say('ERROR', `market list unavailable: ${error.message}`); }
     }
@@ -194,7 +220,7 @@ function saveState(file, state) {
 
 // ---------- CLI ----------
 function parseArgs(argv) {
-  const args = { state: 'data/autopilot.json', interval: 300, api: null, model: null, bankroll: undefined, once: false };
+  const args = { state: 'data/autopilot.json', interval: 300, api: null, model: null, bankroll: undefined, once: false, train: 0, retrain: 24 };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'once') args.once = true;
@@ -203,6 +229,8 @@ function parseArgs(argv) {
   }
   args.interval = Math.max(30, Number(args.interval) || 300);
   if (args.bankroll !== undefined) args.bankroll = Math.max(100, Number(args.bankroll) || DEFAULTS.bankroll);
+  args.train = Math.max(0, Math.min(6000, Math.round(Number(args.train) || 0)));
+  args.retrain = Math.max(1, Number(args.retrain) || 24);
   return args;
 }
 
@@ -214,8 +242,9 @@ async function main() {
     if (!M.isValidSavedModel(model)) throw new Error(`${args.model} is not a valid Metyu model`);
     state.model = model;
   }
-  const pilot = createAutopilot({ fetchJson: makeFetchJson({ api: args.api }), state, options: { bankroll: args.bankroll } });
-  const gate = M.modelMayTrade(state.model) ? 'evidence gate OPEN: may trade' : state.model ? 'evidence gate CLOSED: watch only' : 'no model: watch only';
+  const pilot = createAutopilot({ fetchJson: makeFetchJson({ api: args.api }), state, options: { bankroll: args.bankroll, train: args.train, retrainHours: args.retrain } });
+  const gate = (M.modelMayTrade(state.model) ? 'evidence gate OPEN: may trade' : state.model ? 'evidence gate CLOSED: watch only' : 'no model: watch only')
+    + (args.train ? ` · self-training on ${args.train} resolved markets every ${args.retrain} h` : '');
   console.log(`Metyu autopilot · virtual money only · ${gate} · state ${args.state} · every ${args.interval}s`);
   let stopping = false;
   const stop = () => { stopping = true; saveState(args.state, state); console.log('state saved, stopping'); process.exit(0); };
