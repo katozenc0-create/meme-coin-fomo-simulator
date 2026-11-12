@@ -508,3 +508,20 @@ test('advisor portfolio limits: total exposure and open count, like the Live Boa
   assert.ok(full.reasons.some(reason => /gross exposure cap/.test(reason)));
   assert.equal(M.advise({ ...base, portfolio: { openNotional: 0, openCount: 6 } }).action, 'HOLD', 'max 6 open positions');
 });
+
+test('reviewPosition: Metyu manages positions it recommended with the same exit rules', () => {
+  const day = 86400000;
+  const now = 1e12;
+  const base = { side: 'YES', leverage: 1, entry: .41, shares: 100, margin: 41, borrowed: 0, spread: .02, belief: .62, beliefVariance: .06, endTs: now + 40 * day };
+  assert.equal(M.reviewPosition({ ...base, lastYes: .45 }, { now }).action, 'HOLD', 'edge still there');
+  const gone = M.reviewPosition({ ...base, lastYes: .66 }, { now });
+  assert.equal(gone.action, 'CLOSE', 'price passed what Metyu believed');
+  assert.match(gone.reason, /edge gone/);
+  const levered = { ...base, leverage: 3, margin: 41 / 3, borrowed: 41 * 2 / 3 };
+  assert.equal(M.reviewPosition({ ...levered, lastYes: .45 }, { now }).action, 'HOLD');
+  const late = M.reviewPosition({ ...levered, lastYes: .45, endTs: now + 1 * day }, { now });
+  assert.equal(late.action, 'CLOSE', 'never hold leverage into resolution');
+  assert.match(late.reason, /resolution close/);
+  assert.equal(M.reviewPosition({ ...base, lastYes: .45, belief: undefined }, { now }), null, 'saved without a belief: no made-up verdict');
+  assert.equal(M.reviewPosition({ ...base, lastYes: .45, settled: { outcome: 'YES' } }, { now }), null);
+});

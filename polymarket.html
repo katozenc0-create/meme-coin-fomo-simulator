@@ -81,6 +81,8 @@
     .verdict .reasons { margin: 8px 0 0; color: var(--muted); font: 11px/1.5 Consolas, monospace; }
     .paper-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font: 12px Consolas, monospace; }
     .paper-row small { display: block; color: var(--muted); }
+    .paper-row .paper-review.close { color: var(--red); font-weight: 700; }
+    .paper-row .paper-review.hold { color: var(--muted); }
     .pm-link { display: inline-block; margin-top: 8px; color: var(--green); font: 700 12px Consolas, monospace; text-decoration: underline; }
     .paper-row .pm-link { margin-top: 2px; font-size: 11px; }
     .paper-row button { padding: 6px 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
@@ -939,6 +941,13 @@
             : `entry ${cents(item.entry)} · now ${cents(M.sidePriceOf(item, item.lastYes))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})${item.liquidation > 0 ? ` · liq ${cents(item.liquidation)}` : ''}${item.liveId ? '' : ' · manual price'}`;
           detail.style.color = marked.pnl >= 0 ? 'var(--green)' : 'var(--red)';
           info.append(title, detail);
+          const review = M.reviewPosition(item, { config: config() });
+          if (review) {
+            const verdict = document.createElement('small');
+            verdict.className = `paper-review ${review.action === 'CLOSE' ? 'close' : 'hold'}`;
+            verdict.textContent = `Metyu: ${review.action === 'CLOSE' ? 'close' : 'hold'} — ${review.reason}`;
+            info.append(verdict);
+          }
           if (item.url && !item.settled) info.append(polymarketLink(item.url, 'Polymarket ↗'));
           const remove = document.createElement('button');
           remove.textContent = item.settled ? 'Remove' : 'Close';
@@ -1008,7 +1017,9 @@
         if (!lastAdvice || lastAdvice.advice.action !== 'OPEN') return;
         const { advice, inputs } = lastAdvice;
         paper.unshift({
-          question: inputs.question, liveId: inputs.market ? inputs.market.id : null, url: inputs.market ? M.polymarketUrl(inputs.market) : null, cluster: M.marketCluster(inputs.market || { question: inputs.question }), side: advice.side, leverage: advice.leverage,
+          question: inputs.question, liveId: inputs.market ? inputs.market.id : null, url: inputs.market ? M.polymarketUrl(inputs.market) : null, cluster: M.marketCluster(inputs.market || { question: inputs.question }),
+          belief: advice.belief, beliefVariance: Number.isFinite(inputs.beliefVariance) && inputs.beliefVariance > 0 ? inputs.beliefVariance : M.CONFIDENCE_VARIANCE[inputs.confidence],
+          endTs: inputs.market && Number.isFinite(Date.parse(inputs.market.endDate)) ? Date.parse(inputs.market.endDate) : Date.now() + Math.max(0, inputs.daysLeft) * 86400000, side: advice.side, leverage: advice.leverage,
           entry: advice.entry, shares: advice.shares, margin: advice.maxLoss, borrowed: advice.notional - advice.maxLoss,
           liquidation: advice.liquidation, spread: inputs.spread, takerRate: inputs.market ? inputs.market.feeRate || 0 : 0, takerExponent: inputs.market ? inputs.market.feeExponent ?? 1 : 1, lastYes: inputs.yesPrice, openedAt: Date.now()
         });

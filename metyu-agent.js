@@ -738,6 +738,28 @@
     };
   }
 
+  /**
+   * Metyu's verdict on a position already held (a paper position from the advisor): the same
+   * decide() exit rules the Live Board applies to its own positions, given the probability Metyu
+   * held when the position was opened, the latest price and the time left. Returns
+   * { action: 'HOLD' | 'CLOSE', reason, edge } or null for a position saved without a belief.
+   */
+  function reviewPosition(item, { now = Date.now(), config = {} } = {}) {
+    if (!item || item.settled || !Number.isFinite(item.belief) || !Number.isFinite(item.lastYes)) return null;
+    const rules = { ...DEFAULT_CONFIG, momentumWeight: 0, fadeWeight: 0, stalenessWeight: 0, ...config };
+    const fee = feePerShare(item.takerRate || 0, item.lastYes, item.takerExponent ?? 1);
+    const position = { side: item.side, shares: item.shares, borrowed: item.borrowed || 0, interest: 0, margin: item.margin, leverage: item.leverage || 1, takerRate: 0 };
+    const timeLeft = Number.isFinite(item.endTs) ? clamp((item.endTs - now) / (30 * 86400000), 0, 1) : 1;
+    // Equity = peak: the account-level kill-switch is the advisor's job, not one position's.
+    const decision = decide({
+      yesPrice: item.lastYes, spread: (item.spread || 0) + 2 * fee, research: clampProb(item.belief),
+      researchVariance: Number.isFinite(item.beliefVariance) && item.beliefVariance > 0 ? item.beliefVariance : CONFIDENCE_VARIANCE.medium,
+      equity: 1, peakEquity: 1, position, volatility: .05, timeLeft
+    }, rules);
+    const action = decision.action === 'CLOSE' ? 'CLOSE' : 'HOLD';
+    return { action, reason: decision.reasons[decision.reasons.length - 1], edge: decision.edge };
+  }
+
   /** Normalises a Polymarket Gamma API market object into { id, question, yesPrice, ... }. */
   function parseGammaMarket(raw) {
     const parse = parseList;
@@ -1356,6 +1378,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, reviewPosition, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });
