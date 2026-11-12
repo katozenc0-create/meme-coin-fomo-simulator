@@ -166,6 +166,30 @@ test('training: control finds no edge, bias is detected, live pipeline, model fe
   assert.deepEqual(page.errors, []);
 });
 
+test('switching markets closes an open position; closing a paper position realizes it', async () => {
+  const page = await env.page();
+  const money = value => Number(String(value).replace(/[^0-9.-]/g, ''));
+  await page.goto(`${env.base}/polymarket.html`);
+  await page.uncheck('#autopilot');
+  await page.click('#startBtn');
+  await page.waitForTimeout(300);
+  await page.fill('#margin', '200');
+  await page.click('#buyYes');
+  assert.ok(money(await text(page, '#cash')) < 850, 'margin left the cash');
+  await page.selectOption('#marketSelect', '1');
+  const cash = money(await text(page, '#cash'));
+  assert.ok(cash > 900, `the position was closed back into cash, not discarded (cash ${cash})`);
+  assert.match(await text(page, '#log'), /market switched/);
+
+  await page.fill('#advPrice', '40'); await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
+  await page.click('#advAsk');
+  await page.click('#advTrack');
+  await page.locator('#paperList button').first().click();
+  assert.match(await text(page, '#paperList'), /CLOSED at/);
+  assert.notEqual(await text(page, '#paperRealized'), '$0', 'the closed position counts in realized P&L');
+  assert.deepEqual(page.errors, []);
+});
+
 test('lab layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/polymarket.html`);

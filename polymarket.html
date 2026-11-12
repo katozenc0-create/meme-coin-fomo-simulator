@@ -216,7 +216,7 @@
           <div class="metric"><span>Evidence gate</span><strong id="trainGate">—</strong></div>
           <div class="metric"><span>Out-of-sample return per $1</span><strong id="trainEvidence">—</strong></div>
           <div class="metric"><span>Per test block</span><strong id="trainFolds">—</strong></div>
-          <div class="metric"><span>Stress · 2× spread</span><strong id="trainStress">—</strong></div>
+          <div class="metric"><span>Stress · 2× spread (min +2¢)</span><strong id="trainStress">—</strong></div>
           <div class="metric"><span>Test Brier · crowd → model</span><strong id="trainBrier">—</strong></div>
           <div class="metric"><span>Test log loss · crowd → model</span><strong id="trainLogLoss">—</strong></div>
           <div class="table-scroll"><table><thead><tr><th>Price bin</th><th>Samples</th><th>Crowd said</th><th>Happened</th><th>Model says</th></tr></thead><tbody id="trainReliability"></tbody></table></div>
@@ -310,6 +310,11 @@
 
       function newMarket() {
         clearInterval(timer); timer = null;
+        // Never discard an open position (its margin already left the cash): close it at market.
+        if (state && state.position && state.step >= 0 && !state.done) {
+          close('closed: market switched');
+          updateAccount();
+        }
         const meta = markets[Number($('#marketSelect').value) || 0];
         const seed = Math.floor(Math.random() * 2 ** 31);
         const sim = M.createMarket({ seed, steps: STEPS + 1, startProb: meta.yesPrice });
@@ -630,6 +635,7 @@
       }
 
       function fillAdvisorMarkets(list) {
+        const previous = selectedAdvisorMarket();
         advisorMarkets = list;
         const select = $('#advMarket');
         const manual = document.createElement('option');
@@ -641,6 +647,8 @@
           option.textContent = `${market.question.slice(0, 70)} · ${cents(market.yesPrice)}`;
           return option;
         }));
+        const keep = previous ? list.findIndex(market => market.id === previous.id) : -1;
+        select.value = keep >= 0 ? String(keep) : 'manual';
       }
 
       function daysUntil(endDate) {
@@ -750,22 +758,8 @@
         throw new Error('no asks in response');
       }
 
-      // 3-day momentum exactly as the rich model was trained on it: price now minus the price
-      // three days ago, from the market's CLOB history (cached; refreshed every 6 hours).
-      const momentumCache = new Map();
-      async function threeDayMomentum(tokenId, priceNow) {
-        if (!tokenId) return 0;
-        let entry = momentumCache.get(tokenId);
-        if (!entry || Date.now() - entry.at > 6 * 3600 * 1000) {
-          try {
-            const data = await M.fetchJson([`/api/polymarket/history?token_id=${encodeURIComponent(tokenId)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(tokenId)}&interval=max&fidelity=720`]);
-            entry = { at: Date.now(), history: M.normaliseHistory(data) };
-          } catch (error) { entry = { at: Date.now(), history: [] }; }
-          momentumCache.set(tokenId, entry);
-        }
-        const before = M.priceAt(entry.history, Date.now() / 1000 - 3 * 86400);
-        return before === null ? 0 : priceNow - before;
-      }
+      // 3-day momentum exactly as the rich model was trained on it (shared with the Live Board).
+      const threeDayMomentum = M.createMomentumTracker(M.fetchJson);
 
       let adviceSeq = 0;
       async function askMetyu() {
@@ -810,7 +804,7 @@
 
       function markPaper(item) {
         if (item.settled) return { pnl: item.settled.pnl, returnOnMargin: item.settled.pnl / item.margin, mark: item.side === item.settled.outcome ? 1 : 0 };
-        const position = { side: item.side, shares: item.shares, borrowed: item.borrowed, interest: 0, margin: item.margin };
+        const position = { side: item.side, shares: item.shares, borrowed: item.borrowed, interest: 0, margin: item.margin, takerRate: item.takerRate || 0 };
         return M.markPosition(position, item.lastYes, { spread: item.spread });
       }
 
@@ -836,14 +830,24 @@
           const title = document.createElement('span');
           title.textContent = `${item.side} ${item.leverage}x · ${item.question.slice(0, 60)}`;
           const detail = document.createElement('small');
-          detail.textContent = item.settled
+          detail.textContent = item.settled && item.settled.outcome === 'CLOSED'
+            ? `CLOSED at ${cents(M.sidePriceOf(item, item.settled.closedAt))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)}) realized`
+            : item.settled
             ? `RESOLVED ${item.settled.outcome} · ${item.side === item.settled.outcome ? 'won' : 'lost'} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)}) realized`
             : `entry ${cents(item.entry)} · now ${cents(M.sidePriceOf(item, item.lastYes))} · ${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)} (${pct(marked.returnOnMargin)})${item.liquidation > 0 ? ` · liq ${cents(item.liquidation)}` : ''}${item.liveId ? '' : ' · manual price'}`;
           detail.style.color = marked.pnl >= 0 ? 'var(--green)' : 'var(--red)';
           info.append(title, detail);
           const remove = document.createElement('button');
           remove.textContent = item.settled ? 'Remove' : 'Close';
-          remove.addEventListener('click', () => { paper.splice(index, 1); saveStore(); renderPaper(); });
+          remove.addEventListener('click', () => {
+            if (item.settled) { paper.splice(index, 1); }
+            else {
+              // Closing realizes the P&L at the current mark (it would otherwise vanish from the record).
+              item.settled = { outcome: 'CLOSED', pnl: markPaper(item).pnl, at: Date.now(), closedAt: item.lastYes };
+            }
+            saveStore();
+            renderPaper();
+          });
           row.append(info, remove);
           return row;
         }));
@@ -902,7 +906,7 @@
         paper.unshift({
           question: inputs.question, liveId: inputs.market ? inputs.market.id : null, side: advice.side, leverage: advice.leverage,
           entry: advice.entry, shares: advice.shares, margin: advice.maxLoss, borrowed: advice.notional - advice.maxLoss,
-          liquidation: advice.liquidation, spread: inputs.spread, lastYes: inputs.yesPrice, openedAt: Date.now()
+          liquidation: advice.liquidation, spread: inputs.spread, takerRate: inputs.market ? inputs.market.feeRate || 0 : 0, lastYes: inputs.yesPrice, openedAt: Date.now()
         });
         paper = paper.slice(0, 30);
         saveStore();
@@ -919,7 +923,7 @@
       let lastTraining = null;
       try {
         const saved = JSON.parse(localStorage.getItem(MODEL_KEY) || 'null');
-        if (saved && Array.isArray(saved.cov) && ((saved.kind === 'rich' && Array.isArray(saved.beta)) || (Number.isFinite(saved.a) && Number.isFinite(saved.b)))) trainedModel = saved;
+        if (M.isValidSavedModel(saved)) trainedModel = saved;
       } catch (error) { /* ignore */ }
 
       const getJson = M.fetchJson;
@@ -933,7 +937,7 @@
         const seen = new Set();
         const day = 86400000;
         const isoDay = time => new Date(time).toISOString().slice(0, 10);
-        for (let window = 0; resolved.length < count && window < 120; window += 1) {
+        for (let window = 0; resolved.length < count && window < 400; window += 1) {
           const endMax = Date.now() - day - window * 6 * day;
           const from = isoDay(endMax - day);
           const to = isoDay(endMax);
@@ -1031,7 +1035,7 @@
           let label;
           if (source === 'live') {
             markets = await loadLiveTrainingMarkets(count, report);
-            label = `${markets.length} resolved Polymarket markets`;
+            label = `${markets.length} resolved Polymarket markets${markets.length < count * .9 ? ` (asked for ${count}; that is all the sampled windows held with price history)` : ''}`;
             if (markets.length < 20) throw new Error(`only ${markets.length} markets with price history`);
           } else {
             const bias = source === 'sim20' ? .2 : source === 'sim35' ? .35 : 0;
@@ -1043,7 +1047,8 @@
           const kind = $('#trainKind').value === 'rich' ? 'rich' : 'calib';
           const spread = Math.max(0, Math.min(.1, (Number($('#trainSpread').value) || 0) / 100));
           const options = { kind, tradeHorizon, spread, bankroll: 1000, config: config() };
-          const result = M.walkForward(markets, { ...options, stressSpreads: [spread * 2] });
+          const stressSpread = Math.max(spread * 2, spread + .02);    // at 0c, "2x" would be no stress at all
+          const result = M.walkForward(markets, { ...options, stressSpreads: [stressSpread] });
           const stress = { evidence: result.stress[0] };
           lastTraining = {
             model: result.model, source: label, trainedAt: Date.now(),
