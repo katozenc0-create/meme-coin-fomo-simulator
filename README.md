@@ -271,6 +271,23 @@ The GitHub Actions workflow `autopilot.yml` runs it every 15 minutes next to the
 - each strategy's gate;
 - the last trades and the log.
 
+## Metyu 2.0: real time (virtual money)
+
+GitHub Actions runs a tick every 15 minutes. For **real time**, run `scripts/realtime.sh` on any always-on machine: a home server, a Raspberry Pi or a small VPS.
+- **Every minute:** a crypto tick. Exits are checked on 1-minute bars, and a stop hit inside the current minute closes the position at once. Signals come on each new hourly bar.
+- **Every 5 minutes:** Polymarket, the account sync, and a publish to the `autopilot-data` branch, so the Live Board on GitHub Pages shows it ("Live · real time").
+
+```bash
+GITHUB_REPOSITORY=<owner>/<repo> GH_TOKEN=<fine-grained token, this repo only, Contents: read and write> npm run realtime
+```
+
+To run it as a service, use `deploy/metyu-realtime.service` (hardened systemd; the steps are in the file). Then set the repository variable **`METYU_RUNNER=external`** so the GitHub workflow stops writing the same state.
+
+The real-time runner is meant for your own machine. GitHub Actions is used for scheduled ticks only, not as an always-on server.
+
+- **Emergency pause from the phone:** in the repository, go to Settings → Secrets and variables → Actions → Variables and set `METYU_PAUSE` to `true`. For the always-on machine, set `METYU_PAUSE=true` in its environment. No new positions open, and open ones are still managed to their exits. Delete the variable (or set it to `false`) to resume.
+- **Training period:** 3 days. The board shows "Training · day N/3". Real money also needs 30+ trades and a 95% interval above zero. See the real-money lock below and `CHANGELOG.md`.
+
 ## Your exchange account on the board (view-only, encrypted) and the real-money lock
 
 `account-sync.js` links your real Coinbase or Binance account to the Live Board **read-only**:

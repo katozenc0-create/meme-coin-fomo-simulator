@@ -202,7 +202,7 @@
       <div class="term-head">
         <img class="term-logo" src="icons/icon.svg" alt="" />
         <div>
-          <h3 class="term-title">Metyu Terminal<span class="term-chip on">v1 · virtual</span></h3>
+          <h3 class="term-title">Metyu Terminal<span class="term-chip on">v2 · virtual</span></h3>
           <div class="term-run paused" id="tRun"><b>paused</b> · <span id="tClock">--:--:--</span></div>
           <div class="term-tag" id="tTag">every trade gets a reason</div>
         </div>
@@ -711,6 +711,21 @@
       }
 
       // ---------- autopilot (server-side, read-only view) ----------
+      // The owner chose a 3-day training period (metyu-exchange.js TRAINING_DAYS); the evidence bar
+      // (30+ trades, interval above 0) still decides, however long that takes.
+      const TRAINING_DAYS = 3;
+      // How alive an autopilot is, from its last tick: the real-time runner (scripts/realtime.sh)
+      // ticks every minute and publishes every 5; GitHub Actions ticks every 15 minutes.
+      function liveness(lastTick, paused) {
+        const age = lastTick ? (Date.now() - Date.parse(lastTick)) / 60000 : Infinity;
+        const state = age < 7 ? 'Live · real time' : age < 40 ? 'Running 24/7 · every 15 min' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`;
+        return paused ? `${state} · PAUSED by the owner (no new positions)` : state;
+      }
+      const trainingDay = createdAt => (createdAt ? Math.floor((Date.now() - Date.parse(createdAt)) / 86400000) + 1 : 1);
+      const trainingText = (createdAt, days) => {
+        const day = trainingDay(createdAt);
+        return day > days ? `Training done (${days} days) · day ${day}` : `Training · day ${day}/${days}`;
+      };
       const signed = (element, value, text) => { element.textContent = text; element.className = value > 0 ? 'positive' : value < 0 ? 'negative' : ''; };
       // Where the 24/7 autopilot publishes its status: the local server.py, or, on GitHub Pages
       // (owner.github.io/repo), the autopilot-data branch that the GitHub Actions workflow writes.
@@ -752,14 +767,13 @@
         const learningOpen = status.positions.filter(held => held.learning).length;
         const learningEver = learningOpen + (status.history || []).filter(trade => trade.learning).length;
         // The GitHub Actions autopilot ticks every 15 minutes: "running" means seen within ~40 minutes.
-        $('#apStatus').textContent = `${age < 40 ? 'Running 24/7' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : learningEver ? 'learning book: small unlevered test trades (evidence gate closed)' : 'watching only (no model with an open evidence gate)'}`;
+        $('#apStatus').textContent = `${liveness(status.lastTick, status.paused)} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : learningEver ? 'learning book: small unlevered test trades (evidence gate closed)' : 'watching only (no model with an open evidence gate)'}`;
         const forward = status.forward && status.forward.learning;
         $('#apForward').hidden = !forward;
         if (forward) {
-          const day = status.createdAt ? Math.floor((Date.now() - Date.parse(status.createdAt)) / 86400000) + 1 : 1;
           $('#apForward').textContent = forward.trades
-            ? `Forward test · day ${day}/14 · ${forward.trades} closed learning trades · ${forward.wins} won · mean ${(forward.meanReturn * 100).toFixed(1)}% per $1 · 95% [${(forward.ci[0] * 100).toFixed(1)}%, ${(forward.ci[1] * 100).toFixed(1)}%] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
-            : `Forward test · day ${day}/14 · no closed learning trades yet`;
+            ? `${trainingText(status.createdAt, TRAINING_DAYS)} · forward test: ${forward.trades} closed learning trades · ${forward.wins} won · mean ${(forward.meanReturn * 100).toFixed(1)}% per $1 · 95% [${(forward.ci[0] * 100).toFixed(1)}%, ${(forward.ci[1] * 100).toFixed(1)}%] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
+            : `${trainingText(status.createdAt, TRAINING_DAYS)} · forward test: no closed learning trades yet`;
           $('#apForward').className = `trades-summary ${forward.trades && forward.meanReturn > 0 ? 'positive' : forward.trades && forward.meanReturn < 0 ? 'negative' : ''}`;
         }
         signed($('#apEquity'), equityNow - account.bankroll, `${formatMoney(equityNow)}`);
@@ -888,14 +902,13 @@
         const openGates = strategies.filter(([, s]) => s.gate.open).length;
         const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
         const learningEver = status.positions.some(p => p.book === 'learning') || (status.history || []).some(t => t.learning);
-        $('#exStatus').textContent = `${age < 40 ? 'Running 24/7' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · ${Object.keys(status.marks || {}).length} coins, live Coinbase prices · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
+        $('#exStatus').textContent = `${liveness(status.lastTick, status.paused)} · ${Object.keys(status.marks || {}).length} coins, live Coinbase prices · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
         const forward = status.forward && status.forward.learning;
         $('#exForward').hidden = !forward;
         if (forward) {
-          const day = status.createdAt ? Math.floor((Date.now() - Date.parse(status.createdAt)) / 86400000) + 1 : 1;
           $('#exForward').textContent = forward.trades
-            ? `Forward test · day ${day}/14 · ${forward.trades} closed learning trades · ${forward.wins} won · mean ${rText(forward.meanR)} per trade · 95% [${rText(forward.ci[0])}, ${rText(forward.ci[1])}] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
-            : `Forward test · day ${day}/14 · no closed learning trades yet`;
+            ? `${trainingText(status.createdAt, status.trainingDays || TRAINING_DAYS)} · forward test: ${forward.trades} closed learning trades · ${forward.wins} won · mean ${rText(forward.meanR)} per trade · 95% [${rText(forward.ci[0])}, ${rText(forward.ci[1])}] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
+            : `${trainingText(status.createdAt, status.trainingDays || TRAINING_DAYS)} · forward test: no closed learning trades yet`;
           $('#exForward').className = `trades-summary ${forward.trades && forward.meanR > 0 ? 'positive' : forward.trades && forward.meanR < 0 ? 'negative' : ''}`;
         }
         $('#exStats').hidden = false;

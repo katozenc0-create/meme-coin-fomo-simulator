@@ -1,0 +1,48 @@
+# Metyu in REAL TIME (virtual money): crypto ticks every minute, Polymarket + account + board every
+# 5 minutes, published to the autopilot-data branch so the Live Board on GitHub Pages shows it.
+# Install on an always-on Linux machine (home server, Raspberry Pi, small VPS):
+#   sudo useradd --system --create-home metyu
+#   sudo git clone https://github.com/<owner>/<repo>.git /opt/meme-coin-fomo-simulator
+#   sudo chown -R metyu: /opt/meme-coin-fomo-simulator
+#   sudo install -d -m 700 -o metyu /etc/metyu
+#   sudo install -m 600 -o metyu /dev/null /etc/metyu/secrets.env   # then edit it (see below)
+#   sudo cp deploy/metyu-realtime.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now metyu-realtime
+#   journalctl -u metyu-realtime -f
+# /etc/metyu/secrets.env (KEY=value lines, readable by the metyu user only):
+#   GITHUB_REPOSITORY=<owner>/<repo>
+#   GH_TOKEN=<fine-grained token: this repository only, Contents: read and write>
+#   METYU_BOARD_PASSPHRASE=... and a VIEW-ONLY exchange key (optional, see SECURITY.md)
+# Then set the repository variable METYU_RUNNER=external (Settings -> Secrets and variables ->
+# Actions -> Variables) so the GitHub workflow stops writing the same state.
+[Unit]
+Description=Metyu real-time autopilot (virtual money)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=metyu
+WorkingDirectory=/opt/meme-coin-fomo-simulator
+EnvironmentFile=/etc/metyu/secrets.env
+ExecStart=/bin/bash scripts/realtime.sh
+Restart=always
+RestartSec=30
+KillSignal=SIGTERM
+TimeoutStopSec=60
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/opt/meme-coin-fomo-simulator/data
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -180,9 +180,10 @@ test('real-money lock: locked with a list of unmet conditions; never "ready" wit
   assert.equal(almost.met, 5);
   assert.deepEqual(almost.conditions.filter(c => !c.ok).map(c => c.id), ['approval']);
   assert.equal(X.liveReadiness({ ...base, approval: { by: 'owner' } }).ready, true);
-  const fresh = X.liveReadiness({ forward: { trades: 3, ci: [-.5, .9] }, createdAt: '2026-11-28T00:00:00Z', account: { peak: 10000, equity: 9800 }, accountLink: null, now });
+  const fresh = X.liveReadiness({ forward: { trades: 3, ci: [-.5, .9] }, createdAt: '2026-11-29T12:00:00Z', account: { peak: 10000, equity: 9800 }, accountLink: null, now });
   assert.deepEqual(fresh.conditions.filter(c => !c.ok).map(c => c.id), ['days', 'trades', 'edge', 'account', 'approval']);
-  assert.match(fresh.conditions[0].text, /now 3/);
+  assert.match(fresh.conditions[0].text, /forward test ran 3\+ days \(now 1\)/, 'the owner chose a 3-day training period');
+  assert.equal(X.TRAINING_DAYS, 3);
   assert.equal(X.liveReadiness({ ...base, account: { peak: 10000, equity: 8900 } }).conditions.find(c => c.id === 'risk').ok, false, 'a 11% drawdown blocks');
   assert.equal(X.liveReadiness({ ...base, accountLink: { linked: true, viewOnly: false } }).conditions.find(c => c.id === 'account').ok, false);
   assert.deepEqual(X.LIVE_LIMITS, { maxOrderUsd: 25, maxDailyLossUsd: 50, maxOpenUsd: 100, maxLeverage: 1 });

@@ -424,33 +424,37 @@
    * liquidation, stop, target, time stop, or still open with a (possibly trailed) stop. A bar that
    * opens beyond the stop fills at its open (a gap); a bar that touches both stop and target is
    * counted as a stop (conservative). After +1.5 ATR the stop moves to break-even, and after that it
-   * trails 2.5 ATR behind the best close (chandelier). Deterministic: replaying again gives the
-   * same answer, so the live autopilot can re-run it every tick.
+   * trails 2.5 ATR behind the best close (chandelier). Deterministic.
+   * It resumes from the position's saved progress (`stop`, `best`, `checkedUntil`), so the live
+   * autopilot can walk 1-minute bars incrementally. `trail: false` checks a still-forming bar for
+   * stop / target / liquidation hits without trailing on its unfinished close.
    */
-  function replayPosition(position, bars, { now = Infinity, costs = COSTS, timeStopHours = RULES.timeStopHours } = {}) {
+  function replayPosition(position, bars, { now = Infinity, costs = COSTS, timeStopHours = RULES.timeStopHours, trail = true } = {}) {
     const long = position.side === 'LONG';
     const atrValue = position.atr;
-    let stop = position.initialStop;
-    let best = position.entry;
+    let stop = finite(position.stop) ? position.stop : position.initialStop;
+    let best = finite(position.best) ? position.best : position.entry;
     let lastPrice = position.entry;
+    const from = Math.max(position.openedAt, finite(position.checkedUntil) ? position.checkedUntil : -Infinity);
     for (const bar of bars) {
-      if (bar.t < position.openedAt) continue;
+      if (bar.t < from) continue;
       lastPrice = bar.c;
       const liq = position.liquidation;
       const hitStop = long ? bar.l <= stop : bar.h >= stop;
       const hitLiq = long ? bar.l <= liq : bar.h >= liq;
       const hitTarget = finite(position.target) && (long ? bar.h >= position.target : bar.l <= position.target);
-      if (hitLiq && (long ? liq >= stop : liq <= stop)) return { exit: { price: liq, at: bar.t, reason: 'liquidated' }, stop, lastPrice };
+      if (hitLiq && (long ? liq >= stop : liq <= stop)) return { exit: { price: liq, at: bar.t, reason: 'liquidated' }, stop, best, lastPrice };
       if (hitStop) {
         const gap = long ? bar.o < stop : bar.o > stop;
         const price = gap ? bar.o : stop;
         const reason = stop === position.initialStop ? 'stop loss' : 'trailing stop';
-        return { exit: { price, at: bar.t, reason: gap ? `${reason} (gap)` : reason }, stop, lastPrice };
+        return { exit: { price, at: bar.t, reason: gap ? `${reason} (gap)` : reason }, stop, best, lastPrice };
       }
       if (hitTarget) {
         const gap = long ? bar.o > position.target : bar.o < position.target;
-        return { exit: { price: gap ? bar.o : position.target, at: bar.t, reason: 'take profit' }, stop, lastPrice };
+        return { exit: { price: gap ? bar.o : position.target, at: bar.t, reason: 'take profit' }, stop, best, lastPrice };
       }
+      if (!trail) continue;
       // Trail only on closes, after the bar is done.
       best = long ? Math.max(best, bar.c) : Math.min(best, bar.c);
       if (finite(atrValue) && atrValue > 0) {
@@ -460,9 +464,9 @@
           stop = long ? Math.max(stop, trail) : Math.min(stop, trail);
         }
       }
-      if ((bar.t - position.openedAt) / HOUR >= timeStopHours && bar.t <= now) return { exit: { price: bar.c, at: bar.t, reason: 'time stop' }, stop, lastPrice };
+      if ((bar.t - position.openedAt) / HOUR >= timeStopHours && bar.t <= now) return { exit: { price: bar.c, at: bar.t, reason: 'time stop' }, stop, best, lastPrice };
     }
-    return { exit: null, stop, lastPrice };
+    return { exit: null, stop, best, lastPrice };
   }
   /** Unrealised result at `price`, after costs as if closed now. */
   function markPosition(position, price, now, costs = COSTS) {
@@ -562,7 +566,10 @@
    * starting at LIVE_LIMITS. `forward` is forwardEvidence() over the closed trades (in R).
    */
   const LIVE_LIMITS = Object.freeze({ maxOrderUsd: 25, maxDailyLossUsd: 50, maxOpenUsd: 100, maxLeverage: 1 });
-  function liveReadiness({ forward, createdAt, account, accountLink, now = Date.now(), approval = null, minDays = 14 }) {
+  // The training period before real money may even be considered (the owner chose 3 days); the
+  // trade count and the confidence interval still have to be met, however long it takes.
+  const TRAINING_DAYS = 3;
+  function liveReadiness({ forward, createdAt, account, accountLink, now = Date.now(), approval = null, minDays = TRAINING_DAYS }) {
     const days = createdAt ? (now - Date.parse(createdAt)) / DAY : 0;
     const drawdown = account && account.peak > 0 ? 1 - (account.equity ?? account.cash) / account.peak : 0;
     const conditions = [
@@ -578,7 +585,7 @@
   }
 
   return {
-    LIVE_LIMITS, liveReadiness,
+    LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

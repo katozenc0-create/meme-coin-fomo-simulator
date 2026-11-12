@@ -44,6 +44,21 @@ Real orders are locked. The board lists six conditions, and all of them must hol
 
 Even then, the first orders are capped at **$25 per order, $100 open, $50 maximum daily loss, and no leverage**. Writing the order adapter (a separate trading key, kept apart from the view-only key) is a deliberate, reviewed step at that point, not something that switches on by itself.
 
+## Operations and supply chain
+
+- **Pinned actions:** every GitHub Action is pinned to a commit SHA, and Dependabot proposes updates. CodeQL scans the JavaScript and Python code on every pull request and weekly.
+- **Shared publish/restore:** the workflow and the always-on runner use the same `scripts/publish-state.sh` and `scripts/restore-state.sh`. The token travels in an HTTP header, never in a URL. Publishing refuses unsealed balances and secret-looking content.
+- **Least privilege on the always-on machine:** `scripts/realtime.sh` gives each process only what it needs:
+  - the trading ticks get no secrets;
+  - the account sync gets the view-only exchange key;
+  - only the publisher gets the GitHub token.
+- **Systemd hardening:** `deploy/metyu-realtime.service` runs as an unprivileged user with a read-only system, write access to `data/` only, no capabilities and a `0077` umask.
+- **Emergency pause:** the `METYU_PAUSE=true` repository variable stops new positions from the phone. `METYU_RUNNER=external` keeps a single writer of the state.
+- **Repository settings you should turn on:**
+  - branch protection on `main` (require the `test` and `e2e` checks);
+  - GitHub secret scanning with push protection;
+  - two-factor authentication on your GitHub and exchange accounts.
+
 ## Reporting a problem
 
 Open a private security advisory on GitHub (Security → Advisories → Report a vulnerability). Do not paste a key into an issue. If a key was ever exposed, revoke it at the exchange first.
