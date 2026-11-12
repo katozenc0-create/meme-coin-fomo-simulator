@@ -120,7 +120,7 @@
       let trainedModel = null;
       try {
         const saved = JSON.parse(localStorage.getItem(MODEL_KEY) || 'null');
-        if (saved && Array.isArray(saved.cov) && ((saved.kind === 'rich' && Array.isArray(saved.beta)) || (Number.isFinite(saved.a) && Number.isFinite(saved.b)))) trainedModel = saved;
+        if (M.isValidSavedModel(saved)) trainedModel = saved;
       } catch (error) { /* ignore */ }
 
       function cfg() { return { maxLeverage: Number($('#maxLev').value) || 3, maxPositionPct: .1 }; }
@@ -131,7 +131,12 @@
         const bankroll = Math.max(100, Number($('#bankroll').value) || 10000);
         return { bankroll, cash: bankroll, peak: bankroll, realized: 0, trades: 0, wins: 0, resolved: 0, halted: false, curve: [bankroll], history: [] };
       }
+      let lastSave = 0;
+      function saveSoon() {
+        if (Date.now() - lastSave > 5000) save();
+      }
       function save() {
+        lastSave = Date.now();
         try { localStorage.setItem(STORE_KEY, JSON.stringify({ account: { ...account, cash: account.cash + slots.reduce((sum, slot) => sum + (slot.position ? slot.position.margin : 0), 0) } })); } catch (error) { /* ignore */ }
       }
       function load() {
@@ -174,7 +179,7 @@
       }
 
       function liveSlot(market) {
-        return { kind: 'live', id: market.id, question: market.question, spread: market.spread, tokenIds: market.tokenIds, endDate: market.endDate, prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
+        return { kind: 'live', id: market.id, question: market.question, spread: market.spread, feeRate: market.feeRate || 0, tokenIds: market.tokenIds, endDate: market.endDate, prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
       }
 
       const getJson = M.fetchJson;
@@ -202,13 +207,14 @@
           return;
         }
         const yesPrice = slot.prices[slot.prices.length - 1];
-        slot.position = M.openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread: slot.spread });
+        slot.position = M.openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread: slot.spread, takerRate: slot.feeRate || 0 });
         slot.position.openedAt = new Date().toISOString();
         slot.position.fairAtEntry = decision.fair;
         account.cash -= margin;
         slot.last = `bought ${decision.side} @ ${cents(slot.position.entry)} · ${decision.leverage}x`;
         slot.flash = true;
         feed('OPEN', `${slot.question} — ${decision.side} ${decision.leverage}x @ ${cents(slot.position.entry)} · ${formatMoney(margin)} margin · ${guard.reason || decision.reasons[decision.reasons.length - 1]}`);
+        save();
       }
 
       function closeOn(slot, kind, payout, note, exitPrice = null) {
@@ -231,9 +237,12 @@
         slot.last = `${kind.toLowerCase()} ${pnl >= 0 ? '+' : ''}${formatMoney(pnl)}`;
         slot.flash = true;
         feed(kind, `${slot.question} — ${position.side} ${pnl >= 0 ? '+' : ''}${formatMoney(pnl)} · ${note}`);
+        save();
       }
 
-      function decideOn(slot, research, researchVariance, timeLeft) {
+      // allowOpen: false when nothing justifies a new position (live mode without an open evidence
+      // gate); open positions are still managed and closed.
+      function decideOn(slot, research, researchVariance, timeLeft, allowOpen = true) {
         const yesPrice = slot.prices[slot.prices.length - 1];
         if (slot.position) {
           M.accrueInterest(slot.position, 1 / 365, M.DEFAULT_CONFIG.annualInterest);
@@ -243,16 +252,24 @@
         const eq = equity();
         account.peak = Math.max(account.peak, eq);
         const decision = M.decide({
-          yesPrice, spread: slot.spread, history: slot.prices.slice(-40), research, researchVariance,
+          // taker fee per share is a cost like half the spread
+          yesPrice, spread: slot.spread + 2 * M.feePerShare(slot.feeRate || 0, yesPrice), history: slot.prices.slice(-40), research, researchVariance,
           equity: eq, peakEquity: account.peak, position: slot.position, volatility: .05, timeLeft
         }, cfg());
         slot.fairs.push(decision.fair);
         slot.edge = decision.edge;
-        if (account.halted) return;
-        if (decision.action === 'HALT') { account.halted = true; feed('HALT', 'kill-switch: drawdown limit hit — no new trades until reset'); return; }
+        const killSwitch = decision.action === 'HALT' || (decision.reasons || []).some(reason => reason.startsWith('KILL-SWITCH'));
+        if (killSwitch && !account.halted) {
+          // The kill-switch exists to flatten: close every open position, not just this slot's.
+          account.halted = true;
+          const open = slots.filter(item => item.position);
+          open.forEach(item => closeOn(item, 'CLOSE', markOf(item), 'kill-switch: drawdown limit hit'));
+          feed('HALT', `kill-switch: drawdown limit hit — flattened ${open.length} position(s); no new trades until reset`);
+          return;
+        }
         if (slot.manualHold > 0) { slot.manualHold -= 1; if (!slot.position) return; }
-        if (decision.action === 'OPEN' && !slot.position) openOn(slot, decision);
-        else if (decision.action === 'CLOSE' && slot.position) closeOn(slot, 'CLOSE', Math.max(0, M.markPosition(slot.position, yesPrice, { spread: slot.spread }).equity), decision.reasons[decision.reasons.length - 1]);
+        if (decision.action === 'OPEN' && !slot.position && allowOpen && !account.halted) openOn(slot, decision);
+        else if (decision.action === 'CLOSE' && slot.position) closeOn(slot, 'CLOSE', markOf(slot), decision.reasons[decision.reasons.length - 1]);
       }
 
       function settle(slot, outcome) {
@@ -286,6 +303,9 @@
       }
 
       // ---------- live poll ----------
+      // 3-day momentum exactly as the rich model was trained on it (shared with the Prediction lab).
+      const threeDayMomentum = M.createMomentumTracker(M.fetchJson);
+
       async function loadLiveSlots() {
         const data = await getJson(['/api/polymarket/markets?limit=40', 'https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=40&order=volume24hr&ascending=false']);
         const rows = Array.isArray(data) ? data : data.markets || [];
@@ -299,13 +319,28 @@
         return markets.map(liveSlot);
       }
 
+      let tickGeneration = 0;
+      let liveTickRunning = false;
       async function liveTick() {
+        if (liveTickRunning) return;            // a slow tick must not overlap the next one
+        liveTickRunning = true;
+        const generation = tickGeneration;
+        try {
+          await liveTickBody(generation);
+        } finally {
+          liveTickRunning = false;
+        }
+      }
+      async function liveTickBody(generation) {
+        const stale = () => generation !== tickGeneration;   // paused, reset or switched meanwhile
         $('#statusNote').textContent = 'Refreshing live prices…';
         let refreshed = 0;
-        for (const slot of slots) {
+        for (const slot of slots.slice()) {
+          if (stale()) return;
           if (slot.done) continue;
           try {
             const data = await getJson([`/api/polymarket/market?id=${encodeURIComponent(slot.id)}`, `https://gamma-api.polymarket.com/markets/${encodeURIComponent(slot.id)}`]);
+            if (stale()) return;
             const raw = data.market || data;
             const resolution = M.parseGammaResolution(raw);
             if (resolution) { if (resolution.outcome) settle(slot, resolution.outcome); continue; }
@@ -316,19 +351,24 @@
             slot.spread = fresh.spread;
             refreshed += 1;
             const daysLeft = Number.isFinite(Date.parse(slot.endDate)) ? Math.max(0, (Date.parse(slot.endDate) - Date.now()) / 86400000) : 30;
-            if (trainedModel && trainedModel.gate && trainedModel.gate.open) {
+            slot.feeRate = fresh.feeRate || 0;
+            if (M.modelMayTrade(trainedModel)) {
+              const mom = trainedModel.kind === 'rich' && slot.tokenIds ? await threeDayMomentum(slot.tokenIds.YES, fresh.yesPrice) : 0;
+              if (stale()) return;
               const prediction = M.predictModel(trainedModel, {
-                p: fresh.yesPrice, horizon: Math.max(1, daysLeft), mom: slot.prices.length > 7 ? fresh.yesPrice - slot.prices[slot.prices.length - 7] : 0,
+                p: fresh.yesPrice, horizon: Math.max(1, daysLeft), mom,
                 neg: fresh.negRisk ? 1 : 0, cat: M.marketCategory(`${fresh.question} ${fresh.slug || ''}`)
               });
               decideOn(slot, prediction.probability, prediction.variance, M.clamp(daysLeft / 30, 0, 1));
             } else {
-              decideOn(slot, null, null, M.clamp(daysLeft / 30, 0, 1));
+              // No trained model, or its evidence gate is closed: manage open positions, open none.
+              decideOn(slot, null, null, M.clamp(daysLeft / 30, 0, 1), false);
             }
           } catch (error) { slot.last = `refresh failed: ${error.message}`; }
         }
+        if (stale()) return;
         afterTick();
-        $('#statusNote').textContent = `${refreshed}/${slots.filter(slot => !slot.done).length} live prices refreshed at ${new Date().toLocaleTimeString()} · next in 30s · belief: ${trainedModel && trainedModel.gate && trainedModel.gate.open ? `trained model (${trainedModel.source || 'saved'}), evidence gate open` : trainedModel ? 'trained model saved but its evidence gate is closed → no trades' : 'market only (no trained model → no edge, no trades)'}`;
+        $('#statusNote').textContent = `${refreshed}/${slots.filter(slot => !slot.done).length} live prices refreshed at ${new Date().toLocaleTimeString()} · next in 30s · belief: ${M.modelMayTrade(trainedModel) ? `trained model (${trainedModel.source || 'saved'}), evidence gate open` : trainedModel ? 'trained model saved but its evidence gate is closed → no trades' : 'market only (no trained model → no edge, no trades)'}`;
       }
 
       // ---------- render ----------
@@ -428,7 +468,7 @@
         if (account.curve.length > 300) account.curve.shift();
         renderBoard();
         renderStats();
-        save();
+        saveSoon();
       }
 
       // ---------- controls ----------
@@ -469,6 +509,7 @@
 
       function pause() {
         running = false;
+        tickGeneration += 1;                    // any in-flight live tick stops touching the board
         clearInterval(timer);
         timer = null;
         $('#startBtn').disabled = false;

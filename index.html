@@ -240,7 +240,7 @@
       <section class="panel chart-panel">
         <div class="panel-top"><div><span class="coin-name">$FOMO / USD</span><div class="mini-label">BONDING CURVE · VIRTUAL SOL</div></div><span id="price" class="price">$0.00000001</span></div>
         <div class="chart-toolbar"><div class="tabs"><button class="tab" data-candle="2">1m</button><button class="tab active" data-candle="4">5m</button><button class="tab" data-candle="8">1h</button></div><span class="pair-state" id="pairState">● CURVE LIVE</span></div><div class="data-import"><span class="mini-label">LINE = CLOSE · CANDLES = OHLC</span><span id="ohlcLegend" class="data-source">OPEN / HIGH / LOW / CLOSE</span></div>
-        <div class="chart-wrap" id="chartWrap"><svg viewBox="0 0 900 360" preserveAspectRatio="none" aria-label="Meme coin price chart"><polygon id="chartFill" class="chart-fill" points="0,350 0,350"/><g id="candles" aria-label="Candlesticks"></g><polyline id="chartLine" class="chart-line" points="0,350"/></svg></div><div class="chart-hint">TAP OR CLICK ANYWHERE ON THE CHART TO SIMULATE A MARKET ENTRY</div>
+        <div class="chart-wrap" id="chartWrap"><svg viewBox="0 0 900 360" preserveAspectRatio="none" aria-label="Meme coin price chart"><polygon id="chartFill" class="chart-fill" points="0,350 0,350"/><g id="candles" aria-label="Candlesticks"></g><polyline id="chartLine" class="chart-line" points="0,350"/></svg></div><div class="chart-hint">TAP OR CLICK THE CHART TO BUY AT THE CURRENT PRICE</div>
         <div id="status" class="status">SYSTEM READY // press START TRADE to awaken the market</div>
         <div class="curve"><div class="curve-head"><span>Bonding curve progress</span><strong id="curvePercent">0.0%</strong></div><div class="curve-track"><div id="curveFill" class="curve-fill"></div></div></div>
       </section>
@@ -376,19 +376,19 @@
     }
     function slippageRate() { return Math.min(.25, .004 * scenario.volatility * (1 + positionSize / 1000)); }
 
-    function enterAtChartPoint(event) {
+    // Tapping the chart is a market order NOW: it fills at the latest price wherever you tap.
+    // (Filling at the tapped point would let you buy past lows after watching the pump.)
+    function enterAtChartPoint() {
       if (phase !== 'pumping' || positionOpen || !points.length) return;
-      const bounds = chartWrap.getBoundingClientRect();
-      const clickX = Math.max(0, Math.min(900, (event.clientX - bounds.left) / bounds.width * 900));
       let fillX;
       let fillY;
       let marketValue;
       if (historicalRecords.length && activeOhlc.length) {
-        const record = nearestByX(activeOhlc, clickX, item => item.x);
+        const record = activeOhlc[activeOhlc.length - 1];
         fillX = record.x; fillY = record.closeY; marketValue = record.close;
       } else {
-        const point = nearestByX(points, clickX, item => item[0]);
-        fillX = point[0]; fillY = point[1]; marketValue = valueAtY(point[1]);
+        const point = points[points.length - 1];
+        fillX = point[0]; fillY = point[1]; marketValue = currentValue;
       }
       if (!openPosition(marketValue, 'chart entry')) return;
       placeEntryMarker(fillX, fillY);
@@ -906,7 +906,8 @@
       const file = csvFile.files[0];
       if (!file) return;
       try {
-        if (phase === 'pumping') resetRound();
+        // New data starts a new round: a round already under way must not settle on prices it never traded.
+        if (phase !== 'ready') resetRound();
         historicalRecords = parseOhlcCsv(await file.text());
         dataSource.textContent = `IMPORTED SOURCE · ${historicalRecords.length} CANDLES`;
         ohlcLegend.textContent = 'SOURCE OHLC / LINE CLOSE';

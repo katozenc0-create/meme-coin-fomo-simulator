@@ -31,7 +31,7 @@ All Polymarket access is **read-only**: no wallet, no keys, and no orders, ever.
 - Distinct meme-coin market scenarios
 - Stochastic market behavior with trend, chop, panic, mean reversion, and random shocks
 - OHLC candlestick chart with close-price line graph
-- Tap or click anywhere on the chart to simulate a market entry
+- Tap or click the chart to buy at the current price
 - Simulated trade feed and wallet P&L
 - Rug-pull and liquidity-risk practice scenarios
 - Beginner crypto learning lab
@@ -80,7 +80,8 @@ The Polymarket proxy endpoints are read-only and polite to the upstream API:
 | `GET /api/polymarket/markets?limit=N` | active markets, busiest first | 30 s |
 | `GET /api/polymarket/market?id=<numeric>` | one market (price, or resolution once closed) | 10 s |
 | `GET /api/polymarket/book?token_id=<numeric>` | CLOB order book, best levels first | 5 s |
-| `GET /api/polymarket/resolved?limit=N&offset=M` | closed markets, most recent first | 5 min |
+| `GET /api/polymarket/resolved?limit=N&offset=M` | closed markets, most recent scheduled end first | 5 min |
+| `GET /api/polymarket/resolved?limit=N&end_min=YYYY-MM-DD&end_max=YYYY-MM-DD` | whole closed **events** whose scheduled end falls in the window, flattened to markets (`limit` counts events, so expect many more markets) | 5 min |
 | `GET /api/polymarket/history?token_id=<numeric>&fidelity=<min>` | price history `[{t, p}]` | 1 h |
 
 Ids are validated as numeric (anything else gets a 400). Responses carry only the fields the pages use, plus a flat `eventId`. If Polymarket is unreachable, the endpoints return 502.
@@ -90,7 +91,7 @@ Ids are validated as numeric (anything else gets a 400). Responses carry only th
 1. Choose a market case and set a virtual practice bankroll (changing the bankroll starts a new session).
 2. Choose a position size and, optionally, a **stop loss %** and **take profit %**.
 3. Click **Start Trade** to start the market.
-4. Enter by tapping the chart (fills at that candle's price) or with **Buy At Market**, or wait and **Buy The Top** at the peak.
+4. Enter by tapping the chart or with **Buy At Market** (both fill at the current price), or wait and **Buy The Top** at the peak.
 5. Manage the position:
    - **Sell All Now** closes it at market while the price is still rising; you can re-enter before the peak.
    - The **Sell** tab sells 25%, 50% or 100% of the position.
@@ -141,7 +142,7 @@ How the models are judged:
 - **Grouped events:** candidates of one event count once and get at most one trade. Samples after a market's actual close are dropped, because early closes leak the outcome.
 - **Data:** live Polymarket data (up to 6,000 markets, sampled by scheduled end date over months) or simulated data (a calibrated control and longshot bias).
 
-What the research found on real data is written up in [`research/README.md`](research/README.md). In short, one sample showed a small edge that disappears at higher execution cost. Tested as a fixed hypothesis, it did **not** replicate on two independent samples. Two other apparent edges turned out to be data leaks. With the current data, Metyu's evidence gate stays closed.
+What the research found on real data is written up in [`research/README.md`](research/README.md). In short, there is **no edge** after costs. Every apparent edge, including one with a 95% interval above zero, turned out to be a form of look-ahead. With leak-free walk-forward on two independent year-long samples, Metyu makes almost no trades and its evidence gate stays closed.
 
 **Live data (read-only):** **Load live Polymarket** fetches active markets from the public Gamma API, through `python server.py` (`/api/polymarket/markets`, `/api/polymarket/market?id=<numeric id>` for one market, and `/api/polymarket/book?token_id=<numeric token id>` for an order book) or directly from the browser. Only the starting price is live; the path after that is simulated. No wallet, keys, or orders are involved. Polymarket itself has no leverage, and access is restricted in some countries.
 

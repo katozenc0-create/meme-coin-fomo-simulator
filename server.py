@@ -23,6 +23,7 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
 # Only static assets the game needs are served; source files, dotfiles and .git stay private.
 POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets"
+POLYMARKET_GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
 SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
@@ -78,13 +79,13 @@ def fetch_polymarket_markets(limit: int = 20) -> list[dict]:
     return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 
-MARKET_ID = re.compile(r"^[0-9]{1,12}$")
-TOKEN_ID = re.compile(r"^[0-9]{1,100}$")
+MARKET_ID = re.compile(r"[0-9]{1,12}")
+TOKEN_ID = re.compile(r"[0-9]{1,100}")
 
 
 def fetch_polymarket_book(token_id: str, depth: int = 50) -> dict:
     """Read-only CLOB order book for one outcome token (public endpoint, no keys)."""
-    if not TOKEN_ID.match(token_id):
+    if not TOKEN_ID.fullmatch(token_id):
         raise ValueError("token id must be numeric")
     payload = _cached_get_json(f"{POLYMARKET_CLOB_BOOK_URL}?{urlencode({'token_id': token_id})}", ttl=5)
     if not isinstance(payload, dict):
@@ -108,7 +109,7 @@ def fetch_polymarket_book(token_id: str, depth: int = 50) -> dict:
 
 def fetch_polymarket_market(market_id: str) -> dict:
     """Read-only snapshot of one Polymarket market by numeric id."""
-    if not MARKET_ID.match(market_id):
+    if not MARKET_ID.fullmatch(market_id):
         raise ValueError("market id must be numeric")
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}/{market_id}", ttl=10)
     if not isinstance(payload, dict):
@@ -117,37 +118,47 @@ def fetch_polymarket_market(market_id: str) -> dict:
     return _compact_market(payload, keys)
 
 
-DATE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?$")
+DATE = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?")
 
 
 def fetch_resolved_markets(limit: int = 100, offset: int = 0, end_min: str | None = None, end_max: str | None = None) -> list[dict]:
     """Read-only list of closed Polymarket markets for training.
 
-    Without a window: most recent scheduled end first. That list is dominated by markets
-    scheduled to end years from now that closed early, which give no tradable samples, so
-    training asks for windows of scheduled end dates instead (end_min..end_max, ISO dates).
-    Gamma rejects ordering combined with a date window, so a window is sent unordered.
+    With a window of scheduled end dates (end_min..end_max, validated by the handler) whole
+    EVENTS are fetched and flattened, so every candidate of an event arrives together: taking
+    "the first 100 markets" of a window could keep an event's losers and drop its winner,
+    biasing the sample toward NO. `limit` then counts events. Gamma rejects ordering combined
+    with a date window, so a window is sent unordered.
+    Without a window: markets, most recent scheduled end first.
     """
-    params = {"closed": "true", "limit": max(1, min(limit, 500)), "offset": max(0, min(offset, 900))}
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum", "negRisk", "feesEnabled", "takerBaseFee")
     if end_min or end_max:
-        if (end_min and not DATE.match(end_min)) or (end_max and not DATE.match(end_max)):
-            raise ValueError("end_min/end_max must be YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ")
+        params = {"closed": "true", "limit": max(1, min(limit, 100)), "offset": max(0, min(offset, 900))}
         if end_min:
             params["end_date_min"] = end_min
         if end_max:
             params["end_date_max"] = end_max
-    else:
-        params.update(order="endDate", ascending="false")
-    query = urlencode(params)
+        payload = _cached_get_json(f"{POLYMARKET_GAMMA_EVENTS_URL}?{urlencode(params)}", ttl=300)
+        events = payload if isinstance(payload, list) else []
+        flat = []
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            for market in event.get("markets") or []:
+                if isinstance(market, dict):
+                    compact = _compact_market(market, keys)
+                    compact["eventId"] = str(event.get("id"))
+                    flat.append(compact)
+        return flat
+    query = urlencode({"closed": "true", "limit": max(1, min(limit, 500)), "offset": max(0, min(offset, 100000)), "order": "endDate", "ascending": "false"})
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}?{query}", ttl=300)
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum", "negRisk", "feesEnabled", "takerBaseFee")
     return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 
 def fetch_price_history(token_id: str, fidelity: int = 720) -> list[dict]:
     """Read-only CLOB price history ([{t, p}]) for one outcome token."""
-    if not TOKEN_ID.match(token_id):
+    if not TOKEN_ID.fullmatch(token_id):
         raise ValueError("token id must be numeric")
     query = urlencode({"market": token_id, "interval": "max", "fidelity": max(1, min(fidelity, 10080))})
     payload = _cached_get_json(f"{POLYMARKET_CLOB_HISTORY_URL}?{query}", ttl=3600)
@@ -177,7 +188,10 @@ class SimulatorHandler(BaseHTTPRequestHandler):
     def _headers(self, content_type: str, length: int, compressed: bool = False) -> None:
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(length))
-        self.send_header("Cache-Control", "no-cache" if content_type.startswith("text/html") else "public, max-age=3600")
+        # API responses are live data (the server already caches upstream briefly): never let the
+        # browser reuse them. Static files revalidate so new HTML never runs against stale JS.
+        self.send_header("Cache-Control", "no-store" if content_type.startswith("application/json") else "no-cache")
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
@@ -210,7 +224,7 @@ class SimulatorHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/polymarket/market":
             market_id = parse_qs(urlparse(self.path).query).get("id", [""])[0]
-            if not MARKET_ID.match(market_id):
+            if not MARKET_ID.fullmatch(market_id):
                 self._send_json({"error": "id must be a numeric Polymarket market id"}, HTTPStatus.BAD_REQUEST)
                 return
             try:
@@ -227,7 +241,7 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 limit, offset = 100, 0
             end_min = query.get("end_min", [None])[0]
             end_max = query.get("end_max", [None])[0]
-            if (end_min and not DATE.match(end_min)) or (end_max and not DATE.match(end_max)):
+            if (end_min and not DATE.fullmatch(end_min)) or (end_max and not DATE.fullmatch(end_max)):
                 self._send_json({"error": "end_min/end_max must be ISO dates"}, HTTPStatus.BAD_REQUEST)
                 return
             try:
@@ -238,7 +252,7 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         if route == "/api/polymarket/history":
             query = parse_qs(urlparse(self.path).query)
             token_id = query.get("token_id", [""])[0]
-            if not TOKEN_ID.match(token_id):
+            if not TOKEN_ID.fullmatch(token_id):
                 self._send_json({"error": "token_id must be a numeric CLOB token id"}, HTTPStatus.BAD_REQUEST)
                 return
             try:
@@ -252,7 +266,7 @@ class SimulatorHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/polymarket/book":
             token_id = parse_qs(urlparse(self.path).query).get("token_id", [""])[0]
-            if not TOKEN_ID.match(token_id):
+            if not TOKEN_ID.fullmatch(token_id):
                 self._send_json({"error": "token_id must be a numeric CLOB token id"}, HTTPStatus.BAD_REQUEST)
                 return
             try:
