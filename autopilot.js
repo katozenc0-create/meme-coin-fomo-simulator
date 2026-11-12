@@ -25,7 +25,7 @@ const DEFAULTS = Object.freeze({
   bankroll: 10000, slots: 12, maxGross: 1.5, maxOpen: 6, maxPerCluster: 2, maxLeverage: 3,
   maxPositionPct: .1, refreshMarketsMs: 3600000, historyLimit: 1000, logLimit: 300,
   train: 0, retrainHours: 24, trainKind: 'calib', trainSpread: .02, tradeHorizon: 7, trainRetryMs: 3600000,
-  learn: false, learnStake: .01, learnMinEdge: .01
+  learn: false, learnStake: .01, learnMinEdge: .01, pause: false
 });
 
 function freshState(options = {}) {
@@ -126,7 +126,11 @@ function createAutopilot({ fetchJson, now = () => Date.now(), state = freshState
     const usable = M.isValidSavedModel(state.model) && !state.account.halted;
     const gateOpen = usable && M.modelMayTrade(state.model);
     const learning = usable && !gateOpen && opts.learn;          // forward test while the gate is closed
-    const mayOpen = gateOpen || learning;
+    if (!!opts.pause !== !!state.paused) {
+      state.paused = !!opts.pause;
+      say(state.paused ? 'PAUSE' : 'RESUME', state.paused ? 'paused by the owner: no new positions; open ones are still managed and settled' : 'resumed by the owner: new positions allowed again');
+    }
+    const mayOpen = (gateOpen || learning) && !state.paused;
     // Learning trades: no leverage, a small edge after costs is enough (it is a test, not a bet).
     const rules = learning ? { ...config, maxLeverage: 1, minEdge: opts.learnMinEdge, uncertaintyMultiple: 0 } : config;
     let refreshed = 0;
@@ -249,7 +253,7 @@ function statusOf(state, { now = Date.now() } = {}) {
   const model = state.model;
   return {
     available: true, virtualMoney: true, generatedAt: new Date(now).toISOString(),
-    createdAt: state.createdAt, lastTick: state.lastTick, account: state.account,
+    createdAt: state.createdAt, lastTick: state.lastTick, account: state.account, paused: !!state.paused,
     model: model ? { source: model.source, trainedAt: model.trainedAt, kind: model.kind, gate: model.gate } : null,
     positions: Object.entries(state.positions).map(([id, held]) => ({ id, ...held })),
     watching: state.watch.length,
@@ -275,11 +279,12 @@ function saveState(file, state) {
 
 // ---------- CLI ----------
 function parseArgs(argv) {
-  const args = { state: 'data/autopilot.json', interval: 300, api: null, model: null, bankroll: undefined, once: false, train: 0, retrain: 24, learn: false, 'status-out': null };
+  const args = { state: 'data/autopilot.json', interval: 300, api: null, model: null, bankroll: undefined, once: false, train: 0, retrain: 24, learn: false, 'status-out': null, pause: false };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'once') args.once = true;
     else if (key === 'learn') args.learn = true;
+    else if (key === 'pause') args.pause = true;
     else if (key in args) { args[key] = argv[i + 1]; i += 1; }
     else throw new Error(`unknown option ${argv[i]}`);
   }
@@ -298,7 +303,7 @@ async function main() {
     if (!M.isValidSavedModel(model)) throw new Error(`${args.model} is not a valid Metyu model`);
     state.model = model;
   }
-  const pilot = createAutopilot({ fetchJson: makeFetchJson({ api: args.api }), state, options: { bankroll: args.bankroll, train: args.train, retrainHours: args.retrain, learn: args.learn } });
+  const pilot = createAutopilot({ fetchJson: makeFetchJson({ api: args.api }), state, options: { bankroll: args.bankroll, train: args.train, retrainHours: args.retrain, learn: args.learn, pause: args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || '') } });
   const gate = (M.modelMayTrade(state.model) ? 'evidence gate OPEN: may trade' : state.model ? 'evidence gate CLOSED: watch only' : 'no model: watch only')
     + (args.train ? ` · self-training on ${args.train} resolved markets every ${args.retrain} h` : '')
     + (args.learn ? ' · learning book on (1% unlevered forward test while the gate is closed)' : '');

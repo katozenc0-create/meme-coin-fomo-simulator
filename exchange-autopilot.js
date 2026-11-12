@@ -21,8 +21,10 @@ const X = require('./metyu-exchange.js');
 const HOUR = X.HOUR;
 const DEFAULTS = Object.freeze({
   bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR,
-  learn: false, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
+  learn: false, pause: false, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
 });
+const MINUTE = 60000;
+const QUARTER = 15 * MINUTE;
 
 function freshState(options = {}) {
   const bankroll = options.bankroll || DEFAULTS.bankroll;
@@ -131,20 +133,47 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     }
   }
 
+  /**
+   * Exits in real time. Finished 1-minute bars are walked once each (the position remembers how
+   * far it got: checkedUntil, best, stop); if the autopilot was away longer than the 5 hours of
+   * 1-minute history, 15-minute bars cover the gap first. The still-forming minute is checked
+   * for stop / target / liquidation hits too, without trailing on its unfinished close.
+   */
   async function manage(held) {
-    let bars;
-    try {
-      bars = (await X.fetchCandles(getJson, held.symbol, { granularity: 900, bars: 300, now: now() })).candles;
-    } catch (error) {
-      say('ERROR', `15-minute bars for ${held.symbol}: ${error.message}`);
-      return;
+    const t = now();
+    const apply = (result, intervalMs) => {
+      if (result.stop !== held.stop) {
+        say('TRAIL', `${held.symbol} ${held.side}: stop moved ${fmt(held.stop)} → ${fmt(result.stop)}`);
+        held.stop = result.stop;
+      }
+      held.best = result.best;
+      if (result.exit) { close(held.id, result.exit.price, result.exit.reason, Math.min(t, result.exit.at + intervalMs)); return true; }
+      return false;
+    };
+    let minutes = null;
+    try { minutes = (await X.fetchCandles(getJson, held.symbol, { granularity: 60, bars: 300, now: t })).candles; } catch (error) { say('ERROR', `1-minute bars for ${held.symbol}: ${error.message}`); }
+    const resumeAt = Math.max(held.openedAt, held.checkedUntil || 0);
+    const finished = (minutes || []).filter(bar => bar.t + MINUTE <= t);
+    // A gap older than the 1-minute history (or no 1-minute data at all): 15-minute bars first.
+    if (!finished.length || finished[0].t > resumeAt) {
+      try {
+        const quarters = (await X.fetchCandles(getJson, held.symbol, { granularity: 900, bars: 300, now: t })).candles
+          .filter(bar => bar.t + QUARTER <= (finished.length ? finished[0].t : t));
+        const result = X.replayPosition(held, quarters, { now: t, costs, timeStopHours: rules.timeStopHours });
+        if (quarters.length) held.checkedUntil = Math.max(resumeAt, quarters[quarters.length - 1].t + QUARTER);
+        if (apply(result, QUARTER)) return;
+      } catch (error) {
+        say('ERROR', `15-minute bars for ${held.symbol}: ${error.message}`);
+        if (!finished.length) return;
+      }
     }
-    const result = X.replayPosition(held, bars, { now: now(), costs, timeStopHours: rules.timeStopHours });
-    if (result.exit) { close(held.id, result.exit.price, result.exit.reason, Math.min(now(), result.exit.at + 15 * 60000)); return; }
-    if (result.stop !== held.stop) {
-      say('TRAIL', `${held.symbol} ${held.side}: stop moved ${fmt(held.stop)} → ${fmt(result.stop)}`);
-      held.stop = result.stop;
+    if (finished.length) {
+      const result = X.replayPosition(held, finished, { now: t, costs, timeStopHours: rules.timeStopHours });
+      held.checkedUntil = Math.max(held.checkedUntil || 0, finished[finished.length - 1].t + MINUTE);
+      if (apply(result, MINUTE)) return;
     }
+    const forming = (minutes || []).filter(bar => bar.t + MINUTE > t && bar.t >= (held.checkedUntil || 0));
+    if (forming.length) apply(X.replayPosition(held, forming, { now: t, costs, trail: false }), MINUTE);
   }
 
   function admitAndOpen({ symbol, strategy, label, signal, bar, atrValue, price, book, reading }) {
@@ -199,9 +228,13 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     state.account.peak = Math.max(state.account.peak, eq);
 
     // 4. New signals, once per closed hourly bar per coin.
+    if (!!opts.pause !== !!state.paused) {
+      state.paused = !!opts.pause;
+      say(state.paused ? 'PAUSE' : 'RESUME', state.paused ? 'paused by the owner: no new positions; open ones are still managed to their exits' : 'resumed by the owner: new positions allowed again');
+    }
     let signals = 0;
     for (const [symbol, candles] of Object.entries(series)) {
-      if (state.account.halted || candles.length < X.WARMUP) continue;
+      if (state.account.halted || state.paused || candles.length < X.WARMUP) continue;
       const bar = candles[candles.length - 1];
       if (state.lastSignalBar[symbol] === bar.t) continue;
       state.lastSignalBar[symbol] = bar.t;
@@ -267,7 +300,7 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
   const equity = state.account.cash + positions.reduce((sum, held) => sum + Math.max(0, held.margin + held.pnl), 0);
   return {
     available: true, virtualMoney: true, kind: 'exchange', generatedAt: new Date(now).toISOString(), createdAt: state.createdAt, lastTick: state.lastTick,
-    account: { ...state.account, equity }, costs, rules: X.RULES,
+    account: { ...state.account, equity }, paused: !!state.paused, trainingDays: X.TRAINING_DAYS, costs, rules: X.RULES,
     model: state.model ? {
       trainedAt: state.model.trainedAt, bars: state.model.bars, symbols: state.model.symbols,
       strategies: Object.fromEntries(Object.entries(state.model.strategies).map(([name, s]) => [name, { ...s, learnable: !s.gate.open && learnable(s) }]))
@@ -297,11 +330,12 @@ function saveState(file, state) {
 
 // ---------- CLI ----------
 function parseArgs(argv) {
-  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, symbols: null, 'account-public': null };
+  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, symbols: null, 'account-public': null, pause: false };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'once') args.once = true;
     else if (key === 'learn') args.learn = true;
+    else if (key === 'pause') args.pause = true;
     else if (key in args) { args[key] = argv[i + 1]; i += 1; }
     else throw new Error(`unknown option ${argv[i]}`);
   }
@@ -321,7 +355,8 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const state = loadState(args.state, { bankroll: args.bankroll });
   const getJson = makeGetJson();
-  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, trainBars: args['train-bars'], retrainHours: args.retrain, ...(args.symbols ? { symbols: args.symbols } : {}) } });
+  const pause = args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || '');
+  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, trainBars: args['train-bars'], retrainHours: args.retrain, ...(args.symbols ? { symbols: args.symbols } : {}) } });
   console.log(`Metyu exchange autopilot · virtual money only · ${Object.keys(state.positions).length} open · learning book ${args.learn ? 'on' : 'off'} · state ${args.state}`);
   for (;;) {
     try {

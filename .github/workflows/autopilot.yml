@@ -6,18 +6,24 @@ name: autopilot
 #                            read the real balances, publish them END-TO-END ENCRYPTED
 #   - autopilot.js           Polymarket prediction markets  -> status.json
 #   - exchange-autopilot.js  crypto on live Coinbase prices -> exchange-status.json (+ real-money lock)
-# and save everything back to that branch. The Live Board on GitHub Pages reads it from there.
-# Each step fails on its own; one failing never stops the others.
+# and publish everything back to that branch (scripts/publish-state.sh). The Live Board on GitHub
+# Pages reads it from there. Each step fails on its own; one failing never stops the others.
 #
-# Security: the token may only write this repository's contents; the checkout does not keep it;
-# exchange secrets are given ONLY to the account step, which refuses keys that can trade or
-# withdraw, scrubs secrets from its output and writes ciphertext only.
+# Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
+#   METYU_PAUSE=true       emergency pause from the phone: no new positions, exits still managed
+#   METYU_RUNNER=external  an always-on machine runs scripts/realtime.sh (1-minute ticks) and
+#                          publishes; this workflow then stays out of the way (one writer only)
+#
+# Security: actions pinned to commit SHAs; no permissions by default (the job asks only for
+# contents: write); the checkout does not keep the token; exchange secrets go ONLY to the account
+# step, which refuses keys that can trade or withdraw, scrubs secrets from its output and writes
+# ciphertext only; publishing refuses plaintext balances and anything that looks like a key.
 on:
   schedule:
     - cron: "7,22,37,52 * * * *"     # every 15 min, off the top of the hour (busy on GitHub)
   workflow_dispatch:
 
-permissions: {}                      # nothing by default; the job asks for exactly what it needs
+permissions: {}
 
 concurrency:
   group: autopilot                   # one tick at a time; a slow tick is never overlapped
@@ -25,28 +31,22 @@ concurrency:
 
 jobs:
   tick:
+    if: vars.METYU_RUNNER != 'external'
     runs-on: ubuntu-latest
     timeout-minutes: 14
     permissions:
       contents: write                # only to update the autopilot-data branch
+    env:
+      METYU_PAUSE: ${{ vars.METYU_PAUSE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
         with:
           persist-credentials: false # the token is not left in .git/config for later steps
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
       - name: Restore the state from the autopilot-data branch
-        run: |
-          mkdir -p data
-          if git fetch --depth=1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" autopilot-data; then
-            # States and the last published files (a failed step keeps showing the last good one).
-            for f in autopilot.json status.json exchange.json exchange-status.json account.enc.json account-public.json; do
-              git show "FETCH_HEAD:$f" > "data/$f" 2>/dev/null || rm -f "data/$f"
-            done
-          else
-            echo "No autopilot-data branch yet: first run starts a fresh virtual account."
-          fi
+        run: scripts/restore-state.sh data --all
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Account sync (view-only key, end-to-end encrypted; skipped without secrets)
@@ -64,26 +64,8 @@ jobs:
       - name: Crypto exchange tick (virtual money; live Coinbase prices; trains itself every 24 h; learning book on)
         continue-on-error: true
         run: node exchange-autopilot.js --once --learn --train-bars 3000 --retrain 24 --state data/exchange.json --status-out data/exchange-status.json --account-public data/account-public.json
-      - name: Save the state to the autopilot-data branch
+      - name: Publish the state to the autopilot-data branch
         if: always()
-        run: |
-          cd data
-          # Only files that exist and are non-empty: a failed first tick must not publish garbage.
-          files=""
-          for f in autopilot.json status.json exchange.json exchange-status.json account.enc.json account-public.json; do
-            if [ -s "$f" ]; then files="$files $f"; fi
-          done
-          if [ -z "$files" ]; then echo "nothing to save"; exit 1; fi
-          # Defence in depth: never publish anything that looks like plaintext balances or a key.
-          if [ -s account.enc.json ] && grep -q '"balances"' account.enc.json; then echo "account.enc.json is not sealed: refusing to publish"; exit 1; fi
-          if grep -l -E 'PRIVATE KEY-----|"apiSecret"|"privateKey"' $files; then echo "secret-looking content: refusing to publish"; exit 1; fi
-          git init -q -b autopilot-data
-          git config user.name "metyu-autopilot"
-          git config user.email "metyu-autopilot@users.noreply.github.com"
-          printf '%s\n' "# Metyu autopilot state (virtual money)" "" "Written every 15 minutes by .github/workflows/autopilot.yml on main." "status.json / exchange-status.json are what the Live Board shows; autopilot.json / exchange.json are the full states." "account.enc.json is the owner's account snapshot, end-to-end encrypted (metyu-vault.js)." > README.md
-          git add $files README.md
-          git commit -qm "autopilot tick $(date -u +%Y-%m-%dT%H:%MZ)"
-          # One commit, replaced each time: the state file itself carries the full trade history.
-          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" autopilot-data
+        run: scripts/publish-state.sh data
         env:
           GITHUB_TOKEN: ${{ github.token }}

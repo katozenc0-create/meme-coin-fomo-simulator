@@ -160,7 +160,7 @@ test('autopilot panel shows the server-side autopilot (read-only)', async () => 
     history: [], trainings: [], log: [{ at: now, kind: 'TRAIN', text: 'retrained on 407 resolved markets · evidence gate closed' }]
   } }));
   await page.goto(`${env.base}/board.html`);
-  await page.waitForFunction(() => /Running/.test(document.querySelector('#apStatus').textContent));
+  await page.waitForFunction(() => /Live · real time/.test(document.querySelector('#apStatus').textContent));
   assert.match(await text(page, '#apStatus'), /watching 12 markets · watching only/);
   assert.equal(await text(page, '#apEquity'), '$10,050', 'cash 9,600 + 1,000 shares marked at 45c');
   assert.equal(await text(page, '#apTrades'), '2 · 50%');
@@ -379,9 +379,9 @@ test('autopilot panel reads a published status (GitHub Pages path) and shows the
     forward: { learning: { trades: 3, wins: 2, pnl: 12, meanReturn: .04, ci: [-.2, .3], days: 3, convincing: false }, gated: { trades: 0, wins: 0, pnl: 0, meanReturn: 0, ci: [0, 0], days: 0, convincing: false } }
   } }));
   await page.goto(`${env.base}/board.html?autopilot=${encodeURIComponent(published)}`);
-  await page.waitForFunction(() => /Running 24\/7/.test(document.querySelector('#apStatus').textContent));
+  await page.waitForFunction(() => /Live · real time/.test(document.querySelector('#apStatus').textContent), 'a tick seconds ago is real time');
   assert.match(await text(page, '#apStatus'), /learning book: small unlevered test trades/);
-  assert.match(await text(page, '#apForward'), /Forward test · day 4\/14 · 3 closed learning trades · 2 won · mean 4\.0% per \$1 · 95% \[-20\.0%, 30\.0%\] · not convincing yet/);
+  assert.match(await text(page, '#apForward'), /Training done \(3 days\) · day 4 · forward test: 3 closed learning trades · 2 won · mean 4\.0% per \$1 · 95% \[-20\.0%, 30\.0%\] · not convincing yet/);
   assert.match(await text(page, '#apTradeList'), /learning · resolved NO/);
   assert.deepEqual(page.errors, []);
 });
@@ -412,9 +412,9 @@ test('exchange panel shows the crypto autopilot: chart with levels, positions, g
   const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
   await page.route(published, route => route.fulfill({ json: status }));
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
-  await page.waitForFunction(() => !document.querySelector('#exchangePanel').hidden && /Running 24\/7/.test(document.querySelector('#exStatus').textContent));
+  await page.waitForFunction(() => !document.querySelector('#exchangePanel').hidden && /Live · real time/.test(document.querySelector('#exStatus').textContent));
   assert.match(await text(page, '#exStatus'), /2 coins, live Coinbase prices · learning book: 0\.25% risk per trade, up to 2x/);
-  assert.match(await text(page, '#exForward'), /Forward test · day 3\/14 · 1 closed learning trades · 1 won · mean \+0\.86R per trade/);
+  assert.match(await text(page, '#exForward'), /Training · day 3\/3 · forward test: 1 closed learning trades · 1 won · mean \+0\.86R per trade/);
   assert.equal(await text(page, '#exGates'), '0/2 open');
   assert.equal(await page.inputValue('#exSymbol'), 'BTC-USD', 'the coin with a position is shown first');
   assert.ok(await page.locator('#exChart').isVisible(), 'the chart is visible');
@@ -479,10 +479,37 @@ test('real-money lock is shown with every unmet condition and the first-order li
   await page.route(published, route => route.fulfill({ json: status }));
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
   await page.waitForFunction(() => /Real money: LOCKED/.test(document.querySelector('#exLiveHead').textContent));
-  assert.equal(await text(page, '#exLiveHead'), 'Real money: LOCKED · 2/6 conditions met');
-  assert.equal(await page.locator('#exLive li.ok').count(), 2, 'no kill-switch and a linked view-only account');
-  assert.match(await text(page, '#exLive'), /forward test ran 14\+ days \(now 3\)/);
+  assert.equal(await text(page, '#exLiveHead'), 'Real money: LOCKED · 3/6 conditions met');
+  assert.equal(await page.locator('#exLive li.ok').count(), 3, 'training days, no kill-switch and a linked view-only account');
+  assert.match(await text(page, '#exLive'), /forward test ran 3\+ days \(now 3\)/);
   assert.match(await text(page, '#exLiveLimits'), /\$25 per order, \$100 open in total, \$50 maximum loss per day, no leverage/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('v2 status line: real time vs every 15 minutes, and the owner pause', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const make = (minutesAgo, paused) => {
+    const state = freshState();
+    state.createdAt = new Date(Date.now() - X.DAY / 2).toISOString();
+    state.lastTick = new Date(Date.now() - minutesAgo * 60000).toISOString();
+    state.paused = paused;
+    return statusOf(state);
+  };
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  let status = make(2, false);
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => /Live · real time/.test(document.querySelector('#exStatus').textContent));
+  assert.match(await text(page, '#exForward'), /^Training · day 1\/3 · forward test: no closed learning trades yet/);
+  status = make(20, true);
+  await page.reload();
+  await page.waitForFunction(() => /Running 24\/7 · every 15 min · PAUSED by the owner/.test(document.querySelector('#exStatus').textContent));
+  status = make(300, false);
+  await page.reload();
+  await page.waitForFunction(() => /Last seen 300 min ago/.test(document.querySelector('#exStatus').textContent));
+  assert.match(await text(page, '.term-title'), /v2 · virtual/);
   assert.deepEqual(page.errors, []);
 });
 

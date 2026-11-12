@@ -366,7 +366,64 @@ test('forward evidence, public status with charts, persistence and CLI options',
   assert.equal(loadState(path.join(dir, 'missing.json'), { bankroll: 500 }).account.bankroll, 500);
 
   assert.deepEqual(parseArgs(['--once', '--learn', '--state', 'x.json', '--symbols', 'btc-usd,ETH-USD', '--train-bars', '99999']),
-    { state: 'x.json', 'status-out': null, interval: 900, bankroll: undefined, once: true, learn: true, 'train-bars': 6000, retrain: 24, symbols: ['BTC-USD', 'ETH-USD'], 'account-public': null });
+    { state: 'x.json', 'status-out': null, interval: 900, bankroll: undefined, once: true, learn: true, 'train-bars': 6000, retrain: 24, symbols: ['BTC-USD', 'ETH-USD'], 'account-public': null, pause: false });
   assert.throws(() => parseArgs(['--symbols', 'BTCUSDT']), /look like BTC-USD/);
   assert.throws(() => parseArgs(['--wallet', 'x']), /unknown option/);
+});
+
+// ---------- v2: real-time exits, resume, gap fill, pause ----------
+test('replayPosition resumes from saved progress and never trails on a forming bar', () => {
+  const costs = { ...X.COSTS, slippage: 0 };
+  const position = openLong({ target: 200, atr: 1 });
+  const first = X.replayPosition(position, [bar(0, 100, 101.7, 99.9, 101.6)], { costs });
+  close(first.stop, 100, 1e-9);
+  assert.equal(first.best, 101.6);
+  // Resume: the saved stop/best carry over; bars before checkedUntil are skipped.
+  const resumed = { ...position, stop: first.stop, best: first.best, checkedUntil: H };
+  assert.equal(X.replayPosition(resumed, [bar(0, 100, 100, 90, 95), bar(H, 101.6, 101.7, 100.5, 101)], { costs }).exit, null, 'the old bar is not replayed');
+  assert.equal(X.replayPosition(resumed, [bar(H, 101.6, 101.7, 99.8, 100.2)], { costs }).exit.reason, 'trailing stop', 'the break-even stop holds after resuming');
+  const forming = X.replayPosition(position, [bar(0, 100, 106, 99.9, 105.9)], { costs, trail: false });
+  assert.equal(forming.stop, position.initialStop, 'an unfinished bar does not move the stop');
+  assert.equal(X.replayPosition(position, [bar(0, 100, 100.2, 97.9, 98)], { costs, trail: false }).exit.reason, 'stop loss', 'but a stop hit in it counts');
+});
+
+test('real-time manage: 1-minute exits, a forming-minute stop hit, and a 15-minute gap fill', async () => {
+  let crashAt = Infinity;
+  const { pilot, state, fake, advance } = setup({ priceOf: (s, t) => (t < crashAt ? 100 + Math.sin(t / H) : 80), model: UNDECIDED });
+  await pilot.tick();
+  const held = Object.values(state.positions)[0];
+  advance(3 * 60000);
+  await pilot.tick();
+  assert.ok(held.checkedUntil > held.openedAt, 'finished minutes were walked');
+  assert.ok(fake.calls.some(url => /granularity=60&/.test(url)), '1-minute bars are used');
+  assert.equal(Object.keys(state.positions).length, 1);
+  // The price collapses inside the current, unfinished minute: closed right away.
+  crashAt = 600 * H + 7 * 60000 + 3 * 60000 + 20000;
+  advance(30000);
+  await pilot.tick();
+  assert.equal(Object.keys(state.positions).length, 0);
+  assert.match(state.history[0].reason, /stop loss/);
+
+  // Away for 8 hours: the gap older than the 1-minute history is covered with 15-minute bars.
+  const b = setup({ priceOf: (s, t) => 100 + 2 * Math.sin(t / H / 4), model: UNDECIDED });
+  await b.pilot.tick();
+  const heldB = Object.values(b.state.positions)[0];
+  b.fake.calls.length = 0;
+  b.advance(8 * H);
+  await b.pilot.tick();
+  assert.ok(b.fake.calls.some(url => /granularity=900&/.test(url)), '15-minute bars fill the gap');
+  if (b.state.positions[heldB.id]) assert.ok(heldB.checkedUntil > heldB.openedAt + 7 * H, 'progress covers the whole gap');
+});
+
+test('pause: no new positions while paused, exits still managed; logged once each way', async () => {
+  const fakeA = setup({ priceOf: (s, t) => 100 + Math.sin(t / H), model: UNDECIDED });
+  const paused = createExchangeAutopilot({ getJson: fakeA.fake.getJson, now: () => 600 * H + 7 * 60000, state: fakeA.state, options: { symbols: ['AAA-USD'], learn: true, pause: true, strategies: { test: ALWAYS_LONG } } });
+  await paused.tick();
+  await paused.tick();
+  assert.equal(Object.keys(fakeA.state.positions).length, 0);
+  assert.equal(fakeA.state.log.filter(l => l.kind === 'PAUSE').length, 1, 'logged once');
+  assert.equal(fakeA.state.paused, true);
+  await fakeA.pilot.tick();                                         // the same state, not paused
+  assert.equal(fakeA.state.log.filter(l => l.kind === 'RESUME').length, 1);
+  assert.equal(parseArgs(['--pause']).pause, true);
 });

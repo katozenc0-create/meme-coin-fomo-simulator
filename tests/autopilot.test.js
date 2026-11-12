@@ -110,7 +110,7 @@ test('a deep drawdown trips the kill-switch: everything is flattened and nothing
 });
 
 test('command line and data access', () => {
-  assert.deepEqual(parseArgs(['--state', 's.json', '--interval', '10', '--once']), { state: 's.json', interval: 30, api: null, model: null, bankroll: undefined, once: true, train: 0, retrain: 24, learn: false, 'status-out': null });
+  assert.deepEqual(parseArgs(['--state', 's.json', '--interval', '10', '--once']), { state: 's.json', interval: 30, api: null, model: null, bankroll: undefined, once: true, train: 0, retrain: 24, learn: false, 'status-out': null, pause: false });
   const both = parseArgs(['--learn', '--status-out', 'public/status.json']);
   assert.equal(both.learn, true);
   assert.equal(both['status-out'], 'public/status.json');
@@ -252,4 +252,18 @@ test('forward evidence and public status', () => {
   assert.deepEqual(Object.keys(status.model).sort(), ['gate', 'kind', 'source', 'trainedAt'], 'no model parameters in public');
   assert.equal(status.forward.learning.trades, 40);
   assert.equal(status.history.length, 40);
+});
+
+test('pause: the owner can stop new positions remotely; open ones are still managed', async () => {
+  const { state, fake } = setup();
+  const paused = createAutopilot({ fetchJson: fake.fetchJson, now: () => 1.9e12, state, options: { pause: true } });
+  const result = await paused.tick();
+  assert.equal(result.mayOpen, false, 'an open gate does not open anything while paused');
+  assert.equal(Object.keys(state.positions).length, 0);
+  assert.equal(state.log.filter(entry => entry.kind === 'PAUSE').length, 1);
+  assert.equal(statusOf(state).paused, true);
+  const resumed = createAutopilot({ fetchJson: fake.fetchJson, now: () => 1.9e12, state });
+  assert.equal((await resumed.tick()).mayOpen, true);
+  assert.equal(state.log.filter(entry => entry.kind === 'RESUME').length, 1);
+  assert.equal(parseArgs(['--pause']).pause, true);
 });
