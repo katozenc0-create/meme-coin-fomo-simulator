@@ -276,6 +276,45 @@ test('iPhone: an "Add to Home Screen" tip in Safari, gone once dismissed', async
   assert.deepEqual(errors, []);
 });
 
+test('like an app: a running board resumes when reopened, a paused one stays paused', async () => {
+  const page = await env.page({ width: 390, height: 844 });
+  await page.route('**/api/autopilot/status', route => route.abort());
+  await page.goto(`${env.base}/board.html`);
+  await page.click('#startBtn');
+  await page.waitForSelector('#board .card');
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector('#pauseBtn').disabled, null, { timeout: 10000 });
+  assert.match(await text(page, '#statusNote'), /Demo running/, 'resumed without pressing Start');
+  await page.click('#pauseBtn');
+  await page.reload();
+  await page.waitForTimeout(500);
+  assert.equal(await page.isDisabled('#pauseBtn'), true, 'paused stays paused');
+  assert.equal(await page.isDisabled('#startBtn'), false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('live mode refreshes the moment the app comes back to the foreground', async () => {
+  const page = await env.page({ width: 390, height: 844 });
+  const end = new Date(Date.now() + 40 * 86400000).toISOString();
+  const markets = [{ id: '950', eventId: 'v', question: 'Will the foreground test pass?', outcomes: '["Yes","No"]', outcomePrices: '["0.40","0.60"]', bestBid: '0.39', bestAsk: '0.41', endDate: end }];
+  let polls = 0;
+  await page.route('**/api/autopilot/status', route => route.abort());
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets } }));
+  await page.route('**/api/polymarket/market?id=*', route => { polls += 1; return route.fulfill({ json: { market: markets[0] } }); });
+  await page.goto(`${env.base}/board.html`);
+  await page.selectOption('#mode', 'live');
+  await page.click('#startBtn');
+  await page.waitForFunction(() => /live prices refreshed/.test(document.querySelector('#statusNote').textContent), null, { timeout: 20000 });
+  const before = polls;
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(1500);
+  assert.ok(polls > before, `refreshed at once (${before} -> ${polls}), not 30 s later`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);
