@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import threading
 import unittest
 import urllib.error
@@ -209,6 +210,28 @@ class ServerTests(unittest.TestCase):
             with self.subTest(path=path):
                 status, _, _ = self.get(path)
                 self.assertEqual(status, 400)
+
+    def test_autopilot_status(self) -> None:
+        import tempfile
+        missing = server.autopilot_status(Path(tempfile.gettempdir()) / "no-such-autopilot.json")
+        self.assertFalse(missing["available"])
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump({"version": 1, "lastTick": "2026-01-01T00:00:00Z", "account": {"cash": 9000, "peak": 10000},
+                       "model": {"kind": "calib", "a": 1, "b": 1, "cov": [[1, 0], [0, 1]], "source": "autopilot", "gate": {"open": False}},
+                       "positions": {"12": {"question": "Q?", "position": {"side": "YES"}}},
+                       "watch": [1, 2, 3], "history": [{"pnl": 1}] * 150, "log": [], "trainings": []}, handle)
+        status = server.autopilot_status(Path(handle.name))
+        self.assertTrue(status["available"])
+        self.assertEqual(status["positions"][0]["id"], "12")
+        self.assertEqual(status["watching"], 3)
+        self.assertEqual(len(status["history"]), 100)
+        self.assertEqual(status["model"]["gate"], {"open": False})
+        self.assertNotIn("cov", status["model"], "model parameters are not exposed")
+        Path(handle.name).write_text("{broken")
+        self.assertFalse(server.autopilot_status(Path(handle.name))["available"])
+        status_code, body, _ = self.get("/api/autopilot/status")
+        self.assertEqual(status_code, 200)
+        self.assertIn("available", json.loads(body))
 
     def test_cache_headers(self) -> None:
         _, _, api_headers = self.get("/api/health")

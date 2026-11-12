@@ -1,0 +1,24 @@
+# Metyu autopilot: 24/7 VIRTUAL-money trading on live Polymarket data (no wallet, no keys, no orders).
+# It retrains itself daily; only an open evidence gate lets it open positions. State: data/autopilot.json
+# (written atomically; a restart continues where it stopped). See README "Metyu autopilot".
+[Unit]
+Description=Metyu autopilot (virtual money)
+After=metyu-server.service
+Wants=metyu-server.service
+
+[Service]
+User=metyu
+WorkingDirectory=/opt/meme-coin-fomo-simulator
+ExecStart=/usr/bin/node autopilot.js --api http://127.0.0.1:8000 --train 1500 --retrain 24 --interval 300
+Restart=always
+RestartSec=30
+# SIGTERM saves the state before exiting.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/meme-coin-fomo-simulator/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

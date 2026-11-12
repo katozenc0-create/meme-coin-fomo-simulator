@@ -26,6 +26,7 @@ POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets"
 POLYMARKET_GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
+AUTOPILOT_STATE = Path(os.environ.get("AUTOPILOT_STATE", str(ROOT / "data" / "autopilot.json")))
 SERVED_EXTENSIONS = {".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
 
 
@@ -184,6 +185,32 @@ def _compact_market(market: dict, keys: tuple[str, ...]) -> dict:
     return compact
 
 
+def autopilot_status(path: Path) -> dict:
+    """Read-only summary of the autopilot's state file (virtual money) for the browser."""
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"available": False, "reason": "no autopilot state yet: run node autopilot.js"}
+    except (OSError, ValueError) as error:
+        return {"available": False, "reason": f"autopilot state unreadable: {error}"}
+    if not isinstance(state, dict) or not isinstance(state.get("account"), dict):
+        return {"available": False, "reason": "autopilot state has an unexpected shape"}
+    model = state.get("model") if isinstance(state.get("model"), dict) else None
+    positions = state.get("positions") if isinstance(state.get("positions"), dict) else {}
+    return {
+        "available": True, "virtualMoney": True,
+        "createdAt": state.get("createdAt"), "lastTick": state.get("lastTick"),
+        "account": state["account"],
+        # The model's source and evidence gate only (its parameters are not needed to watch it).
+        "model": {"source": model.get("source"), "trainedAt": model.get("trainedAt"), "kind": model.get("kind"), "gate": model.get("gate")} if model else None,
+        "positions": [{"id": key, **value} for key, value in positions.items() if isinstance(value, dict)],
+        "watching": len(state.get("watch") or []),
+        "history": (state.get("history") or [])[:100],
+        "log": (state.get("log") or [])[:100],
+        "trainings": (state.get("trainings") or [])[:30],
+    }
+
+
 class SimulatorHandler(BaseHTTPRequestHandler):
     server_version = "FomoPractice/1.0"
 
@@ -213,6 +240,9 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         if route == "/api/health":
             self._send_json({"status": "ok", "mode": "practice", "realFunds": False})
+            return
+        if route == "/api/autopilot/status":
+            self._send_json(autopilot_status(self.server.autopilot_state if hasattr(self.server, "autopilot_state") else AUTOPILOT_STATE))
             return
         if route == "/api/polymarket/markets":
             try:
@@ -306,8 +336,10 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Serve the Meme Coin FOMO Simulator locally.")
     parser.add_argument("--host", default=HOST, help=f"interface to bind (default: {HOST})")
     parser.add_argument("--port", type=int, default=PORT, help=f"port to listen on (default: {PORT})")
+    parser.add_argument("--autopilot-state", default=str(AUTOPILOT_STATE), help="autopilot state file shown at /api/autopilot/status")
     args = parser.parse_args(argv)
     server = ThreadingHTTPServer((args.host, args.port), SimulatorHandler)
+    server.autopilot_state = Path(args.autopilot_state)
     print(f"Meme Coin FOMO Simulator: http://{args.host}:{args.port}")
     print("Practice only: no wallet connection and no real funds.")
     try:
