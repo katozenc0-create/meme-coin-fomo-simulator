@@ -193,6 +193,7 @@
           <div id="paperList"><p class="note">No paper positions yet.</p></div>
           <div class="metric"><span>Paper P&amp;L (open marks)</span><strong id="paperTotal">$0</strong></div>
           <div class="metric"><span>Paper P&amp;L (resolved)</span><strong id="paperRealized">$0</strong></div>
+          <div class="metric"><span>Paper equity · drawdown from peak</span><strong id="paperEquity">—</strong></div>
         </div>
       </div>
     </section>
@@ -644,6 +645,21 @@
       let lastAdvice = null;
       let paper = [];
       const PAPER_MAX_PER_CLUSTER = 2;
+      // Paper account: the advisor sizes from paper equity (bankroll + all paper P&L) and its
+      // kill-switch compares that with the peak, so a losing streak really does stop Metyu.
+      let paperPeak = null;              // { bankroll, equity }
+      function paperEquity() {
+        const bankroll = Math.max(10, Number($('#advBankroll').value) || 1000);
+        return bankroll + paper.reduce((sum, item) => sum + markPaper(item).pnl, 0);
+      }
+      function paperAccount() {
+        const bankroll = Math.max(10, Number($('#advBankroll').value) || 1000);
+        const equity = paperEquity();
+        // A new bankroll, or no paper history at all, starts a new peak.
+        if (!paperPeak || paperPeak.bankroll !== bankroll || !paper.length) paperPeak = { bankroll, equity: Math.max(equity, bankroll) };
+        paperPeak.equity = Math.max(paperPeak.equity, equity);
+        return { equity: Math.max(0, equity), peak: paperPeak.equity, drawdown: paperPeak.equity > 0 ? 1 - Math.max(0, equity) / paperPeak.equity : 0 };
+      }
       // Positions saved before clusters existed get theirs from the question text.
       function paperCluster(item) { return item.cluster !== undefined ? item.cluster : M.marketCluster({ question: item.question }); }
 
@@ -654,6 +670,7 @@
           const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
           if (!saved) return;
           if (Array.isArray(saved.paper)) paper = saved.paper.filter(item => item && (item.side === 'YES' || item.side === 'NO') && Number.isFinite(item.shares));
+          if (saved.paperPeak && Number.isFinite(saved.paperPeak.bankroll) && Number.isFinite(saved.paperPeak.equity)) paperPeak = saved.paperPeak;
           if (saved.account && Number.isFinite(saved.account.cash) && saved.account.cash >= 0) {
             Object.assign(account, saved.account);
             $('#bankroll').value = account.bankroll;
@@ -671,7 +688,7 @@
           const settings = {};
           ['kelly', 'maxLev', 'minEdge', 'stopLoss', 'maxDd', 'uncert', 'skill', 'advBankroll'].forEach(id => { settings[id] = $(`#${id}`).value; });
           const { bankroll, cash, peak, realized, trades, wins, markets: marketCount, brierSum, halted } = account;
-          localStorage.setItem(STORE_KEY, JSON.stringify({ paper, settings, account: { bankroll, cash: state && state.position ? cash + Math.max(0, M.markPosition(state.position, state.sim.prices[Math.max(0, state.step)], { spread: state.meta.spread }).equity) : cash, peak, realized, trades, wins, markets: marketCount, brierSum, halted } }));
+          localStorage.setItem(STORE_KEY, JSON.stringify({ paper, paperPeak, settings, account: { bankroll, cash: state && state.position ? cash + Math.max(0, M.markPosition(state.position, state.sim.prices[Math.max(0, state.step)], { spread: state.meta.spread }).equity) : cash, peak, realized, trades, wins, markets: marketCount, brierSum, halted } }));
         } catch (error) { /* storage unavailable */ }
       }
 
@@ -836,6 +853,9 @@
           if (seq !== adviceSeq) return;
         }
         const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, feeRate: inputs.market ? inputs.market.feeRate || 0 : 0, feeExponent: inputs.market ? inputs.market.feeExponent ?? 1 : 1, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft, history, staleBelief: !usingModel };
+        const accountNow = paperAccount();
+        request.bankroll = Math.max(1, accountNow.equity);
+        request.peakEquity = accountNow.peak;
         let advice = M.advise(request, config());
         inputs.execution = inputs.market ? 'quote' : 'manual';
         // A model without an open evidence gate never trades — decide that before touching the order book.
@@ -879,6 +899,12 @@
         return M.markPosition(position, item.lastYes, { spread: item.spread });
       }
 
+      function renderPaperEquity() {
+        const { equity, drawdown } = paperAccount();
+        const limit = Math.min(1, Math.max(.05, (Number($('#maxDd').value) || 30) / 100));
+        $('#paperEquity').textContent = `${formatMoney(equity)} · ${pct(drawdown)}${drawdown >= limit ? ' · KILL-SWITCH' : ''}`;
+        $('#paperEquity').className = drawdown >= limit ? 'negative' : '';
+      }
       function renderPaper() {
         const list = $('#paperList');
         if (!paper.length) {
@@ -888,6 +914,7 @@
           list.replaceChildren(empty);
           signed($('#paperTotal'), 0, '$0');
           signed($('#paperRealized'), 0, '$0');
+          renderPaperEquity();
           return;
         }
         let total = 0;
@@ -926,6 +953,7 @@
         const plusMoney = value => Math.abs(value) < .005 ? '$0' : `${value > 0 ? '+' : ''}${formatMoney(value)}`;
         signed($('#paperTotal'), total, plusMoney(total));
         signed($('#paperRealized'), realized, plusMoney(realized));
+        renderPaperEquity();
       }
 
       async function refreshLive() {
