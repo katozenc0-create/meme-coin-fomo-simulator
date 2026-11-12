@@ -75,7 +75,7 @@ def fetch_polymarket_markets(limit: int = 20) -> list[dict]:
     query = urlencode({"active": "true", "closed": "false", "limit": max(1, min(limit, 100)), "order": "volume24hr", "ascending": "false"})
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}?{query}", ttl=30)
     markets = payload if isinstance(payload, list) else payload.get("data", []) if isinstance(payload, dict) else []
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "clobTokenIds", "negRisk", "feesEnabled", "takerBaseFee")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "clobTokenIds", "negRisk", "feesEnabled", "takerBaseFee", "feeSchedule")
     return [_compact_market(market, keys) for market in markets if isinstance(market, dict)]
 
 
@@ -114,7 +114,7 @@ def fetch_polymarket_market(market_id: str) -> dict:
     payload = _cached_get_json(f"{POLYMARKET_GAMMA_URL}/{market_id}", ttl=10)
     if not isinstance(payload, dict):
         raise ValueError("unexpected response")
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed", "closedTime", "clobTokenIds", "negRisk", "feesEnabled", "takerBaseFee")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "bestBid", "bestAsk", "volumeNum", "volume", "liquidityNum", "liquidity", "endDate", "closed", "closedTime", "clobTokenIds", "negRisk", "feesEnabled", "takerBaseFee", "feeSchedule")
     return _compact_market(payload, keys)
 
 
@@ -131,7 +131,7 @@ def fetch_resolved_markets(limit: int = 100, offset: int = 0, end_min: str | Non
     with a date window, so a window is sent unordered.
     Without a window: markets, most recent scheduled end first.
     """
-    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum", "negRisk", "feesEnabled", "takerBaseFee")
+    keys = ("id", "question", "slug", "outcomes", "outcomePrices", "endDate", "closedTime", "closed", "clobTokenIds", "volumeNum", "negRisk", "feesEnabled", "takerBaseFee", "feeSchedule")
     if end_min or end_max:
         params = {"closed": "true", "limit": max(1, min(limit, 100)), "offset": max(0, min(offset, 900))}
         if end_min:

@@ -129,15 +129,15 @@
   }
 
   /** Opens a simulated leveraged position. side: 'YES' | 'NO'. yesPrice: current YES ask/mid. */
-  function openPosition({ side, yesPrice, margin, leverage, spread = 0, feeRate = 0, takerRate = 0, time = 0 }) {
+  function openPosition({ side, yesPrice, margin, leverage, spread = 0, feeRate = 0, takerRate = 0, takerExponent = 1, time = 0 }) {
     const lev = Math.max(1, leverage);
     const sidePrice = side === 'YES' ? yesPrice : 1 - yesPrice;
     // takerRate: Polymarket taker fee rate; the per-share fee is added to the entry price.
-    const entry = clamp(sidePrice + spread / 2 + feePerShare(takerRate, yesPrice), .001, .999);
+    const entry = clamp(sidePrice + spread / 2 + feePerShare(takerRate, yesPrice, takerExponent), .001, .999);
     const notional = margin * lev;
     const fee = notional * feeRate;
     const shares = (notional - fee) / entry;
-    return { side, entry, margin, leverage: lev, notional, borrowed: notional - margin, shares, interest: 0, openedAt: time, fees: fee, takerRate };
+    return { side, entry, margin, leverage: lev, notional, borrowed: notional - margin, shares, interest: 0, openedAt: time, fees: fee, takerRate, takerExponent };
   }
 
   function sidePriceOf(position, yesPrice) { return position.side === 'YES' ? yesPrice : 1 - yesPrice; }
@@ -145,7 +145,7 @@
   /** Mark-to-market. `exit` applies half the spread against you. */
   function markPosition(position, yesPrice, { spread = 0, feeRate = 0 } = {}) {
     // Selling before resolution crosses the spread and pays the taker fee again.
-    const mark = clamp(sidePriceOf(position, yesPrice) - spread / 2 - feePerShare(position.takerRate || 0, yesPrice), 0, 1);
+    const mark = clamp(sidePriceOf(position, yesPrice) - spread / 2 - feePerShare(position.takerRate || 0, yesPrice, position.takerExponent ?? 1), 0, 1);
     const value = position.shares * mark;
     const exitFee = value * feeRate;
     const equity = value - exitFee - position.borrowed - position.interest;
@@ -485,10 +485,10 @@
    * returns Metyu's verdict plus the numbers a trader should see before clicking anything.
    * daysLeft maps to the decision's time-to-resolution (leverage is cut inside ~7 days).
    */
-  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null, feeRate = 0 }, userConfig = {}) {
+  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null, feeRate = 0, feeExponent = 1 }, userConfig = {}) {
     const config = { ...DEFAULT_CONFIG, ...userConfig };
     // The taker fee (per share, same for YES and NO) is a cost like half the spread: fold it in.
-    const fee = feePerShare(feeRate, yesPrice);
+    const fee = feePerShare(feeRate, yesPrice, feeExponent);
     const quotedSpread = spread;
     spread = quotedSpread + 2 * fee;
     const researchVariance = Number.isFinite(beliefVariance) && beliefVariance > 0 ? beliefVariance : (CONFIDENCE_VARIANCE[confidence] ?? CONFIDENCE_VARIANCE.medium);
@@ -571,6 +571,7 @@
       endDate: raw.endDate ? String(raw.endDate) : '',
       negRisk: raw.negRisk === true || raw.negRisk === 'true',
       feeRate: takerFeeRate(raw),
+      feeExponent: takerFeeExponent(raw),
       eventId: (() => {
         const eventId = raw.eventId ?? (Array.isArray(raw.events) && raw.events[0] && raw.events[0].id);
         return eventId === undefined || eventId === null || eventId === false ? String(raw.id ?? raw.slug ?? raw.question) : String(eventId);
@@ -656,7 +657,7 @@
       id: String(raw.id), question: String(raw.question || 'Resolved market'), slug: raw.slug ? String(raw.slug) : '', endTs, outcome: resolution.outcome, yesToken: tokens[yesIndex],
       closedTs,
       eventId: eventId === undefined || eventId === null || eventId === false ? String(raw.id) : String(eventId),
-      negRisk: raw.negRisk === true || raw.negRisk === 'true', feeRate: takerFeeRate(raw)
+      negRisk: raw.negRisk === true || raw.negRisk === 'true', feeRate: takerFeeRate(raw), feeExponent: takerFeeExponent(raw)
     };
   }
 
@@ -701,7 +702,7 @@
         samples.push({
           marketId: market.id, eventId: market.eventId ?? market.id, endTs: market.endTs, horizon, p: clampProb(p), y: market.outcome === 'YES' ? 1 : 0,
           mom: before === null ? 0 : p - before, neg: market.negRisk ? 1 : 0, cat: market.category || marketCategory(`${market.question || ''} ${market.slug || ''}`),
-          feeRate: market.feeRate || 0
+          feeRate: market.feeRate || 0, feeExponent: market.feeExponent ?? 1
         });
       }
     }
@@ -709,16 +710,32 @@
   }
 
   /**
-   * Polymarket taker fee per share, assumed to be rate × min(price, 1 − price) with
-   * rate = takerBaseFee / 10,000 when fees are enabled (the formula is an assumption;
-   * the fields come from the Gamma API).
+   * Polymarket taker fee: shares × rate × (price × (1 − price))^exponent, taken from the market's
+   * Gamma `feeSchedule` (rate 0.03–0.07 by category, exponent 1; makers pay nothing).
+   * `takerBaseFee` is 1000 on every fee-enabled market and is NOT the rate. A market with fees
+   * enabled but no schedule is charged the highest category rate (0.07), to err on the safe side.
    */
+  const FALLBACK_TAKER_RATE = .07;
+  function feeSchedule(raw) {
+    let schedule = raw && raw.feeSchedule;
+    if (typeof schedule === 'string') { try { schedule = JSON.parse(schedule); } catch (error) { schedule = null; } }
+    return schedule && typeof schedule === 'object' ? schedule : null;
+  }
   function takerFeeRate(raw) {
     if (!raw || !(raw.feesEnabled === true || raw.feesEnabled === 'true')) return 0;
-    const bps = Number(raw.takerBaseFee);
-    return Number.isFinite(bps) && bps > 0 ? bps / 10000 : 0;
+    const schedule = feeSchedule(raw);
+    const rate = schedule ? Number(schedule.rate) : NaN;
+    return Number.isFinite(rate) && rate >= 0 && rate < 1 ? rate : FALLBACK_TAKER_RATE;
   }
-  function feePerShare(rate, price) { return (rate || 0) * Math.min(price, 1 - price); }
+  function takerFeeExponent(raw) {
+    const schedule = feeSchedule(raw);
+    const exponent = schedule ? Number(schedule.exponent) : NaN;
+    return Number.isFinite(exponent) && exponent > 0 && exponent <= 4 ? exponent : 1;
+  }
+  function feePerShare(rate, price, exponent = 1) {
+    const p = clamp(Number(price) || 0, 0, 1);
+    return (rate || 0) * Math.pow(p * (1 - p), exponent ?? 1);
+  }
 
   const CATEGORIES = ['sports', 'crypto', 'politics', 'culture'];
   const CATEGORY_RULES = [
@@ -865,10 +882,10 @@
         modelPairs.push([prediction.probability, sample.y]);
         if (sample.horizon !== tradeHorizon) continue;
         spreads.forEach((tradeSpread, index) => {
-          const advice = advise({ yesPrice: sample.p, spread: tradeSpread, feeRate: sample.feeRate, belief: prediction.probability, beliefVariance: prediction.variance, bankroll: 1e6, peakEquity: 1e6, daysLeft: tradeHorizon }, config);
+          const advice = advise({ yesPrice: sample.p, spread: tradeSpread, feeRate: sample.feeRate, feeExponent: sample.feeExponent, belief: prediction.probability, beliefVariance: prediction.variance, bankroll: 1e6, peakEquity: 1e6, daysLeft: tradeHorizon }, config);
           if (advice.action !== 'OPEN') return;
           const sidePrice = advice.side === 'YES' ? sample.p : 1 - sample.p;
-          const cost = sidePrice + tradeSpread / 2 + feePerShare(sample.feeRate, sample.p);
+          const cost = sidePrice + tradeSpread / 2 + feePerShare(sample.feeRate, sample.p, sample.feeExponent);
           const won = (advice.side === 'YES') === (sample.y === 1);
           const trade = { fold, eventId: sample.eventId, marketId: sample.marketId, endTs: sample.endTs, side: advice.side, price: sample.p, belief: prediction.probability, cost, ret: (won ? 1 : 0) / cost - 1, edge: advice.edge };
           const current = best[index].get(String(sample.eventId));
@@ -1118,6 +1135,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });
