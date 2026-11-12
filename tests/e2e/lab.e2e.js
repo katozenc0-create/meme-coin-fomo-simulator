@@ -245,6 +245,31 @@ test('paper portfolio: at most 2 open positions per category', async () => {
   assert.deepEqual(page.errors, []);
 });
 
+test('paper account: losses shrink the size and a deep drawdown trips the kill-switch', async () => {
+  const lost = pnl => ({ question: 'Old lost bet?', side: 'YES', leverage: 1, entry: .5, shares: 100, margin: 100, borrowed: 0, spread: .02, lastYes: .5, openedAt: 1, settled: { outcome: 'NO', pnl, at: 2 } });
+  const margins = {};
+  for (const [label, pnl] of [['fresh', 0], ['down10', -100], ['down35', -350]]) {
+    const page = await env.page();
+    await page.addInitScript(([items]) => {
+      localStorage.setItem('metyuLab.v1', JSON.stringify({ paper: items, paperPeak: { bankroll: 1000, equity: 1000 }, settings: { advBankroll: '1000' } }));
+    }, [pnl ? [lost(pnl)] : []]);
+    await page.goto(`${env.base}/polymarket.html`);
+    await page.fill('#advQuestion', 'Will the Senate pass the budget bill?');
+    await page.fill('#advPrice', '40'); await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
+    await page.click('#advAsk');
+    await page.waitForTimeout(150);
+    margins[label] = { verdict: await text(page, '#advVerdict'), title: await text(page, '#advVerdict h3'), equity: await text(page, '#paperEquity') };
+    assert.deepEqual(page.errors, []);
+  }
+  const marginOf = verdict => Number((verdict.match(/Margin \(max loss\)\$([\d,.]+)/) || [])[1]?.replace(/,/g, ''));
+  assert.equal(margins.fresh.title, 'Buy YES');
+  assert.equal(margins.down10.title, 'Buy YES');
+  assert.ok(marginOf(margins.down10.verdict) < marginOf(margins.fresh.verdict), `smaller after losses: ${marginOf(margins.down10.verdict)} < ${marginOf(margins.fresh.verdict)}`);
+  assert.equal(margins.down35.title, 'No trade', 'a 35% drawdown halts Metyu');
+  assert.match(margins.down35.verdict, /KILL-SWITCH/);
+  assert.match(margins.down35.equity, /\$650 · 35\.0% · KILL-SWITCH/);
+});
+
 test('scenario stress test runs every scenario', async () => {
   const page = await env.page();
   await page.goto(`${env.base}/polymarket.html`);
