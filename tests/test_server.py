@@ -233,6 +233,19 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertIn("available", json.loads(body))
 
+    def test_pwa_files_are_served(self) -> None:
+        status, body, headers = self.get("/manifest.webmanifest")
+        self.assertEqual(status, 200)
+        self.assertIn("manifest+json", headers.get("Content-Type", ""))
+        manifest = json.loads(body)
+        self.assertEqual(manifest["start_url"], "board.html")
+        status, _, headers = self.get("/sw.js")
+        self.assertEqual(status, 200)
+        self.assertIn("javascript", headers.get("Content-Type", ""))
+        status, _, headers = self.get("/icons/icon-180.png")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("Content-Type"), "image/png")
+
     def test_cache_headers(self) -> None:
         _, _, api_headers = self.get("/api/health")
         _, _, page_headers = self.get("/")
