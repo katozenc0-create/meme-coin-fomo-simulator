@@ -492,3 +492,19 @@ test('portfolio clusters: Polymarket fee category first, then keywords; the mode
   assert.equal(M.marketCategory('Will Rahm Emanuel win the 2028 Democratic presidential nomination?'), 'other', 'the trained-model category feature is unchanged');
   assert.equal(M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', feeType: 'politics_fees' }).feeType, 'politics_fees');
 });
+
+test('advisor portfolio limits: total exposure and open count, like the Live Board', () => {
+  const base = { yesPrice: .40, spread: .02, belief: .62, confidence: 'high', bankroll: 1000, daysLeft: 45 };
+  const alone = M.advise(base);
+  assert.equal(alone.action, 'OPEN');
+  const roomy = M.advise({ ...base, portfolio: { openNotional: 0, openCount: 0 } });
+  close(roomy.notional, alone.notional, 1e-9, 'an empty book changes nothing');
+  const tight = M.advise({ ...base, portfolio: { openNotional: 1460, openCount: 3 } });
+  assert.equal(tight.action, 'OPEN');
+  assert.ok(tight.notional <= 40 + 1e-6 && tight.notional < alone.notional, `cut to the room left under 1.5x: ${tight.notional}`);
+  assert.ok(tight.reasons.some(reason => /portfolio: size cut/.test(reason)));
+  const full = M.advise({ ...base, portfolio: { openNotional: 1500, openCount: 3 } });
+  assert.equal(full.action, 'HOLD');
+  assert.ok(full.reasons.some(reason => /gross exposure cap/.test(reason)));
+  assert.equal(M.advise({ ...base, portfolio: { openNotional: 0, openCount: 6 } }).action, 'HOLD', 'max 6 open positions');
+});

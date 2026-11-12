@@ -270,6 +270,25 @@ test('paper account: losses shrink the size and a deep drawdown trips the kill-s
   assert.match(margins.down35.equity, /\$650 · 35\.0% · KILL-SWITCH/);
 });
 
+test('paper account: total exposure is capped at 1.5x equity across categories', async () => {
+  const page = await env.page();
+  // Four open, flat positions in four categories: $1,480 of notional on a $1,000 account.
+  const open = (question, notional) => ({ question, side: 'YES', leverage: 1, entry: .5, shares: notional / .5, margin: notional, borrowed: 0, spread: 0, lastYes: .5, openedAt: 1 });
+  await page.addInitScript(([items]) => {
+    localStorage.setItem('metyuLab.v1', JSON.stringify({ paper: items, paperPeak: { bankroll: 1000, equity: 1000 }, settings: { advBankroll: '1000' } }));
+  }, [[open('Will Bitcoin be above 120k?', 400), open('Lakers vs Celtics', 400), open('Will Nvidia be the largest company?', 350), open('Will the Fed cut rates?', 330)]]);
+  await page.goto(`${env.base}/polymarket.html`);
+  await page.fill('#advQuestion', 'Will it snow in Paris on Christmas?');
+  await page.fill('#advPrice', '40'); await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
+  await page.click('#advAsk');
+  await page.waitForTimeout(150);
+  const verdict = await text(page, '#advVerdict');
+  assert.match(verdict, /portfolio: (size cut to stay within 1.5x gross exposure|gross exposure cap 1.5x of equity reached)/, verdict);
+  const notional = Number((verdict.match(/Leverage · notional\d+x · \$([\d,.]+)/) || [])[1]?.replace(/,/g, ''));
+  if (await text(page, '#advVerdict h3') !== 'No trade') assert.ok(notional <= 20.01, `at most the $20 left: ${notional}`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('scenario stress test runs every scenario', async () => {
   const page = await env.page();
   await page.goto(`${env.base}/polymarket.html`);

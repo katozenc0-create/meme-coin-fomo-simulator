@@ -670,7 +670,7 @@
   // history: recent YES prices (oldest first) for the gap guard and the staleness rule.
   // staleBelief: false when the belief is computed from the current price (a trained model),
   // so it cannot predate the market's moves.
-  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null, feeRate = 0, feeExponent = 1, history = [], staleBelief = true }, userConfig = {}) {
+  function advise({ yesPrice, spread = .02, belief, confidence = 'medium', beliefVariance = null, bankroll = 1000, daysLeft = 30, peakEquity = null, book = null, feeRate = 0, feeExponent = 1, history = [], staleBelief = true, portfolio = null }, userConfig = {}) {
     // Momentum and fade are calibrated on the simulator only: never applied to real markets.
     const config = { ...DEFAULT_CONFIG, momentumWeight: 0, fadeWeight: 0, ...userConfig };
     if (!staleBelief) config.stalenessWeight = 0;
@@ -688,6 +688,13 @@
     if (decision.action !== 'OPEN') return result;
     const sideFair = decision.side === 'YES' ? decision.fair : 1 - decision.fair;
     let margin = decision.margin;
+    // portfolio: { openNotional, openCount, maxGross, maxOpen } of positions already held. Same
+    // limits as the Live Board, so many small ideas cannot add up to a multiple of the bankroll.
+    if (portfolio) {
+      const guard = capToPortfolio({ equity: bankroll, openNotional: portfolio.openNotional || 0, openCount: portfolio.openCount || 0, margin, leverage: decision.leverage, maxGross: portfolio.maxGross ?? 1.5, maxOpen: portfolio.maxOpen ?? 6 });
+      if (guard.margin < 1) return { ...result, action: 'HOLD', reasons: [...decision.reasons, `portfolio: ${guard.reason}`] };
+      if (guard.reason) { margin = guard.margin; result.reasons = [...decision.reasons, `portfolio: ${guard.reason}`]; }
+    }
     let bookFill = null;
     const asks = book && book[decision.side];
     if (asks) {
@@ -707,7 +714,7 @@
       }
       if (notional < margin * decision.leverage - .01) {
         margin = notional / decision.leverage;
-        result.reasons = [...decision.reasons, `size cut to $${notional.toFixed(2)} notional so the book fill keeps the edge`];
+        result.reasons = [...result.reasons, `size cut to $${notional.toFixed(2)} notional so the book fill keeps the edge`];
       }
     }
     const position = openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread, feeRate: config.feeRate });
