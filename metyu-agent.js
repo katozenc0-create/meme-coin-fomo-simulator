@@ -51,7 +51,10 @@
     forceLeverage: false,     // demo mode: same margin, maxLeverage× notional (shows why that is a bad idea)
     momentumWeight: .15,      // log-odds tilt per unit of recent price momentum
     exitBuffer: .01,          // exit only once the edge is this far negative (avoids churning on noise)
-    fadeWeight: .1            // pull-back applied when price is over-extended vs. its slow average
+    fadeWeight: .1,           // pull-back applied when price is over-extended vs. its slow average
+    gapBuffer: .08,           // min distance (price) between entry and liquidation for any leverage
+    gapMultiple: 3,           // ... and at least this many times the largest recent one-step move
+    stalenessWeight: .1       // research may predate recent moves: add this × their log-odds variance to it
   });
 
   /** Seeded PRNG (mulberry32) so simulations and backtests are reproducible. */
@@ -112,6 +115,13 @@
       if (Math.abs(tilt) > .01) reasons.push(`${tilt > 0 ? 'momentum/flow up' : 'momentum fade / overextension'} (${tilt > 0 ? '+' : ''}${tilt.toFixed(2)} logit)`);
     }
     if (research !== null && researchVariance !== null && researchVariance > 0) {
+      // Staleness: a research reading may predate the market's latest moves. Whatever the crowd
+      // has learned since is uncertainty the reading cannot see, so it is added to its variance.
+      if (config.stalenessWeight > 0 && history.length >= 4) {
+        const recent = history.slice(-11).map(logit);
+        const moved = recent.slice(1).reduce((sum, value, i) => sum + Math.pow(value - recent[i], 2), 0);
+        researchVariance += config.stalenessWeight * moved;
+      }
       // Precision-weighted (Bayesian) combination of two noisy estimates of the same quantity.
       const weight = config.marketVariance / (config.marketVariance + researchVariance);
       x = (1 - weight) * x + weight * logit(research);
@@ -226,6 +236,15 @@
     const signalToNoise = edge / Math.max(volatility, .01);
     let leverage = clamp(Math.floor(1 + signalToNoise), 1, config.maxLeverage);
     if (timeLeft < .25) leverage = 1;
+    // Gap guard: prices jump (news, manipulation) faster than any stop can react. Only keep a
+    // leverage whose liquidation price sits further from the entry than recent jumps.
+    const recent = history.slice(-30);
+    const largestMove = recent.reduce((max, value, i) => (i ? Math.max(max, Math.abs(value - recent[i - 1])) : max), 0);
+    const gapNeeded = Math.max(config.gapBuffer, config.gapMultiple * largestMove);
+    const liquidationDistance = lev => price - price * (1 - 1 / lev) / (1 - config.maintenanceMargin);
+    let gapCut = false;
+    while (leverage > 1 && !config.forceLeverage && liquidationDistance(leverage) < gapNeeded) { leverage -= 1; gapCut = true; }
+    if (gapCut) reasons.push(`leverage cut to ${leverage}x: liquidation must sit ${(gapNeeded * 100).toFixed(0)}c+ away (recent jumps up to ${(largestMove * 100).toFixed(1)}c)`);
     // Normal mode keeps the Kelly notional and uses leverage only to post less margin.
     // forceLeverage mimics what people actually do: same margin, L× the notional.
     if (config.forceLeverage) leverage = Math.max(1, config.maxLeverage);
@@ -274,7 +293,10 @@
    * exactly like a well-informed price should. The market price chases that truth with lag and
    * noise, and news jumps gap the price immediately (no chance to exit in between).
    */
-  function createMarket({ seed = 1, steps = 160, startProb = .5, volatility = .06, efficiency = .18, jumpRate = .03, jumpSize = .9, jumpPassThrough = .6 } = {}) {
+  function createMarket({ seed = 1, steps = 160, startProb = .5, volatility = .06, efficiency = .18, jumpRate = .03, jumpSize = .9, jumpPassThrough = .6, pump = null } = {}) {
+    // pump: { at: 0-1 of the market's life, size: log-odds push, halfLife: steps } — a manipulation
+    // or overreaction that moves the PRICE but not the truth, then fades. It uses no randomness,
+    // so a market with and without a pump shares the same truth and noise.
     const rng = createRng(seed);
     const stepVar = volatility * volatility + jumpRate * jumpSize * jumpSize;
     const truthAt = (x, step) => clampProb(normalCdf(x / Math.sqrt(Math.max(stepVar * (steps - step), 1e-9))));
@@ -291,7 +313,12 @@
       price = clamp(price + efficiency * (next - price) + rng.normal() * volatility * .12, .01, .99);
       truthNow = next;
       truth.push(truthNow);
-      prices.push(price);
+      let shown = price;
+      if (pump && step >= Math.floor(pump.at * steps)) {
+        const age = step - Math.floor(pump.at * steps);
+        shown = clamp(sigmoid(logit(price) + pump.size * Math.pow(.5, age / Math.max(1, pump.halfLife || 8))), .01, .99);
+      }
+      prices.push(shown);
     }
     // The final reading is the resolved outcome; trading stops one step earlier.
     const outcome = latent > 0 ? 'YES' : 'NO';
@@ -340,7 +367,10 @@
   }
 
   /** Runs the agent over one market. Returns equity path, trades and Brier score. */
-  function runAgentOnMarket(market, { bankroll = 1000, skill = .5, config = {}, seed = 7, spread = .02 } = {}) {
+  // researchBias: a constant log-odds error in every research reading (a wrong model or a biased
+  // source). It cannot be averaged away, which is what makes it dangerous.
+  // researchLag: readings describe the truth this many steps ago (slow or second-hand information).
+  function runAgentOnMarket(market, { bankroll = 1000, skill = .5, config = {}, seed = 7, spread = .02, researchBias = 0, researchLag = 0 } = {}) {
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const rng = createRng(seed ^ market.seed);
     const evidence = createEvidence({ processVar: .03, measurementVar: Math.pow(researchNoise(skill), 2) });
@@ -370,7 +400,8 @@
       const equity = cash + (position ? Math.max(0, markPosition(position, yesPrice, { spread }).equity) : 0);
       peak = Math.max(peak, equity);
       equityPath.push(equity);
-      const belief = skill > 0 ? evidence.add(researchSignal(market.truth[step], skill, rng), processVarianceAt(1 - step / steps)) : { probability: null, confidence: 0, variance: null };
+      const reading = skill > 0 ? researchSignal(market.truth[Math.max(0, step - researchLag)], skill, rng) : null;
+      const belief = skill > 0 ? evidence.add(researchBias ? clampProb(sigmoid(logit(reading) + researchBias)) : reading, processVarianceAt(1 - step / steps)) : { probability: null, confidence: 0, variance: null };
       const decision = halted ? { action: 'HALT', fair: yesPrice } : decide({
         yesPrice, spread, history: market.prices.slice(Math.max(0, step - 40), step + 1), research: belief.probability, researchVariance: belief.variance,
         equity, peakEquity: peak, position, volatility: .05, timeLeft: 1 - step / steps
@@ -393,6 +424,56 @@
     }
     equityPath.push(cash);
     return { finalEquity: cash, equityPath, trades, brier: brier / steps, halted };
+  }
+
+  /**
+   * Scenario stress test: Metyu against the situations a prediction-market trader actually meets.
+   * Each scenario runs `markets` independent markets (fresh $1,000 each, so one disaster cannot
+   * hide behind earlier luck) and reports the average and worst result, ruin and liquidations.
+   */
+  const STRESS_SCENARIOS = Object.freeze([
+    { id: 'efficient', name: 'Efficient crowd, no information', skill: 0, market: {} },
+    { id: 'noise', name: 'Noisy research (overconfidence trap)', skill: .15, market: {} },
+    { id: 'bias', name: 'Biased research (+0.8 log-odds, wrong model)', skill: .6, researchBias: .8, market: {} },
+    { id: 'shocks', name: 'News shocks (frequent large gaps)', skill: .5, market: { jumpRate: .1, jumpSize: 1.5 } },
+    { id: 'pump', name: 'Pump and dump (price pushed, truth unchanged)', skill: .5, market: { pump: { at: .4, size: 1.5, halfLife: 10 } } },
+    { id: 'pump-blind', name: 'Pump and dump, no research', skill: 0, market: { pump: { at: .4, size: 1.5, halfLife: 10 } } },
+    { id: 'wide', name: 'Illiquid: 8c spread', skill: .5, spread: .08, market: {} },
+    { id: 'whipsaw', name: 'Whipsaw: high volatility', skill: .5, market: { volatility: .15 } },
+    { id: 'sharp', name: 'Sharp crowd (prices fast)', skill: .5, market: { efficiency: .6 } },
+    { id: 'lagging', name: 'Slow crowd, good research', skill: .7, market: { efficiency: .05 } },
+    { id: 'late-flip', name: 'Late reversals (big jumps, little time)', skill: .5, market: { steps: 60, jumpRate: .08, jumpSize: 1.8 } },
+    { id: 'stale', name: 'Stale research (10 steps late)', skill: .6, researchLag: 10, market: {} },
+    { id: 'dispute', name: 'Resolution risk (8% resolve against the evidence)', skill: .5, flipRate: .08, market: {} }
+  ]);
+
+  function stressTest({ markets = 60, seed = 2027, config = {}, scenarios = STRESS_SCENARIOS } = {}) {
+    return scenarios.map((scenario, index) => {
+      const rng = createRng(seed + index * 7919);
+      const returns = [];
+      let trades = 0;
+      let liquidations = 0;
+      let halts = 0;
+      for (let m = 0; m < markets; m += 1) {
+        const market = createMarket({ seed: Math.floor(rng() * 2 ** 31), startProb: .1 + rng() * .8, ...scenario.market });
+        // A disputed / mis-resolved market: the outcome goes against everything that was observable.
+        if (scenario.flipRate && rng() < scenario.flipRate) market.outcome = market.outcome === 'YES' ? 'NO' : 'YES';
+        const run = runAgentOnMarket(market, { bankroll: 1000, skill: scenario.skill, config, seed: m + 1, spread: scenario.spread ?? .02, researchBias: scenario.researchBias || 0, researchLag: scenario.researchLag || 0 });
+        returns.push(run.finalEquity / 1000 - 1);
+        trades += run.trades.length;
+        liquidations += run.trades.filter(trade => trade.reason === 'LIQUIDATED').length;
+        if (run.halted) halts += 1;
+      }
+      const sorted = returns.slice().sort((a, b) => a - b);
+      return {
+        id: scenario.id, name: scenario.name, markets,
+        meanReturn: returns.reduce((sum, value) => sum + value, 0) / markets,
+        worstReturn: sorted[0],
+        p5Return: sorted[Math.floor(.05 * markets)],
+        lossRate: returns.filter(value => value < -.001).length / markets,
+        trades, liquidations, halts
+      };
+    });
   }
 
   /** Monte Carlo across many markets for one configuration. */
@@ -1144,6 +1225,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });
