@@ -3,3 +3,11 @@ __pycache__/
 node_modules/
 package-lock.json
 data/
+
+# Secrets never belong in the repository (use GitHub Actions secrets); tests/account.test.js checks.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+secrets/

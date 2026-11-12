@@ -249,6 +249,40 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertIn("available", json.loads(body))
 
+    def test_security_headers_and_page_policy(self) -> None:
+        import re
+        status, _, headers = self.get("/board.html")
+        self.assertEqual(status, 200)
+        policy = headers["Content-Security-Policy"]
+        self.assertIn("frame-ancestors 'none'", policy)
+        self.assertIn("object-src 'none'", policy)
+        self.assertNotIn("unsafe-eval", policy)
+        self.assertEqual(headers["X-Frame-Options"], "DENY")
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        _, _, json_headers = self.get("/api/health")
+        self.assertNotIn("Content-Security-Policy", json_headers, "the policy is for pages")
+        # Each page carries the same policy as a meta tag (GitHub Pages cannot send headers).
+        for name in ("index.html", "polymarket.html", "board.html"):
+            with self.subTest(page=name):
+                html = (Path(server.ROOT) / name).read_text(encoding="utf-8")
+                metas = re.findall(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', html)
+                self.assertEqual(metas, [server.CONTENT_SECURITY_POLICY])
+
+    def test_account_box_serves_ciphertext_only(self) -> None:
+        import tempfile
+        self.assertIsNone(server.account_box(Path(tempfile.gettempdir()) / "no-such-box.json"))
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump({"v": 1, "alg": "PBKDF2-SHA256/AES-256-GCM", "label": "metyu-account", "iterations": 600000, "salt": "c2FsdA==", "iv": "aXY=", "ct": "Y3Q=", "extra": "dropped"}, handle)
+        box = server.account_box(Path(handle.name))
+        self.assertEqual(box["ct"], "Y3Q=")
+        self.assertNotIn("extra", box)
+        Path(handle.name).write_text(json.dumps({"v": 1, "ct": "x", "balances": [{"asset": "BTC"}]}))
+        self.assertIsNone(server.account_box(Path(handle.name)), "plaintext balances are never served")
+        Path(handle.name).write_text(json.dumps({"balances": []}))
+        self.assertIsNone(server.account_box(Path(handle.name)))
+        status, _, _ = self.get("/api/account")
+        self.assertIn(status, (200, 404))
+
     def test_pwa_files_are_served(self) -> None:
         status, body, headers = self.get("/manifest.webmanifest")
         self.assertEqual(status, 200)

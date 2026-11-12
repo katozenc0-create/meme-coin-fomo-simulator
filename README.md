@@ -88,6 +88,7 @@ The Polymarket proxy endpoints are read-only and polite to the upstream API:
 | `GET /api/polymarket/history?token_id=<numeric>&fidelity=<min>` | price history `[{t, p}]` | 1 h |
 | `GET /api/autopilot/status` | the Polymarket autopilot's summary (from `data/autopilot.json`) | – |
 | `GET /api/exchange/status` | the exchange autopilot's public status (from `data/exchange-status.json`) | – |
+| `GET /api/account` | the sealed (encrypted) account snapshot, 404 if none; never plaintext | – |
 
 Ids are validated as numeric (anything else gets a 400). Responses carry only the fields the pages use, plus a flat `eventId`. If Polymarket is unreachable, the endpoints return 502.
 
@@ -269,6 +270,19 @@ The GitHub Actions workflow `autopilot.yml` runs it every 15 minutes next to the
 - the chart notes;
 - each strategy's gate;
 - the last trades and the log.
+
+## Your exchange account on the board (view-only, encrypted) and the real-money lock
+
+`account-sync.js` links your real Coinbase or Binance account to the Live Board **read-only**:
+- It verifies with the exchange that the API key is view-only, and refuses any key that can trade, withdraw or transfer.
+- It reads your balances and prices them in USD.
+- It seals them end-to-end with your board passphrase (`metyu-vault.js`: PBKDF2-SHA256 → AES-256-GCM).
+
+Only ciphertext is published. The board's **My exchange account** panel decrypts it on your device once you enter the passphrase.
+
+The exchange panel also shows the **real-money lock**: the six conditions that must all hold before real orders could even be considered, and the caps for the first orders. There is no order code in Metyu.
+
+Setup, threat model and all protections: see [SECURITY.md](SECURITY.md).
 
 ## Metyu on iPhone / iPad: install from Safari
 

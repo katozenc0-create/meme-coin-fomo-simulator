@@ -39,8 +39,8 @@ test('the service worker caches the app shell, so the board opens offline; live 
   const page = await env.page();
   await page.goto(`${env.base}/board.html`);
   await page.evaluate(() => navigator.serviceWorker.ready);
-  await page.waitForFunction(async () => (await caches.keys()).includes('metyu-shell-v1'));
-  const cached = await page.evaluate(async () => (await (await caches.open('metyu-shell-v1')).keys()).map(request => new URL(request.url).pathname));
+  await page.waitForFunction(async () => (await caches.keys()).includes('metyu-shell-v2'));
+  const cached = await page.evaluate(async () => (await (await caches.open('metyu-shell-v2')).keys()).map(request => new URL(request.url).pathname));
   for (const file of ['/board.html', '/metyu-agent.js', '/manifest.webmanifest', '/icons/icon-180.png']) assert.ok(cached.includes(file), `${file} cached`);
   assert.ok(!cached.some(path => path.includes('/api/')), 'no live data in the cache');
 

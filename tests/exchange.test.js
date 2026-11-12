@@ -366,7 +366,7 @@ test('forward evidence, public status with charts, persistence and CLI options',
   assert.equal(loadState(path.join(dir, 'missing.json'), { bankroll: 500 }).account.bankroll, 500);
 
   assert.deepEqual(parseArgs(['--once', '--learn', '--state', 'x.json', '--symbols', 'btc-usd,ETH-USD', '--train-bars', '99999']),
-    { state: 'x.json', 'status-out': null, interval: 900, bankroll: undefined, once: true, learn: true, 'train-bars': 6000, retrain: 24, symbols: ['BTC-USD', 'ETH-USD'] });
+    { state: 'x.json', 'status-out': null, interval: 900, bankroll: undefined, once: true, learn: true, 'train-bars': 6000, retrain: 24, symbols: ['BTC-USD', 'ETH-USD'], 'account-public': null });
   assert.throws(() => parseArgs(['--symbols', 'BTCUSDT']), /look like BTC-USD/);
   assert.throws(() => parseArgs(['--wallet', 'x']), /unknown option/);
 });

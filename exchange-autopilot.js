@@ -246,7 +246,7 @@ function forwardEvidence(history, { learning, now = Date.now() } = {}) {
 }
 
 /** What the Live Board shows: account, model gates, positions, trades, log, forward test, charts. */
-function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.chartBars, costs = X.COSTS } = {}) {
+function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.chartBars, costs = X.COSTS, accountLink = null } = {}) {
   const positions = Object.values(state.positions).map(held => {
     const mark = state.marks[held.symbol] ? X.markPosition(held, state.marks[held.symbol].price, now, costs) : null;
     return { ...held, openedAt: new Date(held.openedAt).toISOString(), mark: mark ? mark.price : null, pnl: mark ? mark.pnl : 0 };
@@ -274,6 +274,8 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     } : null,
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) },
+    // Real money stays locked; this is how far away the conditions are (all trades, both books).
+    live: X.liveReadiness({ forward: forwardEvidence(state.history, { now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now }),
     charts
   };
 }
@@ -295,7 +297,7 @@ function saveState(file, state) {
 
 // ---------- CLI ----------
 function parseArgs(argv) {
-  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, symbols: null };
+  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, symbols: null, 'account-public': null };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'once') args.once = true;
@@ -327,7 +329,11 @@ async function main() {
       console.log(`${new Date().toISOString()} · ${result.prices} coins · ${result.signals} signals · ${result.open} open · equity ${result.equity.toFixed(2)}${result.halted ? ' · HALTED' : ''}`);
     } catch (error) { console.error(`tick failed: ${error.message}`); }
     saveState(args.state, state);
-    if (args['status-out']) saveState(args['status-out'], statusOf(state, { series: pilot.series() }));
+    if (args['status-out']) {
+      let accountLink = null;
+      try { if (args['account-public']) accountLink = JSON.parse(fs.readFileSync(args['account-public'], 'utf8')); } catch (error) { /* no account linked */ }
+      saveState(args['status-out'], statusOf(state, { series: pilot.series(), accountLink }));
+    }
     if (args.once) break;
     await new Promise(resolve => setTimeout(resolve, args.interval * 1000));
   }

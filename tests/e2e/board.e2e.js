@@ -433,6 +433,59 @@ test('exchange panel shows the crypto autopilot: chart with levels, positions, g
   assert.deepEqual(page.errors, []);
 });
 
+test('account panel: the sealed snapshot opens only with the right passphrase, then locks again', async () => {
+  const Vault = require('../../metyu-vault.js');
+  const pass = 'my long board passphrase';
+  const box = await Vault.seal({ kind: 'account', provider: 'coinbase', verifiedAt: new Date(Date.now() - 4 * 60000).toISOString(), viewOnly: true, permissions: { can_view: true, can_trade: false, can_transfer: false },
+    balances: [{ asset: 'BTC', free: .4, locked: .1, total: .5, usd: 35000 }, { asset: 'USDC', free: 120, locked: 0, total: 120, usd: 120 }, { asset: 'ODD', free: 3, locked: 0, total: 3, usd: null }], totalUsd: 35120, unpriced: ['ODD'] }, pass, { iterations: 100000, label: 'metyu-account' });
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/account.enc.json';
+  await page.route(published, route => route.fulfill({ json: box }));
+  await page.goto(`${env.base}/board.html?account=${encodeURIComponent(published)}`);
+  await page.waitForSelector('#accountPanel:not([hidden])');
+  assert.equal(await page.locator('#acBody').isHidden(), true, 'nothing is shown before unlocking');
+  assert.ok(!(await page.content()).includes('35,120'), 'no balance in the page before unlocking');
+  await page.fill('#acPass', 'a wrong passphrase!');
+  await page.click('#acOpen');
+  await page.waitForFunction(() => /Wrong passphrase/.test(document.querySelector('#acStatus').textContent));
+  assert.equal(await page.locator('#acBody').isHidden(), true);
+  assert.equal(await page.inputValue('#acPass'), '', 'the field is cleared');
+  await page.fill('#acPass', pass);
+  await page.click('#acOpen');
+  await page.waitForSelector('#acBody:not([hidden])');
+  assert.equal(await text(page, '#acTotal'), '$35,120');
+  assert.equal(await text(page, '#acKey'), 'view-only ✓');
+  assert.equal(await text(page, '#acVerified'), '4 min ago');
+  assert.match(await text(page, '#acBalances'), /BTC\$35,000 ?0\.5 BTC · 0\.1 in orders.*USDC\$120.*ODDno USD price/);
+  assert.match(await text(page, '#acStatus'), /cannot trade or withdraw/);
+  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+  assert.ok(!stored.includes(pass) && !stored.includes('35120'), 'neither the passphrase nor the balances are stored');
+  await page.click('#acLock');
+  assert.equal(await page.locator('#acBody').isHidden(), true);
+  assert.equal(await page.locator('#acBalances li').count(), 0, 'balances are removed from the page');
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});
+
+test('real-money lock is shown with every unmet condition and the first-order limits', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - 3 * X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  const status = statusOf(state, { accountLink: { linked: true, viewOnly: true } });
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => /Real money: LOCKED/.test(document.querySelector('#exLiveHead').textContent));
+  assert.equal(await text(page, '#exLiveHead'), 'Real money: LOCKED · 2/6 conditions met');
+  assert.equal(await page.locator('#exLive li.ok').count(), 2, 'no kill-switch and a linked view-only account');
+  assert.match(await text(page, '#exLive'), /forward test ran 14\+ days \(now 3\)/);
+  assert.match(await text(page, '#exLiveLimits'), /\$25 per order, \$100 open in total, \$50 maximum loss per day, no leverage/);
+  assert.deepEqual(page.errors, []);
+});
+
 test('exchange panel stays hidden when no exchange autopilot publishes anything', async () => {
   const page = await env.page();
   await page.route('**/api/exchange/status', route => route.fulfill({ status: 404, json: {} }));
