@@ -24,7 +24,7 @@ What is real is small. A recalibrated forecast is slightly better calibrated tha
 | Prices at ≤1¢ or ≥99¢ are skipped | These markets are effectively resolved. |
 | Each event carries a total weight of 1 | Candidates of an event, and horizons of one market, share an outcome. |
 | Walk-forward over 6 time blocks. Each block trains only on events that had **actually resolved** (`closedTime`) before the block's **earliest decision** (each sample's end minus its horizon) | A test trade is placed up to 30 days before its market ends. Training on events that resolved after it, including date ladders and late or disputed resolutions, uses outcomes unknown at trade time. |
-| Trades go through Metyu's own `advise()`, at most one per event, and pay half the spread plus the taker fee | The fee is assumed to be `takerBaseFee / 10,000 × min(p, 1 − p)` per share. |
+| Trades go through Metyu's own `advise()`, at most one per event, and pay half the spread plus the taker fee | The fee per share is `rate × (p × (1 − p))^exponent` from the market's Gamma `feeSchedule` (rate 0.03–0.07, exponent 1). `takerBaseFee` is 1000 on every fee-enabled market and is not the rate. |
 | Gate: the 95% bootstrap interval of the per-$1 return must be above 0, with at least 30 trades | |
 
 ## Results with the corrected method
@@ -36,7 +36,20 @@ What is real is small. A recalibrated forecast is slightly better calibrated tha
 | Old discovery sample, re-evaluated | 5,998 / 1,265 | calibration, 7 d: 1 trade (was 330); at most 3 trades anywhere | closed |
 | Old replication sample, re-evaluated | 5,999 / 1,309 | calibration, 7 d: 1 trade; at most 2 anywhere | closed |
 
-Brier scores, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
+### Re-run with the correct fee (November 2026)
+
+Until November 2026 the fee was modelled as `takerBaseFee / 10,000 × min(p, 1 − p)`, i.e. 10%, which overstated costs 2–4×. Two fresh samples were collected with each market's `feeSchedule` and evaluated three ways on the same data (calibration model, 2¢ spread):
+
+| Sample | Markets / events | Fee model | 1 d | 7 d | 30 d |
+|---|---|---|---|---|---|
+| A: `collect.py 6000 0 5` | 4,465 / 699 | old 10% × min(p, 1−p) | 56 trades, −7.9% | 69, +8.3% [−9.9%, +26.7%] | 30, +11.2% |
+| | | **correct `feeSchedule`** | 62, −2.1% | **85, +14.1% [−2.1%, +29.8%]** | 45, +14.5% [−7.6%, +35.9%] |
+| | | no fee (not real) | 92, +3.5% | 116, +18.2% [+5.6%, +30.8%] | 77, +20.8% |
+| B: `collect.py 6000 3 5` | 4,333 / 524 | any, even no fee | 0 trades | 0 | 0 |
+
+With the correct fee the gate is still **closed** everywhere. Sample A comes close at 7 days, but the interval still includes a loss, and the independent Sample B produces no trades at all, so the near-miss does not replicate. The rich model is closed on both samples (Sample A: 24 trades at 7 d, −17.5%).
+
+Brier scores of the earlier samples, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
 
 ## How the earlier "edges" fell apart
 
