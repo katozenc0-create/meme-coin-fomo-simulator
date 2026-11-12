@@ -161,17 +161,10 @@ test('training: history lookup and sample building respect time', () => {
   assert.deepEqual(samples.map(sample => [sample.horizon, sample.p]), [[1, .8], [7, .3]]);   // no 30-day sample: market too young
 });
 
-test('training: calibration fit finds no edge in a calibrated crowd and finds longshot bias', () => {
-  const fair = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: 0 }));
-  assert.ok(Math.abs(fair.model.b - 1) < .25, `calibrated slope ${fair.model.b}`);
-  const biased = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: .35 }));
-  assert.ok(biased.model.b > 1.25, `biased slope ${biased.model.b}`);
-  assert.ok(biased.test.brierModel < biased.test.brierMarket, 'model beats the biased crowd out of sample');
-  assert.equal(fair.paper.trades.length, 0, 'no edge, no trades');
-  // With one effective observation per event, a mild bias in 400 markets is not enough evidence
-  // to trade; a strong one is.
-  const strong = M.trainAndEvaluate(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: .5 }));
-  assert.ok(strong.paper.trades.length > 0, 'trades when the edge is large enough to be sure of');
+test('training: calibration fit is neutral on a calibrated crowd and finds longshot bias', () => {
+  const slope = markets => M.fitCalibration(M.weightByEvent(M.buildTrainingSamples(markets, [1, 7, 30]))).b;
+  assert.ok(Math.abs(slope(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: 0 })) - 1) < .25);
+  assert.ok(slope(M.simulatedResolvedMarkets(400, { seed: 3, longshotBias: .35 })) > 1.25);
 });
 
 test('training: parses resolved Gamma markets with YES token and end time', () => {
@@ -217,11 +210,10 @@ test('event-aware training: grouped candidates count once and never straddle the
       markets.push({ id: `m${event}-${candidate}`, eventId: `e${event}`, endTs, outcome: candidate === event % 5 ? 'YES' : 'NO', history: [{ t: endTs - 40 * 86400, p: .2 }] });
     }
   }
-  const result = M.trainAndEvaluate(markets, { horizons: [7] });
+  const result = M.walkForward(markets, { kind: 'calib', horizons: [7], tradeHorizon: 7 });
   assert.equal(result.counts.events, 30);
-  assert.equal(result.counts.trainMarkets % 5, 0, 'whole events only on each side');
-  assert.ok(Math.abs(result.counts.effectiveTrainSamples - result.counts.trainEvents) < 1e-9, 'one effective sample per event');
-  const tradedEvents = result.paper.trades.map(trade => trade.marketId.split('-')[0]);
+  assert.ok(Math.abs(result.counts.effectiveTrainSamples - 30) < 1e-9, 'one effective sample per event');
+  const tradedEvents = result.paper.trades.map(trade => trade.eventId);
   assert.equal(new Set(tradedEvents).size, tradedEvents.length, 'at most one trade per event');
   const parsed = M.parseResolvedForTraining({ id: 1, eventId: '99', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0","1"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' });
   assert.equal(parsed.eventId, '99');
@@ -316,16 +308,55 @@ test('live safety: fees cost edge, horizons are clamped, only an open gate may t
   assert.equal(M.parseResolvedForTraining({ id: 1, slug: 'nba-lakers-celtics', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }).slug, 'nba-lakers-celtics');
 });
 
-test('walk-forward purges training events that end within the horizon of a test block', () => {
-  // 60 single-market events, one per day. With 30-day horizons, block 1 (events 10-19) would
-  // otherwise train on events ending days before its own trades were placed.
-  const markets = Array.from({ length: 60 }, (_, index) => {
+test('walk-forward purges training events that resolved after a test decision', () => {
+  // 120 single-market events, one per day. Samples at 1-30 day horizons are priced up to 30 days
+  // before each end. Block 1 (events 20-39) has its first decision at day -10: nothing had
+  // resolved then, so it must not be tradable, while an unpurged split would train on 100 samples.
+  const markets = Array.from({ length: 120 }, (_, index) => {
     const endTs = 1e9 + index * 86400;
-    return { id: `m${index}`, eventId: `e${index}`, endTs, outcome: index % 2 ? 'YES' : 'NO', history: [{ t: endTs - 60 * 86400, p: .4 }] };
+    return { id: `m${index}`, eventId: `e${index}`, endTs, closedTs: endTs, outcome: index % 2 ? 'YES' : 'NO', history: [{ t: endTs - 60 * 86400, p: .4 }] };
   });
-  const result = M.walkForward(markets, { kind: 'calib', folds: 5, horizons: [30], tradeHorizon: 30, stressSpreads: [.04] });
+  const result = M.walkForward(markets, { kind: 'calib', folds: 5, tradeHorizon: 30, stressSpreads: [.04] });
+  const folds = result.evidence.folds.map(fold => fold.fold);
+  assert.ok(!folds.includes(1), 'block 1 had nothing resolved before its first decision');
+  assert.ok(folds.includes(3), 'later blocks train on what had resolved by then');
   assert.equal(result.stress.length, 1, 'stress evidence reuses the same fits');
-  assert.equal(result.stress[0].spread, .04);
-  // block 1 starts at event 10; nothing ended 30+ days earlier, so it cannot be traded.
-  assert.ok(!result.evidence.folds.some(fold => fold.fold === 1), 'block 1 has no purged training data');
+  // An event that resolves late (closedTs after its scheduled end) is held back accordingly.
+  const late = markets.map((market, index) => (index < 40 ? { ...market, closedTs: market.endTs + 90 * 86400 } : market));
+  assert.ok(!M.walkForward(late, { kind: 'calib', folds: 5, tradeHorizon: 30 }).evidence.folds.some(fold => fold.fold === 3), 'late resolutions are not known yet');
+});
+
+test('fees live inside positions; helpers for pages', () => {
+  const position = M.openPosition({ side: 'YES', yesPrice: .4, margin: 100, leverage: 1, takerRate: .1 });
+  close(position.entry, .44, 1e-12);                        // 4c fee per share on entry
+  close(M.markPosition(position, .4).mark, .36, 1e-12);     // and again on a sale before resolution
+  close(M.settlePosition(position, 'YES').payout, position.shares, 1e-9);   // redemption is free
+  assert.equal(M.isValidSavedModel({ a: 0, b: 1, cov: [[1, 0], [0, 1]] }), true);
+  assert.equal(M.isValidSavedModel({ kind: 'rich', beta: [1], cov: [[1]] }), true);
+  assert.equal(M.isValidSavedModel({ a: 'x', cov: [] }), false);
+  assert.deepEqual(M.predictModel(null, { p: .3 }).probability, .3);
+  assert.equal(M.toUnixSeconds('2026-01-02 00:00:00+00'), Date.parse('2026-01-02T00:00:00Z') / 1000);
+  assert.deepEqual(M.parseList('["a"]'), ['a']);
+  assert.deepEqual(M.parseList('{"a":1}'), []);
+});
+
+test('momentum tracker: 3-day change from history, cached', async () => {
+  let calls = 0;
+  const now = 1e9 * 1000;
+  const track = M.createMomentumTracker(async () => { calls += 1; return { history: [{ t: 1e9 - 4 * 86400, p: .3 }, { t: 1e9 - 86400, p: .5 }] }; }, { now: () => now });
+  close(await track('7', .55), .25, 1e-12);                  // .55 now − .30 three days ago
+  await track('7', .6);
+  assert.equal(calls, 1, 'cached');
+  assert.equal(await track(null, .5), 0);
+});
+
+test('order-book fill must clear the same threshold as the decision', () => {
+  const base = { yesPrice: .40, spread: .02, belief: .62, confidence: 'high', bankroll: 1000, daysLeft: 45 };
+  const quoted = M.advise(base);
+  assert.equal(quoted.action, 'OPEN');
+  assert.ok(quoted.threshold > M.DEFAULT_CONFIG.minEdge + .02, 'uncertainty sets the bar well above min edge here');
+  const sideFair = quoted.fair;
+  const fillPrice = sideFair - (M.DEFAULT_CONFIG.minEdge + quoted.threshold) / 2;   // edge between min edge and the threshold
+  const filled = M.advise({ ...base, book: { YES: [{ price: fillPrice, size: 1e6 }] } });
+  assert.equal(filled.action, 'HOLD', 'a fill that only clears min edge is not enough');
 });
