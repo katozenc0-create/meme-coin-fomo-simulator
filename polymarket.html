@@ -211,6 +211,7 @@
         <div class="field" style="width:170px"><label for="trainHorizon">Trade at</label><select id="trainHorizon"><option value="1">1 day before end</option><option value="7" selected>7 days before end</option><option value="30">30 days before end</option></select></div>
         <button class="btn" id="trainBtn">Train & test Metyu</button>
         <button class="btn secondary" id="trainUse" disabled>Use model in advisor</button>
+        <button class="btn secondary" id="modelDownload" disabled title="For the 24/7 autopilot: node autopilot.js --model model.json">Download model (autopilot)</button>
       </div>
       <p class="note" id="trainStatus"></p>
       <div class="advisor" id="trainResults" hidden style="margin-top:10px">
@@ -1190,6 +1191,7 @@
         try { localStorage.setItem(MODEL_KEY, JSON.stringify(trainedModel)); } catch (error) { /* ignore */ }
         $('#advUseModel').disabled = false;
         $('#advUseModel').checked = true;
+        $('#modelDownload').disabled = false;
         $('#trainStatus').textContent = M.modelMayTrade(trainedModel)
           ? `Model (${trainedModel.source}) is now Metyu's belief. Evidence gate OPEN${trainedModel.gate.robust ? '' : ' but fragile'}: the live order book still has to confirm the price.`
           : `Model (${trainedModel.source}) is now Metyu's belief, but its evidence gate is CLOSED: Metyu will show its view and not trade on it.`;
@@ -1197,6 +1199,16 @@
       });
       $('#advUseModel').addEventListener('change', askMetyu);
       if (trainedModel) $('#advUseModel').disabled = false;
+      // The model in use (with its evidence gate) as a file for the headless autopilot.
+      $('#modelDownload').disabled = !trainedModel;
+      $('#modelDownload').addEventListener('click', () => {
+        if (!trainedModel) return;
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([JSON.stringify(trainedModel, null, 1)], { type: 'application/json' }));
+        link.download = 'model.json';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      });
 
       resetAccount();
       loadStore();

@@ -155,6 +155,23 @@ What the research found on real data is written up in [`research/README.md`](res
 
 The simulator's hidden probability is a calibrated martingale that resolves to 0 or 1, so results reflect real edge rather than model artifacts. No agent can guarantee profit: real-world edge is rare and small.
 
+## Metyu autopilot (virtual money, 24/7, no browser)
+
+`autopilot.js` runs Metyu on live Polymarket markets around the clock with **virtual money**. It reads market data only: no wallet, no keys, no orders. It applies exactly the Live Board's and the live advisor's rules:
+
+- **Entry:** only a model whose evidence gate is open may open positions. Without such a model, the autopilot watches and manages but opens nothing.
+- **Costs:** taker fees from Polymarket's fee schedule, and real order-book fills.
+- **Risk:** gap guard on the 12-hourly price history, at most 1.5× equity in total, at most 6 open positions and at most 2 per category, and a kill-switch that flattens everything.
+- **Exits:** each position is managed with Metyu's exit rules and settled at $1 or $0 when its market resolves.
+
+```bash
+python3 server.py --port 8000 &                       # read-only proxy (or omit --api to call Polymarket directly)
+node autopilot.js --api http://127.0.0.1:8000 --model model.json --interval 300
+node autopilot.js --once                              # one tick, then exit (for cron)
+```
+
+Its state (account, positions, trade history and log) lives in `data/autopilot.json`, which is git-ignored. The file is written atomically after every tick and on Ctrl-C, so a restart continues where it left off. The `model.json` is a model trained in the Prediction Lab and saved with its **Download model (autopilot)** button. Currently every honest model's gate is closed (see `research/README.md`), so the autopilot will watch rather than trade, which is the correct behaviour.
+
 ## Metyu Live Board (virtual money)
 
 Open `board.html`, or use **Live Board** in the navigation. Metyu trades eight markets at once from one virtual account.
