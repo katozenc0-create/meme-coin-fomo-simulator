@@ -289,6 +289,29 @@ test('paper account: total exposure is capped at 1.5x equity across categories',
   assert.deepEqual(page.errors, []);
 });
 
+test('open paper positions show Metyu\'s hold / close verdict', async () => {
+  const page = await env.page();
+  let livePrice = '0.40';
+  const end = END();
+  const market = () => ({ id: '751', question: 'Will the review test pass?', outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([livePrice, String(1 - Number(livePrice))]), bestBid: '0.39', bestAsk: '0.41', endDate: end });
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets: [market()] } }));
+  await page.route('**/api/polymarket/market?id=*', route => route.fulfill({ json: { market: market() } }));
+  await page.goto(`${env.base}/polymarket.html`);
+  await page.click('#loadLive');
+  await page.waitForFunction(() => /loaded/.test(document.querySelector('#liveNote').textContent));
+  await page.selectOption('#advMarket', '0');
+  await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
+  await page.click('#advAsk');
+  await page.waitForFunction(() => /Buy YES/.test(document.querySelector('#advVerdict h3').textContent));
+  await page.click('#advTrack');
+  assert.match(await text(page, '#paperList'), /Metyu: hold/);
+  livePrice = '0.70';
+  await page.click('#advRefresh');
+  await page.waitForFunction(() => /refreshed/.test(document.querySelector('#advStatus').textContent));
+  assert.match(await text(page, '#paperList'), /Metyu: close — edge gone/);
+  assert.deepEqual(page.errors, []);
+});
+
 test('scenario stress test runs every scenario', async () => {
   const page = await env.page();
   await page.goto(`${env.base}/polymarket.html`);
