@@ -233,6 +233,22 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertIn("available", json.loads(body))
 
+    def test_exchange_status(self) -> None:
+        import tempfile
+        self.assertFalse(server.exchange_status(Path(tempfile.gettempdir()) / "no-such-exchange.json")["available"])
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump({"available": True, "kind": "exchange", "virtualMoney": True, "account": {"cash": 10000}, "positions": []}, handle)
+        status = server.exchange_status(Path(handle.name))
+        self.assertTrue(status["available"])
+        self.assertEqual(status["kind"], "exchange")
+        Path(handle.name).write_text(json.dumps({"kind": "other", "account": {}}))
+        self.assertFalse(server.exchange_status(Path(handle.name))["available"], "only an exchange status is served")
+        Path(handle.name).write_text("{broken")
+        self.assertFalse(server.exchange_status(Path(handle.name))["available"])
+        status_code, body, _ = self.get("/api/exchange/status")
+        self.assertEqual(status_code, 200)
+        self.assertIn("available", json.loads(body))
+
     def test_pwa_files_are_served(self) -> None:
         status, body, headers = self.get("/manifest.webmanifest")
         self.assertEqual(status, 200)

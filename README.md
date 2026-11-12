@@ -8,7 +8,8 @@ A browser-based practice ecosystem for trading with **virtual money only**. It h
 |---|---|
 | `index.html` · **FOMO simulator** | A meme-coin trading game. Covers charts, liquidity, slippage, position sizing, stop-loss / take-profit and rug pulls. |
 | `polymarket.html` · **Metyu Prediction Lab** | Metyu, an agent for YES/NO prediction markets. Includes autopilot, leverage with liquidation, a backtest lab, a live advisor (order-book aware), training on resolved Polymarket markets, and a knowledge base. |
-| `board.html` · **Metyu Live Board** | Metyu trades eight markets at once from one virtual account, in demo or live mode. Includes portfolio limits, manual control, an equity curve and CSV export. |
+| `board.html` · **Metyu Live Board** | Metyu trades eight markets at once from one virtual account, in demo or live mode. Includes portfolio limits, manual control, an equity curve and CSV export. It also shows both 24/7 autopilots: Polymarket, and crypto on a real exchange. |
+| `exchange-autopilot.js` · **Metyu on a crypto exchange** | Metyu paper-trades eight coins around the clock, on live Coinbase prices. It reads charts, goes long or short with leverage, and has liquidation, stops and a forward test. The money is virtual. |
 
 How the pieces fit:
 
@@ -85,6 +86,8 @@ The Polymarket proxy endpoints are read-only and polite to the upstream API:
 | `GET /api/polymarket/resolved?limit=N&offset=M` | closed markets, most recent scheduled end first | 5 min |
 | `GET /api/polymarket/resolved?limit=N&end_min=YYYY-MM-DD&end_max=YYYY-MM-DD` | whole closed **events** whose scheduled end falls in the window, flattened to markets (`limit` counts events, so expect many more markets) | 5 min |
 | `GET /api/polymarket/history?token_id=<numeric>&fidelity=<min>` | price history `[{t, p}]` | 1 h |
+| `GET /api/autopilot/status` | the Polymarket autopilot's summary (from `data/autopilot.json`) | – |
+| `GET /api/exchange/status` | the exchange autopilot's public status (from `data/exchange-status.json`) | – |
 
 Ids are validated as numeric (anything else gets a 400). Responses carry only the fields the pages use, plus a flat `eventId`. If Polymarket is unreachable, the endpoints return 502.
 
@@ -205,6 +208,68 @@ It reads `GET /api/autopilot/status`, which summarises the state file (`--autopi
 
 Stopping it (Ctrl-C, `systemctl stop`, SIGTERM) saves the state first.
 
+## Metyu on a crypto exchange (virtual money, 24/7)
+
+`exchange-autopilot.js` brings the same discipline to a real market. It trades BTC, ETH, SOL, XRP, DOGE, ADA, AVAX and LINK against USD on **live public prices from Coinbase**, with Kraken as a fallback. There is no exchange account, no API key and no order: every trade is booked in a virtual account. The logic lives in `metyu-exchange.js`, which is pure and deterministic and shared by the autopilot, the tests and the board.
+
+**Reading the chart:** every closed hourly bar, `readChart` reads the chart:
+- **Trend:** EMA20 / EMA50 / EMA200 alignment and the EMA50 slope.
+- **Trend strength:** ADX.
+- **Momentum:** RSI and the MACD histogram.
+- **Volatility:** ATR and the Bollinger band position.
+- **Breakouts:** 20-bar Donchian, checked against volume.
+- **Levels:** support and resistance taken from recent swing highs and lows.
+
+Each reading comes with plain-language notes you can check against the chart on the board.
+
+**Strategies:** each one sets its stop and target in ATR.
+| Strategy | Long when | Exit |
+|---|---|---|
+| Trend pullback | uptrend, ADX ≥ 20, MACD > 0, RSI back to 40–60, above EMA50 (mirror for short) | 2–3 ATR stop, 3–4.5 ATR target |
+| Range breakout | close beyond the 20-bar range on high volume, ADX rising, on the right side of EMA200 | 1.5–2.5 ATR stop, 3–5 ATR target |
+| Range reversion | only in a range (ADX < 20): below the lower Bollinger band and oversold | 1.5–2.5 ATR stop, target the middle band |
+
+**Positions, leverage and costs:**
+- **Sizing:** each trade is sized so that a stop-out loses a fixed share of equity, with fees and slippage included. That share is 1%, or 0.25% in the learning book.
+- **Leverage:** the smallest leverage that fits the margin cap. The maximum is 3x, or 2x in the learning book.
+- **Liquidation:** isolated margin with a liquidation price. Leverage is reduced until liquidation sits well beyond the stop.
+- **Costs:** 0.10% taker fee and 0.05% slippage per side, plus 0.01% funding every 8 hours, always paid.
+- **Exits:** checked on 15-minute bars:
+  - stop, take profit or liquidation;
+  - a gap through the stop fills at the bar's open;
+  - a bar that touches both the stop and the target counts as a stop;
+  - after +1.5 ATR the stop moves to break-even, then trails 2.5 ATR behind the best close;
+  - 72-hour time stop.
+
+**Portfolio rules:**
+- at most 4 positions, and one per coin;
+- open risk in one direction is capped at 3% of equity, because crypto moves together;
+- all margin together is capped at 60% of equity;
+- no new positions after a 4% loss in a UTC day;
+- a 6-hour cool-down on a coin after a loss on it;
+- a kill-switch at −15% from the peak closes everything.
+
+**Training and the evidence gate:** once a day the autopilot fetches 3000 hourly bars per coin and runs a walk-forward:
+- Each strategy's parameters are chosen on the first 60% of every coin's history.
+- They are judged only on the last 40%, which the choice never saw.
+- A strategy's gate opens only with 30+ out-of-sample trades and a 95% bootstrap interval of the mean R above zero, after all costs. A gate-approved strategy trades the normal book.
+- With `--learn`, an undecided strategy (interval still includes zero) trades the tagged **learning book** as a forward test.
+- A strategy whose interval lies entirely below zero is proven to lose after costs and is not traded at all.
+
+The first training run, on about 24,000 hourly bars from 8 coins (July–November 2026), opened no gate. Trend pullback was −0.13R [−0.28, +0.03], so it is undecided and trades the learning book. Breakout and reversion lost money even before costs. That is what honest testing usually finds. The forward test on the board ("Forward test · day N/14", in R per trade) is what will show whether any strategy has real value.
+
+```bash
+node exchange-autopilot.js --once --learn --state data/exchange.json --status-out data/exchange-status.json
+node exchange-autopilot.js --learn --interval 900          # keep running, one tick every 15 minutes
+```
+
+The GitHub Actions workflow `autopilot.yml` runs it every 15 minutes next to the Polymarket autopilot. The board on GitHub Pages reads `exchange-status.json` from the `autopilot-data` branch and shows:
+- the account;
+- an hourly candlestick chart per coin, with EMA20/50, support and resistance, and the entry, stop, target and liquidation of open positions;
+- the chart notes;
+- each strategy's gate;
+- the last trades and the log.
+
 ## Metyu on iPhone / iPad: install from Safari
 
 Metyu is an **installable web app** for iPhone and iPad. iOS does not install apps from downloaded files: a native App Store or TestFlight app needs a paid Apple Developer account and signing on a Mac. Installed from Safari, Metyu still behaves like an app: its own icon on the home screen, full screen, and it opens without a network.
@@ -306,7 +371,7 @@ GitHub Pages does not run `server.py`, but every page still works there, live Po
 
 ```bash
 python -m unittest discover -s tests -t .   # server: static files, API proxies, cache
-node --test tests/*.test.js                 # Metyu agent logic (npm test)
+node --test tests/*.test.js                 # Metyu agent, autopilot and exchange logic (npm test)
 npm install && npx playwright install chromium
 npm run test:e2e                            # browser end-to-end tests (Playwright)
 ```

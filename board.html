@@ -141,6 +141,23 @@
     /* Home-screen app (status bar black-translucent, viewport-fit=cover): keep clear of the notch,
        the status bar and the home indicator. */
     body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    /* Exchange (crypto, virtual money) */
+    .ex-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 6px; }
+    .ex-head select { padding: 6px 8px; border: 1px solid var(--line); background: #0a140e; color: var(--text); font: 700 13px Consolas, monospace; }
+    .ex-head .ex-price { font: 800 16px Consolas, monospace; color: var(--text); }
+    .ex-chart { width: 100%; height: auto; display: block; border: 1px solid var(--line); background: #070d0a; }
+    .ex-chart .up { fill: var(--green); stroke: var(--green); } .ex-chart .down { fill: var(--red); stroke: var(--red); }
+    .ex-chart .ema20 { fill: none; stroke: var(--amber); stroke-width: 1.2; } .ex-chart .ema50 { fill: none; stroke: var(--blue); stroke-width: 1.2; }
+    .ex-chart .level { stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1; } .ex-chart .entry { stroke: var(--text); stroke-width: 1; }
+    .ex-chart .stop { stroke: var(--red); stroke-dasharray: 5 3; stroke-width: 1.2; } .ex-chart .target { stroke: var(--green); stroke-dasharray: 5 3; stroke-width: 1.2; }
+    .ex-chart .liq { stroke: var(--red); stroke-dasharray: 1 3; stroke-width: 1.2; } .ex-chart text { fill: var(--muted); font: 10px Consolas, monospace; }
+    .ex-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 0; color: var(--muted); font: 10px Consolas, monospace; }
+    .ex-legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 4px; }
+    .ex-notes { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font: 11px/1.5 Consolas, monospace; }
+    .ex-strats { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+    .ex-strats li { padding: 7px 9px; border: 1px solid var(--line); background: #0a140e; font: 11px/1.45 Consolas, monospace; color: var(--muted); }
+    .ex-strats b { color: var(--text); }
+    .panel h3 { margin: 12px 0 4px; color: var(--muted); font: 800 10px Consolas, monospace; text-transform: uppercase; }
   </style>
 </head>
 <body>
@@ -269,6 +286,39 @@
       <p class="trades-summary" id="apTradeSummary" hidden></p>
       <ul class="trades" id="apTradeList"></ul>
       <ul class="feed" id="apFeed" style="max-height:220px"></ul>
+    </section>
+
+    <section class="panel" id="exchangePanel" style="margin-bottom:12px" hidden>
+      <h2>Exchange · crypto · 24/7 · virtual money</h2>
+      <p class="note" id="exStatus">Checking for the exchange autopilot (node exchange-autopilot.js)…</p>
+      <p class="trades-summary" id="exForward" hidden></p>
+      <div class="stats" id="exStats" hidden>
+        <div class="stat"><span>Equity</span><strong id="exEquity">—</strong></div>
+        <div class="stat"><span>Realized P&amp;L</span><strong id="exRealized">—</strong></div>
+        <div class="stat"><span>Trades · win rate</span><strong id="exTrades">—</strong></div>
+        <div class="stat"><span>Open positions</span><strong id="exOpen">—</strong></div>
+        <div class="stat"><span>Evidence gates</span><strong id="exGates">—</strong></div>
+        <div class="stat"><span>Last tick</span><strong id="exTick">—</strong></div>
+      </div>
+      <div class="ex-head" id="exChartHead" hidden>
+        <select id="exSymbol" aria-label="Coin"></select>
+        <span class="ex-price" id="exPrice"></span>
+        <span class="badge" id="exTrend"></span>
+      </div>
+      <svg class="ex-chart" id="exChart" viewBox="0 0 600 240" role="img" aria-label="Hourly chart" hidden></svg>
+      <div class="ex-legend" id="exLegend" hidden>
+        <span><i style="background:var(--amber)"></i>EMA20</span><span><i style="background:var(--blue)"></i>EMA50</span>
+        <span><i style="background:var(--muted)"></i>support / resistance</span><span><i style="background:var(--red)"></i>stop · liquidation</span><span><i style="background:var(--green)"></i>target</span>
+      </div>
+      <ul class="ex-notes" id="exNotes"></ul>
+      <h3>Open positions</h3>
+      <ul class="trades" id="exPositions"></ul>
+      <h3>Strategies · evidence gate (out of sample, after costs)</h3>
+      <ul class="ex-strats" id="exStrategies"></ul>
+      <h3>Last trades</h3>
+      <p class="trades-summary" id="exTradeSummary">No closed trades yet.</p>
+      <ul class="trades" id="exTradeList"></ul>
+      <ul class="feed" id="exFeed" style="max-height:220px"></ul>
     </section>
 
     <div class="layout">
@@ -708,6 +758,174 @@
         return true;
       }
       refreshAutopilot().then(served => { if (served) setInterval(refreshAutopilot, 30000); });
+
+      // ---------- exchange autopilot (crypto, virtual money, read-only view) ----------
+      // Same places as the Polymarket autopilot: ?exchange=<url>, the local server, or on GitHub Pages
+      // the autopilot-data branch (exchange-status.json) written by the GitHub Actions workflow.
+      function exchangeSources() {
+        const override = new URLSearchParams(location.search).get('exchange');
+        if (override) return [override];
+        const sources = ['/api/exchange/status'];
+        if (location.hostname.endsWith('.github.io')) {
+          const owner = location.hostname.split('.')[0];
+          const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
+          sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/exchange-status.json`);
+        }
+        return sources;
+      }
+      const usd = value => (!Number.isFinite(value) ? '—' : value >= 1000 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : value >= 1 ? `$${value.toFixed(value >= 100 ? 2 : 3)}` : `$${value.toPrecision(4)}`);
+      const rText = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}R`;
+      let exchangeStatus = null;
+      const svgEl = (name, attrs) => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', name);
+        for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+        return el;
+      };
+      function drawExchangeChart() {
+        const status = exchangeStatus;
+        const symbol = $('#exSymbol').value;
+        const chart = status && status.charts && status.charts[symbol];
+        const svg = $('#exChart');
+        svg.toggleAttribute('hidden', !chart);                  // an SVG element has no .hidden property
+        $('#exLegend').hidden = !chart;
+        if (!chart) { $('#exNotes').replaceChildren(); return; }
+        const W = 600; const Hh = 240; const pad = { l: 4, r: 58, t: 8, b: 16 };
+        const bars = chart.bars;
+        const held = status.positions.filter(position => position.symbol === symbol);
+        const levels = [chart.support, chart.resistance, ...held.flatMap(position => [position.entry, position.stop, position.target])].filter(Number.isFinite);
+        let lo = Math.min(...bars.map(b => b[3]));
+        let hi = Math.max(...bars.map(b => b[2]));
+        // Show nearby levels, but never let a far one (e.g. a liquidation price) squash the candles.
+        for (const level of levels) if (level > lo - (hi - lo) * .6 && level < hi + (hi - lo) * .6) { lo = Math.min(lo, level); hi = Math.max(hi, level); }
+        const span = hi - lo || hi * .01;
+        lo -= span * .04; hi += span * .04;
+        const x = i => pad.l + (i + .5) * (W - pad.l - pad.r) / bars.length;
+        const y = price => pad.t + (hi - price) / (hi - lo) * (Hh - pad.t - pad.b);
+        const bw = Math.max(1, (W - pad.l - pad.r) / bars.length * .62);
+        const nodes = [];
+        bars.forEach(([t, o, h, l, c], i) => {
+          const cls = c >= o ? 'up' : 'down';
+          nodes.push(svgEl('line', { x1: x(i), x2: x(i), y1: y(h), y2: y(l), class: cls }));
+          nodes.push(svgEl('rect', { x: x(i) - bw / 2, y: y(Math.max(o, c)), width: bw, height: Math.max(.8, Math.abs(y(o) - y(c))), class: cls }));
+        });
+        for (const [key, cls] of [['ema20', 'ema20'], ['ema50', 'ema50']]) {
+          const points = chart[key].map((value, i) => (Number.isFinite(value) ? `${x(i).toFixed(1)},${y(value).toFixed(1)}` : null)).filter(Boolean);
+          if (points.length > 1) nodes.push(svgEl('polyline', { points: points.join(' '), class: cls }));
+        }
+        const hline = (price, cls, label) => {
+          if (!Number.isFinite(price) || price < lo || price > hi) return;
+          nodes.push(svgEl('line', { x1: pad.l, x2: W - pad.r, y1: y(price), y2: y(price), class: cls }));
+          const text = svgEl('text', { x: W - pad.r + 3, y: y(price) + 3 });
+          text.textContent = label;
+          nodes.push(text);
+        };
+        hline(chart.support, 'level', 'support');
+        hline(chart.resistance, 'level', 'resist.');
+        for (const position of held) {
+          hline(position.entry, 'entry', `${position.side.toLowerCase()} in`);
+          hline(position.stop, 'stop', 'stop');
+          hline(position.target, 'target', 'target');
+          hline(position.liquidation, 'liq', 'liq.');
+        }
+        const first = svgEl('text', { x: pad.l + 2, y: Hh - 4 });
+        first.textContent = new Date(bars[0][0]).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit' });
+        const last = svgEl('text', { x: W - pad.r - 2, y: Hh - 4, 'text-anchor': 'end' });
+        last.textContent = `${bars.length} hourly bars`;
+        nodes.push(first, last);
+        svg.replaceChildren(...nodes);
+        svg.setAttribute('aria-label', `${symbol} hourly chart: ${chart.trend || 'not enough history'}`);
+        const mark = status.marks && status.marks[symbol];
+        $('#exPrice').textContent = mark ? usd(mark.price) : '';
+        $('#exTrend').textContent = chart.trend ? `${chart.trend}${Number.isFinite(chart.rsi) ? ` · RSI ${chart.rsi.toFixed(0)}` : ''}` : '';
+        $('#exTrend').className = `badge ${chart.trend === 'up' ? 'positive' : chart.trend === 'down' ? 'negative' : ''}`;
+        $('#exNotes').replaceChildren(...(chart.notes || []).map(note => { const li = document.createElement('li'); li.textContent = note; return li; }));
+      }
+      async function refreshExchange() {
+        let status = null;
+        for (const source of exchangeSources()) {
+          try {
+            const response = await fetch(source, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            if (!response.ok) continue;
+            const answer = await response.json();
+            if (answer && answer.available) { status = answer; break; }   // e.g. a local server without exchange data: try the next source
+          } catch (error) { /* try the next source */ }
+        }
+        // Nothing published anywhere: the panel would only take space on a phone, so it stays hidden.
+        if (!status) { $('#exchangePanel').hidden = true; return false; }
+        $('#exchangePanel').hidden = false;
+        exchangeStatus = status;
+        const account = status.account;
+        const strategies = status.model ? Object.entries(status.model.strategies) : [];
+        const openGates = strategies.filter(([, s]) => s.gate.open).length;
+        const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
+        const learningEver = status.positions.some(p => p.book === 'learning') || (status.history || []).some(t => t.learning);
+        $('#exStatus').textContent = `${age < 40 ? 'Running 24/7' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · ${Object.keys(status.marks || {}).length} coins, live Coinbase prices · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
+        const forward = status.forward && status.forward.learning;
+        $('#exForward').hidden = !forward;
+        if (forward) {
+          const day = status.createdAt ? Math.floor((Date.now() - Date.parse(status.createdAt)) / 86400000) + 1 : 1;
+          $('#exForward').textContent = forward.trades
+            ? `Forward test · day ${day}/14 · ${forward.trades} closed learning trades · ${forward.wins} won · mean ${rText(forward.meanR)} per trade · 95% [${rText(forward.ci[0])}, ${rText(forward.ci[1])}] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
+            : `Forward test · day ${day}/14 · no closed learning trades yet`;
+          $('#exForward').className = `trades-summary ${forward.trades && forward.meanR > 0 ? 'positive' : forward.trades && forward.meanR < 0 ? 'negative' : ''}`;
+        }
+        $('#exStats').hidden = false;
+        signed($('#exEquity'), account.equity - account.bankroll, formatMoney(account.equity));
+        signed($('#exRealized'), account.realized, `${account.realized >= 0 ? '+' : ''}${formatMoney(account.realized)}`);
+        $('#exTrades').textContent = account.trades ? `${account.trades} · ${Math.round(account.wins / account.trades * 100)}%` : '0 · —';
+        $('#exOpen').textContent = String(status.positions.length);
+        $('#exGates').textContent = strategies.length ? `${openGates}/${strategies.length} open` : 'not trained';
+        $('#exTick').textContent = status.lastTick ? new Date(status.lastTick).toLocaleTimeString() : '—';
+        // Chart: keep the chosen coin; default to the first coin with a position, else BTC.
+        const symbols = Object.keys(status.charts || {});
+        const select = $('#exSymbol');
+        const chosen = select.value;
+        if ([...select.options].map(o => o.value).join() !== symbols.join()) {
+          select.replaceChildren(...symbols.map(symbol => { const option = document.createElement('option'); option.value = option.textContent = symbol; return option; }));
+        }
+        select.value = symbols.includes(chosen) ? chosen : (status.positions[0] && symbols.includes(status.positions[0].symbol) ? status.positions[0].symbol : symbols[0] || '');
+        $('#exChartHead').hidden = !symbols.length;
+        drawExchangeChart();
+        // Open positions with live P&L.
+        $('#exPositions').replaceChildren(...(status.positions.length ? status.positions.map(position => {
+          const item = document.createElement('li');
+          const name = document.createElement('span');
+          name.className = 'market';
+          name.textContent = `${position.symbol} · ${position.side} ${position.leverage.toFixed(1)}x${position.book === 'learning' ? ' · learning' : ''}`;
+          const pnl = document.createElement('span');
+          pnl.className = `pnl ${position.pnl > 0 ? 'positive' : position.pnl < 0 ? 'negative' : ''}`;
+          pnl.textContent = `${position.pnl >= 0 ? '+' : ''}${formatMoney(position.pnl)}`;
+          const detail = document.createElement('span');
+          detail.className = 'detail';
+          detail.textContent = `in ${usd(position.entry)} · now ${usd(position.mark)} · stop ${usd(position.stop)} · target ${usd(position.target)} · liq ${usd(position.liquidation)} · margin ${formatMoney(position.margin)} · ${position.reason}`;
+          item.append(name, pnl, detail);
+          return item;
+        }) : [Object.assign(document.createElement('li'), { textContent: 'No open positions.' })]));
+        // The strategies and what their out-of-sample evidence says.
+        $('#exStrategies').replaceChildren(...strategies.map(([, s]) => {
+          const item = document.createElement('li');
+          const head = document.createElement('b');
+          head.textContent = `${s.label}: ${s.gate.open ? 'GATE OPEN · normal book' : s.learnable ? 'gate closed · learning book' : 'gate closed · not traded (loses after costs)'}`;
+          item.append(head, document.createElement('br'), `${s.gate.trades} out-of-sample trades · ${s.gate.wins} won · mean ${rText(s.gate.meanR)} · 95% [${rText(s.gate.ci[0])}, ${rText(s.gate.ci[1])}]`);
+          return item;
+        }));
+        renderTrades($('#exTradeList'), $('#exTradeSummary'), (status.history || []).map(trade => ({
+          closedAt: trade.closedAt, market: `${trade.symbol} · ${trade.strategy}`, side: trade.side, leverage: (+trade.leverage).toFixed(1),
+          pnl: trade.pnl, margin: trade.margin, note: `${trade.learning ? 'learning · ' : ''}${usd(trade.entry)} → ${usd(trade.exit)} · ${rText(trade.r)} · ${trade.reason}`
+        })));
+        $('#exFeed').replaceChildren(...status.log.slice(0, 40).map(entry => {
+          const item = document.createElement('li');
+          item.className = entry.kind;
+          const head = document.createElement('b');
+          head.textContent = `${new Date(entry.at).toLocaleString()} ${entry.kind} `;
+          item.append(head, entry.text);
+          return item;
+        }));
+        return true;
+      }
+      $('#exSymbol').addEventListener('change', drawExchangeChart);
+      refreshExchange();
+      setInterval(refreshExchange, 60000);                     // keeps looking: the first run may publish later
 
       // ---------- render ----------
       function spark(values, cls) {
