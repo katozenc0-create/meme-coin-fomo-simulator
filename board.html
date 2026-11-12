@@ -61,18 +61,50 @@
     .note { margin: 6px 0 0; color: var(--muted); font: 11px/1.45 Consolas, monospace; }
     [hidden] { display: none !important; }
     @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(4, 1fr); } }
-    @media (max-width: 560px) { .stats { grid-template-columns: 1fr 1fr; } }
+    .disclaimer .short { display: none; }
+    .install-hint { position: relative; margin: 0 0 10px; padding: 10px 34px 10px 12px; border: 1px solid var(--acid); background: #13230f; color: var(--text); font: 12px/1.5 Consolas, monospace; }
+    .install-hint button { position: absolute; top: 6px; right: 6px; padding: 2px 7px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+    .trades { margin: 0; padding: 0; list-style: none; font: 11px/1.45 Consolas, monospace; }
+    .trades li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 7px 0; border-top: 1px solid var(--line); }
+    .trades .market { color: var(--text); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .trades .pnl { font-weight: 800; text-align: right; }
+    .trades .detail { color: var(--muted); grid-column: 1 / -1; }
+    .trades-summary { margin: 0 0 6px; font: 800 12px Consolas, monospace; }
+    .controls.primary { margin-bottom: 10px; }
+    .settings > summary { cursor: pointer; color: var(--acid); font: 800 11px Consolas, monospace; text-transform: uppercase; letter-spacing: .04em; padding: 4px 0; }
+    .settings[open] > summary { margin-bottom: 10px; }
+    @media (max-width: 560px) {
+      /* Phones: the market cards should be reachable without scrolling past the whole form. */
+      h1 { font-size: 30px; margin: 10px 0 8px; }
+      .disclaimer { padding: 8px 10px; font-size: 11px; }
+      .disclaimer .long { display: none; } .disclaimer .short { display: inline; }
+      .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+      .stat { padding: 7px 8px; }
+      .stat span { font-size: 9px; }
+      .stat strong { font-size: 14px; }
+      .stat.optional { display: none; }
+      .controls.primary .field { flex: 1 1 100%; }
+      .controls.primary select { width: 100%; }
+    }
   </style>
 </head>
 <body>
   <div class="shell">
-    <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a></nav></div>
+    <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a><a id="apkLink" href="https://github.com/katozenc0-create/meme-coin-fomo-simulator/releases/download/apk-latest/metyu-board.apk" title="Latest Metyu Board APK (Android)">Android app ⬇</a></nav></div>
     <h1>Metyu <span>live board</span></h1>
-    <p class="disclaimer">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No wallet, keys or orders. Live mode reads public Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</p>
+    <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
+    <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No wallet, keys or orders. Live mode reads public Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Polymarket prices · no wallet, no orders · not financial advice</span></p>
 
     <section class="panel">
-      <div class="controls">
+      <div class="controls primary">
         <div class="field"><label for="mode">Mode</label><select id="mode"><option value="demo" selected>Demo · simulated live markets</option><option value="live">Live · Polymarket prices (read-only)</option></select></div>
+        <button class="btn" id="startBtn">Start board</button>
+        <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
+        <button class="btn secondary" id="flattenBtn">Flatten all</button>
+      </div>
+      <details class="settings" id="settings" open>
+        <summary>Settings &amp; limits</summary>
+      <div class="controls">
         <div class="field" id="skillField"><label for="skill">Research accuracy <output id="skillOut">70%</output></label><input id="skill" type="range" min="0" max="100" value="70"></div>
         <div class="field"><label for="bankroll">Virtual bankroll $</label><input id="bankroll" type="number" min="100" step="100" value="10000" style="width:120px"></div>
         <div class="field"><label for="maxLev">Max leverage</label><select id="maxLev"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option></select></div>
@@ -80,13 +112,11 @@
         <div class="field"><label for="maxOpen">Max open positions</label><input id="maxOpen" type="number" min="1" max="8" value="6" style="width:90px"></div>
         <div class="field"><label for="maxCluster" title="Markets of one category (Polymarket's own: politics, sports, crypto, tech, finance, economics…) move and are mis-forecast together">Max per category</label><input id="maxCluster" type="number" min="1" max="8" value="2" style="width:90px"></div>
         <div class="field" id="speedField"><label for="speed">Speed <output id="speedOut">2x</output></label><input id="speed" type="range" min="1" max="10" value="2"></div>
-        <button class="btn" id="startBtn">Start board</button>
-        <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
-        <button class="btn secondary" id="flattenBtn">Flatten all</button>
         <button class="btn secondary" id="exportBtn">Export trades (CSV)</button>
         <button class="btn secondary" id="resetBtn">Reset account</button>
       </div>
       <p class="note" id="modeNote">Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu's research accuracy sets how much it knows beyond the price.</p>
+      </details>
     </section>
 
     <div class="stats">
@@ -96,10 +126,16 @@
       <div class="stat"><span>Trades · win rate</span><strong id="sTrades">0 · —</strong></div>
       <div class="stat"><span>Drawdown</span><strong id="sDd">0.0%</strong></div>
       <div class="stat"><span>Gross exposure</span><strong id="sGross">0.00x</strong></div>
-      <div class="stat"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
+      <div class="stat optional"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
     </div>
 
-    <section class="panel" id="autopilotPanel" style="margin-bottom:12px">
+    <section class="panel" id="lastTradesPanel" style="margin-bottom:12px">
+      <h2>Last 10 trades · P&amp;L</h2>
+      <p class="trades-summary" id="lastTradesSummary">No closed trades yet.</p>
+      <ul class="trades" id="lastTrades"></ul>
+    </section>
+
+    <section class="panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
       <h2>Autopilot · 24/7 · virtual money</h2>
       <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
       <div class="stats" id="apStats" hidden>
@@ -111,6 +147,8 @@
         <div class="stat"><span>Last training</span><strong id="apTrained">—</strong></div>
         <div class="stat"><span>Last tick</span><strong id="apTick">—</strong></div>
       </div>
+      <p class="trades-summary" id="apTradeSummary" hidden></p>
+      <ul class="trades" id="apTradeList"></ul>
       <ul class="feed" id="apFeed" style="max-height:220px"></ul>
     </section>
 
@@ -415,6 +453,38 @@
         $('#statusNote').textContent = `${refreshed}/${slots.filter(slot => !slot.done).length} live prices refreshed at ${new Date().toLocaleTimeString()} · next in 30s · belief: ${M.modelMayTrade(trainedModel) ? `trained model (${trainedModel.source || 'saved'}), evidence gate open` : trainedModel ? 'trained model saved but its evidence gate is closed → no trades' : 'market only (no trained model → no edge, no trades)'}`;
       }
 
+      // ---------- last trades (board and autopilot) ----------
+      // trades: newest first, each { closedAt, market, side, leverage, entry, exit (side price), pnl, margin, note }.
+      function renderTrades(list, summary, trades) {
+        const last = trades.slice(0, 10);
+        if (!last.length) { summary.textContent = 'No closed trades yet.'; summary.className = 'trades-summary'; list.replaceChildren(); return; }
+        const total = last.reduce((sum, trade) => sum + trade.pnl, 0);
+        const wins = last.filter(trade => trade.pnl > 0).length;
+        summary.textContent = `Last ${last.length}: ${total >= 0 ? '+' : ''}${formatMoney(total)} · ${wins} won · ${last.length - wins} lost`;
+        summary.className = `trades-summary ${total > 0 ? 'positive' : total < 0 ? 'negative' : ''}`;
+        list.replaceChildren(...last.map(trade => {
+          const item = document.createElement('li');
+          const market = document.createElement('span');
+          market.className = 'market';
+          market.textContent = trade.market;
+          market.title = trade.market;
+          const pnl = document.createElement('span');
+          pnl.className = `pnl ${trade.pnl > 0 ? 'positive' : trade.pnl < 0 ? 'negative' : ''}`;
+          const ret = trade.margin > 0 ? ` (${trade.pnl >= 0 ? '+' : ''}${(trade.pnl / trade.margin * 100).toFixed(0)}%)` : '';
+          pnl.textContent = `${trade.pnl >= 0 ? '+' : ''}${formatMoney(trade.pnl)}${ret}`;
+          const detail = document.createElement('span');
+          detail.className = 'detail';
+          const when = trade.closedAt ? new Date(trade.closedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+          const prices = Number.isFinite(trade.entry) && Number.isFinite(trade.exit) ? ` · ${cents(trade.entry)} → ${cents(trade.exit)}` : '';
+          detail.textContent = `${when} · ${trade.side} ${trade.leverage}x${prices}${trade.note ? ` · ${trade.note}` : ''}`;
+          item.append(market, pnl, detail);
+          return item;
+        }));
+      }
+      function renderLastTrades() {
+        renderTrades($('#lastTrades'), $('#lastTradesSummary'), account.history.slice(-10).reverse());
+      }
+
       // ---------- autopilot (server-side, read-only view) ----------
       const signed = (element, value, text) => { element.textContent = text; element.className = value > 0 ? 'positive' : value < 0 ? 'negative' : ''; };
       async function refreshAutopilot() {
@@ -424,9 +494,10 @@
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           status = await response.json();
         } catch (error) {
-          $('#apStatus').textContent = 'No autopilot view here: open this page through python server.py to see a running autopilot.';
+          $('#autopilotPanel').hidden = true;            // no server here (GitHub Pages, the APK): nothing to show
           return false;
         }
+        $('#autopilotPanel').hidden = false;
         if (!status.available) { $('#apStatus').textContent = `${status.reason}.`; $('#apStats').hidden = true; return true; }
         const account = status.account;
         // Open positions are marked at their last price with Metyu's own accounting.
@@ -443,6 +514,13 @@
         $('#apGate').textContent = gate ? (gate.open ? `OPEN · ${gate.trades} trades` : `closed · ${gate.trades} trades`) : 'no model';
         $('#apTrained').textContent = status.model && status.model.trainedAt ? new Date(status.model.trainedAt).toLocaleString() : '—';
         $('#apTick').textContent = status.lastTick ? new Date(status.lastTick).toLocaleTimeString() : '—';
+        // The autopilot stores the YES price at exit; a resolved market paid $1 or $0 per share.
+        $('#apTradeSummary').hidden = false;
+        renderTrades($('#apTradeList'), $('#apTradeSummary'), (status.history || []).map(trade => ({
+          closedAt: trade.closedAt, market: trade.market, side: trade.side, leverage: trade.leverage, entry: trade.entry,
+          exit: trade.outcome === 'YES' || trade.outcome === 'NO' ? (trade.side === trade.outcome ? 1 : 0) : (trade.side === 'YES' ? trade.exitYes : 1 - trade.exitYes),
+          pnl: trade.pnl, margin: trade.margin, note: trade.outcome === 'CLOSED' ? trade.reason : `resolved ${trade.outcome}`
+        })));
         $('#apFeed').replaceChildren(...status.log.slice(0, 40).map(entry => {
           const item = document.createElement('li');
           item.className = entry.kind;
@@ -538,6 +616,7 @@
       }
 
       function renderStats() {
+        renderLastTrades();
         const eq = equity();
         account.peak = Math.max(account.peak, eq);
         const pnl = eq - account.bankroll;
@@ -669,6 +748,45 @@
       $('#skill').addEventListener('input', () => { $('#skillOut').textContent = `${$('#skill').value}%`; });
       $('#speed').addEventListener('input', () => { $('#speedOut').textContent = `${$('#speed').value}x`; if (running && mode() === 'demo') schedule(); });
       window.addEventListener('pagehide', save);
+
+      // Settings survive a reload (a phone reopening the app comes back to its mode and limits).
+      const SETTINGS_KEY = 'metyuBoard.settings.v1';
+      const SETTING_IDS = ['mode', 'skill', 'maxLev', 'maxGross', 'maxOpen', 'maxCluster', 'speed'];
+      try {
+        const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+        if (savedSettings) SETTING_IDS.forEach(id => {
+          const element = $(`#${id}`);
+          if (savedSettings[id] === undefined || !element) return;
+          if (element.tagName === 'SELECT' && ![...element.options].some(option => option.value === savedSettings[id])) return;
+          element.value = savedSettings[id];
+        });
+      } catch (error) { /* storage unavailable */ }
+      const saveSettings = () => {
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.fromEntries(SETTING_IDS.map(id => [id, $(`#${id}`).value])))); } catch (error) { /* ignore */ }
+      };
+      SETTING_IDS.forEach(id => $(`#${id}`).addEventListener('change', saveSettings));
+      // Sync the labels and the mode-dependent fields with the restored values.
+      $('#skillOut').textContent = `${$('#skill').value}%`;
+      $('#speedOut').textContent = `${$('#speed').value}x`;
+      $('#skillField').hidden = mode() === 'live';
+      $('#speedField').hidden = mode() === 'live';
+      if (mode() === 'live') $('#mode').dispatchEvent(new Event('change'));
+      // iPhone / iPad: an APK cannot run there. Offer "Add to Home Screen" instead (unless the page is
+      // already running as the home-screen app or the tip was dismissed) and hide the Android link.
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+      if (isIOS) {
+        $('#apkLink').hidden = true;
+        let dismissed = false;
+        try { dismissed = localStorage.getItem('metyuBoard.iosHint') === 'hidden'; } catch (error) { /* ignore */ }
+        $('#iosHint').hidden = standalone || dismissed;
+        $('#iosHintClose').addEventListener('click', () => {
+          $('#iosHint').hidden = true;
+          try { localStorage.setItem('metyuBoard.iosHint', 'hidden'); } catch (error) { /* ignore */ }
+        });
+      }
+      // Phones start with the settings folded away; the board itself comes first.
+      if (window.matchMedia('(max-width: 560px)').matches) $('#settings').open = false;
 
       load();
       renderBoard();

@@ -175,6 +175,110 @@ test('autopilot panel shows the server-side autopilot (read-only)', async () => 
   assert.ok(await idle.locator('#apStats').isHidden());
 });
 
+test('phone layout: settings folded, the market cards close to the top; desktop keeps them open', async () => {
+  const phone = await env.page({ width: 390, height: 844 });
+  await phone.route('**/api/autopilot/status', route => route.abort());      // like GitHub Pages: no server
+  await phone.goto(`${env.base}/board.html`);
+  assert.equal(await phone.evaluate(() => document.querySelector('#settings').open), false, 'settings folded on a phone');
+  assert.ok(await phone.locator('#autopilotPanel').isHidden(), 'no server: no autopilot panel');
+  assert.ok(await phone.locator('#startBtn').isVisible(), 'Start stays visible');
+  await phone.click('#startBtn');
+  await phone.waitForSelector('#board .card');
+  const top = await phone.evaluate(() => document.querySelector('#board .card').getBoundingClientRect().top + scrollY);
+  assert.ok(top < 844, `the first market card starts within the first screen (${Math.round(top)}px)`);
+  await phone.click('#settings > summary');
+  assert.ok(await phone.locator('#maxLev').isVisible(), 'settings open on tap');
+  assert.deepEqual(phone.errors, []);
+
+  const desk = await env.page();
+  await desk.goto(`${env.base}/board.html`);
+  assert.equal(await desk.evaluate(() => document.querySelector('#settings').open), true, 'settings open on a computer');
+});
+
+test('board settings survive a reload', async () => {
+  const page = await env.page();
+  await page.goto(`${env.base}/board.html`);
+  await page.selectOption('#maxLev', '2');
+  await page.fill('#maxCluster', '3'); await page.dispatchEvent('#maxCluster', 'change');
+  await page.selectOption('#mode', 'live');
+  await page.reload();
+  assert.equal(await page.inputValue('#mode'), 'live');
+  assert.equal(await page.inputValue('#maxLev'), '2');
+  assert.equal(await page.inputValue('#maxCluster'), '3');
+  assert.ok(await page.locator('#skillField').isHidden(), 'live mode hides the demo-only fields after a reload too');
+  assert.match(await text(page, '#modeNote'), /^Live:/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('last 10 trades with P&L: newest first, total and win/loss count', async () => {
+  const page = await env.page({ width: 390, height: 844 });
+  // 12 closed trades, oldest first as the board stores them: trade i made (i - 5) dollars.
+  const history = Array.from({ length: 12 }, (_, i) => ({
+    openedAt: '', closedAt: new Date(Date.UTC(2026, 10, 1, i)).toISOString(), mode: 'live', market: `Market ${i + 1}?`, marketId: String(i),
+    side: i % 2 ? 'NO' : 'YES', leverage: 1, entry: .4, exit: .45, margin: 100, notional: 100, pnl: i - 5, returnOnMargin: (i - 5) / 100, kind: 'CLOSE', note: 'edge gone'
+  }));
+  await page.addInitScript(([items]) => {
+    localStorage.setItem('metyuBoard.v1', JSON.stringify({ account: { bankroll: 10000, cash: 10000, peak: 10000, realized: 0, trades: 12, wins: 6, history: items, curve: [10000] } }));
+  }, [history]);
+  await page.route('**/api/autopilot/status', route => route.abort());
+  await page.goto(`${env.base}/board.html`);
+  const rows = await page.$$eval('#lastTrades li', items => items.map(item => [item.querySelector('.market').textContent, item.querySelector('.pnl').textContent, item.querySelector('.pnl').className]));
+  assert.equal(rows.length, 10, 'only the last 10');
+  assert.equal(rows[0][0], 'Market 12?', 'newest first');
+  assert.equal(rows[9][0], 'Market 3?');
+  assert.equal(rows[0][1], '+$6 (+6%)');
+  assert.match(rows[0][2], /positive/);
+  assert.match(rows.find(row => row[0] === 'Market 3?')[2], /negative/);
+  // trades 3..12 made -3..+6 dollars: total +15, 6 won, 4 lost (0 counts as not won)
+  assert.equal(await text(page, '#lastTradesSummary'), 'Last 10: +$15 · 6 won · 4 lost');
+  assert.match(await text(page, '#lastTrades li'), /NO 1x · 40\.0¢ → 45\.0¢ · edge gone/);
+  assert.ok(await noHorizontalScroll(page), 'fits a phone');
+  assert.equal(await page.getAttribute('#apkLink', 'href'), 'https://github.com/katozenc0-create/meme-coin-fomo-simulator/releases/download/apk-latest/metyu-board.apk', 'one tap to the latest APK');
+  assert.deepEqual(page.errors, []);
+});
+
+test('autopilot panel lists its last trades, settled ones at $1 / $0', async () => {
+  const page = await env.page();
+  await page.route('**/api/autopilot/status', route => route.fulfill({ json: {
+    available: true, lastTick: new Date().toISOString(), watching: 3,
+    account: { bankroll: 10000, cash: 10100, peak: 10100, halted: false, realized: 100, trades: 2, wins: 1 }, model: null, positions: [], trainings: [], log: [],
+    history: [
+      { closedAt: new Date().toISOString(), market: 'Won at resolution?', side: 'YES', leverage: 1, entry: .40, exitYes: 1, outcome: 'YES', margin: 100, pnl: 150, reason: 'market resolved' },
+      { closedAt: new Date().toISOString(), market: 'Closed early?', side: 'NO', leverage: 2, entry: .60, exitYes: .55, outcome: 'CLOSED', margin: 100, pnl: -50, reason: 'edge gone' }
+    ]
+  } }));
+  await page.goto(`${env.base}/board.html`);
+  await page.waitForFunction(() => document.querySelectorAll('#apTradeList li').length === 2);
+  assert.equal(await text(page, '#apTradeSummary'), 'Last 2: +$100 · 1 won · 1 lost');
+  const details = await page.$$eval('#apTradeList .detail', items => items.map(item => item.textContent));
+  assert.match(details[0], /YES 1x · 40\.0¢ → 100\.0¢ · resolved YES/);
+  assert.match(details[1], /NO 2x · 60\.0¢ → 45\.0¢ · edge gone/, 'a NO position exits at 1 - YES price');
+  assert.deepEqual(page.errors, []);
+});
+
+test('iPhone: an "Add to Home Screen" tip instead of the Android APK link', async () => {
+  const { devices } = require('playwright');
+  const context = await env.browser.newContext({ ...devices['iPhone 13'] });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/autopilot/status', route => route.abort());
+  await page.goto(`${env.base}/board.html`);
+  assert.ok(await page.locator('#iosHint').isVisible(), 'Safari on iPhone shows how to add the app');
+  assert.match(await text(page, '#iosHint'), /Add to Home Screen/);
+  assert.ok(await page.locator('#apkLink').isHidden(), 'no APK link on an iPhone');
+  await page.click('#iosHintClose');
+  await page.reload();
+  assert.ok(await page.locator('#iosHint').isHidden(), 'a dismissed tip stays hidden');
+  await context.close();
+
+  const android = await env.page({ width: 390, height: 844 });
+  await android.goto(`${env.base}/board.html`);
+  assert.ok(await android.locator('#iosHint').isHidden(), 'no iPhone tip elsewhere');
+  assert.ok(await android.locator('#apkLink').isVisible(), 'the Android link stays for Android and computers');
+  assert.deepEqual(errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);

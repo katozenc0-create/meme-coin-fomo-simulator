@@ -197,6 +197,7 @@ iOS does not install apps from downloaded files. A native App Store or TestFligh
 
 1. Open the Live Board over HTTPS. One option is your GitHub Pages address (see [GitHub Pages](#github-pages)), for example `https://YOUR-USERNAME.github.io/meme-coin-fomo-simulator/board.html`. Another is your own `server.py` behind HTTPS.
 2. **iPhone / iPad (Safari):** tap **Share → Add to Home Screen → Add**. **Android (Chrome):** tap **⋮ → Install app**.
+   On an iPhone the Live Board shows this tip itself (until you dismiss it or open Metyu from the home screen), and the Android link is hidden there. `icons/iphone-qr.svg` is a QR code for the GitHub Pages board of this repository.
 3. Open **Metyu** from the home screen. It opens full screen with its own icon. Live mode reads Polymarket directly, and the board, the Lab and the game also open without a network.
 
 How it works:
@@ -210,6 +211,10 @@ The service worker runs only on `https://` or `localhost`. Inside the Android AP
 ## Metyu Board for Android (APK)
 
 **Metyu Board** is an Android app for watching the Live Board on your phone. It trades virtual money only: market data is read-only, and it has no wallet and never places an order.
+
+<img src="icons/apk-qr.svg" alt="QR code: download the Metyu Board APK" width="160" align="right">
+
+**Quickest:** scan the QR code with the phone camera; it downloads the latest `metyu-board.apk`. The Live Board's top menu also has an **Android app ⬇** link to the same file, so a phone that opened the web version can install the app in one tap.
 
 **Download:** on your phone, open the repository's [Releases](../../releases/tag/apk-latest) page and download `metyu-board.apk`. Allow installing apps from that source when Android asks, then open **Metyu Board**. Every change to `main` rebuilds the APK and replaces the file under the same link, and a newer build installs over the old one.
 
