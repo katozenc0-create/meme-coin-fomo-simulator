@@ -825,7 +825,13 @@
           inputs.belief = prediction.probability;
           inputs.beliefVariance = prediction.variance;
         }
-        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, feeRate: inputs.market ? inputs.market.feeRate || 0 : 0, feeExponent: inputs.market ? inputs.market.feeExponent ?? 1 : 1, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft };
+        // Recent 12-hourly prices of a live market feed the gap guard and the staleness rule.
+        let history = [];
+        if (inputs.market && inputs.market.tokenIds) {
+          history = await threeDayMomentum.recentPrices(inputs.market.tokenIds.YES, inputs.yesPrice);
+          if (seq !== adviceSeq) return;
+        }
+        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, feeRate: inputs.market ? inputs.market.feeRate || 0 : 0, feeExponent: inputs.market ? inputs.market.feeExponent ?? 1 : 1, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft, history, staleBelief: !usingModel };
         let advice = M.advise(request, config());
         inputs.execution = inputs.market ? 'quote' : 'manual';
         // A model without an open evidence gate never trades — decide that before touching the order book.

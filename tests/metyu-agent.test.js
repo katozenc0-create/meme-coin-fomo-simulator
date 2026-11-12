@@ -436,3 +436,31 @@ test('staleness: research counts for less after the market has just moved', () =
   const moved = M.estimateFairProbability({ ...base, history: [.2, .25, .3, .35, .4, .35, .3, .38, .45, .4, .42, .40] }, { ...M.DEFAULT_CONFIG, momentumWeight: 0, fadeWeight: 0 });
   assert.ok(moved.probability < still.probability, `${moved.probability} < ${still.probability}`);
 });
+
+test('live advisor: real price history feeds the gap guard and staleness, never simulator momentum', async () => {
+  const base = { yesPrice: .40, spread: .02, belief: .62, confidence: 'high', bankroll: 1000, daysLeft: 45 };
+  const calm = M.advise({ ...base, history: Array(30).fill(.40) });
+  const swings = Array.from({ length: 30 }, (_, i) => (i % 2 ? .40 : .50));
+  const jumpy = M.advise({ ...base, history: swings, staleBelief: false });
+  assert.equal(calm.action, 'OPEN');
+  assert.ok(calm.leverage > 1);
+  assert.equal(jumpy.action, 'OPEN');
+  assert.equal(jumpy.leverage, 1, '10c swings in the real history: no leverage');
+  assert.equal(M.advise({ ...base, history: swings }).action, 'HOLD', 'and a person\'s view after such moves is too uncertain to trade');
+  const trending = Array.from({ length: 30 }, (_, i) => .2 + i * .007);   // up 20c: momentum would tilt fair value
+  const withHistory = M.advise({ ...base, history: trending, staleBelief: false });
+  const without = M.advise({ ...base, staleBelief: false });
+  close(withHistory.fair, without.fair, 1e-12, 'no simulator momentum/fade on real markets');
+  const stale = M.advise({ ...base, history: trending.map((p, i) => (i % 2 ? p : p + .08)) });
+  const fresh = M.advise({ ...base, history: trending.map((p, i) => (i % 2 ? p : p + .08)), staleBelief: false });
+  assert.ok(stale.fair < fresh.fair, 'a person\'s view counts for less after the market moved; a model on today\'s price does not');
+  // shared 12-hourly history: sampled back from now, oldest first, ending with the live price
+  const now = 1e9;
+  const history = Array.from({ length: 40 }, (_, i) => ({ t: now - (39 - i) * 43200, p: .3 + i * .005 }));
+  const sampled = M.recentPrices(history, { nowSec: now, priceNow: .5, points: 5 });
+  assert.equal(sampled.length, 5);
+  assert.equal(sampled[4], .5);
+  close(sampled[3], history[38].p, 1e-12);
+  const tracker = M.createMomentumTracker(async () => ({ history }), { now: () => now * 1000 });
+  assert.equal((await tracker.recentPrices('1', .5, 5)).length, 5);
+});

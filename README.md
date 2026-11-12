@@ -131,7 +131,7 @@ Open `polymarket.html` (or **Metyu Lab** in the top navigation). Metyu is a pape
 - liquidation price
 - payout if right, expected profit, and break-even probability
 
-For live markets, Metyu also reads the outcome's public CLOB order book and walks the asks to find the real average fill. If the fill would eat the edge, it cuts the size or refuses the trade, and the verdict shows the levels used and the book depth.
+For live markets, Metyu reads the market's recent 12-hourly price history from the public CLOB. That history feeds the gap guard (no leverage after big jumps). It also feeds the staleness rule: a view typed in after the market has just moved counts for less, while a trained model's estimate, computed from today's price, does not. The simulator-calibrated momentum and fade terms are never applied to real markets. Metyu also reads the outcome's public CLOB order book and walks the asks to find the real average fill. If the fill would eat the edge, it cuts the size or refuses the trade, and the verdict shows the levels used and the book depth.
 
 You can track a recommendation as a paper position. Paper positions are marked to the live price (optionally refreshed every 30s) and are kept in your browser, along with the lab account and settings. When a live market resolves, its paper positions settle automatically: winners pay $1 per share and losers $0, after any borrowed amount is repaid. The settled result moves into resolved P&L.
 
