@@ -340,7 +340,12 @@ test('fees live inside positions; helpers for pages', () => {
   close(M.markPosition(position, .4).mark, .376, 1e-12);    // and again on a sale before resolution
   close(M.settlePosition(position, 'YES').payout, position.shares, 1e-9);   // redemption is free
   assert.equal(M.isValidSavedModel({ a: 0, b: 1, cov: [[1, 0], [0, 1]] }), true);
-  assert.equal(M.isValidSavedModel({ kind: 'rich', beta: [1], cov: [[1]] }), true);
+  const n = M.richFeatures({ p: .5, horizon: 1 }).length;
+  const identity = size => Array.from({ length: size }, (_, i) => Array.from({ length: size }, (_, j) => (i === j ? 1 : 0)));
+  assert.equal(M.isValidSavedModel({ kind: 'rich', beta: Array(n).fill(0), cov: identity(n) }), true);
+  assert.equal(M.isValidSavedModel({ kind: 'rich', beta: [1], cov: [[1]] }), false, 'a model saved with another feature layout is stale');
+  assert.equal(M.isValidSavedModel({ kind: 'rich', beta: Array(n).fill(0), cov: identity(n - 1) }), false);
+  assert.equal(M.isValidSavedModel({ a: 0, b: 1, cov: [[1, 0], [0, NaN]] }), false);
   assert.equal(M.isValidSavedModel({ a: 'x', cov: [] }), false);
   assert.deepEqual(M.predictModel(null, { p: .3 }).probability, .3);
   assert.equal(M.toUnixSeconds('2026-01-02 00:00:00+00'), Date.parse('2026-01-02T00:00:00Z') / 1000);
@@ -356,6 +361,26 @@ test('momentum tracker: 3-day change from history, cached', async () => {
   await track('7', .6);
   assert.equal(calls, 1, 'cached');
   assert.equal(await track(null, .5), 0);
+});
+
+test('momentum tracker retries a failed history fetch after minutes, not hours', async () => {
+  let now = 1e12;
+  let fail = true;
+  let calls = 0;
+  const track = M.createMomentumTracker(async () => { calls += 1; if (fail) throw new Error('timeout'); return { history: [{ t: now / 1000 - 4 * 86400, p: .3 }] }; }, { now: () => now });
+  assert.equal(await track('7', .5), 0, 'no history yet: no momentum');
+  fail = false;
+  now += 60 * 1000;
+  await track('7', .5);
+  assert.equal(calls, 1, 'not hammered every tick');
+  now += 5 * 60 * 1000;
+  close(await track('7', .5), .2, 1e-12, 'retried after the short failure window');
+  assert.equal(calls, 2);
+});
+
+test('backtest Brier is a per-market average', () => {
+  const run = M.backtest({ markets: 40, skill: .3, seed: 7 });
+  assert.ok(run.brier > 0 && run.brier < .25, `Brier ${run.brier}`);
 });
 
 test('order-book fill must clear the same threshold as the decision', () => {

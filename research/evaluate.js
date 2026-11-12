@@ -5,10 +5,7 @@
 const fs = require('node:fs');
 const M = require('../metyu-agent.js');
 
-const toTs = value => {
-  const time = Date.parse(String(value || '').replace(' ', 'T').replace(/\+00$/, 'Z'));
-  return Number.isFinite(time) ? Math.floor(time / 1000) : null;
-};
+const toTs = M.toUnixSeconds;   // the same Gamma date parsing the lab uses
 
 const raw = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const markets = raw
