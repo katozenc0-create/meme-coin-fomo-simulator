@@ -24,7 +24,7 @@ jobs:
       - name: Agent tests (Node)
         run: node --test tests/*.test.js
       - name: Syntax check browser scripts
-        run: node --check metyu-agent.js
+        run: node --check metyu-agent.js && node --check autopilot.js
 
   e2e:
     runs-on: ubuntu-latest

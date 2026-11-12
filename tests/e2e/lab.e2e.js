@@ -167,6 +167,10 @@ test('training: control finds no edge, bias is detected, live pipeline, model fe
   await page.waitForTimeout(200);
   assert.match(await text(page, '#advVerdict'), /trained model/);
   if (!gateOpen) assert.equal(await text(page, '#advVerdict h3'), 'No trade', 'a closed evidence gate never trades');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#modelDownload')]);
+  const exported = JSON.parse(require('node:fs').readFileSync(await download.path(), 'utf8'));
+  assert.equal(await page.evaluate(model => Metyu.isValidSavedModel(model), exported), true, 'the downloaded model is valid for the autopilot');
+  assert.ok(exported.gate, 'and carries its evidence gate');
   await page.reload();
   assert.equal(await page.isDisabled('#advUseModel'), false, 'trained model persists');
   assert.deepEqual(page.errors, []);
