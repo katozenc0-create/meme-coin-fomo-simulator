@@ -1,5 +1,5 @@
-// Metyu service worker: makes the pages installable and openable offline (iOS / Android home
-// screen). Only the app shell is cached. Live data (/api/..., Polymarket) always goes to the network
+// Metyu service worker: makes the pages installable on the iPhone / iPad home screen and openable
+// offline. Only the app shell is cached. Live data (/api/..., Polymarket) always goes to the network
 // and is never cached, so prices are never stale.
 const CACHE = 'metyu-shell-v1';
 const SHELL = [

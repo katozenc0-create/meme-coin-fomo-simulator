@@ -1,4 +1,5 @@
-// The installable web app (iOS / Android "Add to Home Screen"): manifest, service worker, offline.
+// The installable iPhone / iPad web app ("Add to Home Screen"): manifest, service worker, offline,
+// and the pages as an iPhone shows them.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { start, text } = require('./harness');
@@ -48,4 +49,33 @@ test('the service worker caches the app shell, so the board opens offline; live 
   assert.equal(await page.title(), 'Metyu Live Board', 'the board opens without a network');
   assert.match(await text(page, '#startBtn'), /Start/);
   await page.context().setOffline(false);
+});
+
+test('as an iPhone shows them: every page fits, fields never trigger zoom, safe areas kept, no APK', async () => {
+  const { devices } = require('playwright');
+  const context = await env.browser.newContext({ ...devices['iPhone 13'] });
+  for (const name of ['board.html', 'polymarket.html', 'index.html']) {
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/api/autopilot/status', route => route.abort());
+    await page.goto(`${env.base}/${name}`);
+    const report = await page.evaluate(() => {
+      const fields = [...document.querySelectorAll('input:not([type=range]):not([type=checkbox]):not([type=file]), select, textarea')];
+      const css = [...document.styleSheets].flatMap(sheet => { try { return [...sheet.cssRules].map(rule => rule.cssText); } catch (error) { return []; } }).join(' ');
+      return {
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+        small: fields.filter(field => parseFloat(getComputedStyle(field).fontSize) < 16).map(field => field.id || field.name || field.tagName),
+        safeArea: /safe-area-inset-top/.test(css),
+        apk: [...document.querySelectorAll('a[href]')].filter(link => /\.apk($|\?)/i.test(link.getAttribute('href'))).length
+      };
+    });
+    assert.ok(report.overflow <= 1, `${name}: no sideways scrolling (${report.overflow}px)`);
+    assert.deepEqual(report.small, [], `${name}: every field is at least 16px (iOS zooms on smaller ones)`);
+    assert.ok(report.safeArea, `${name}: keeps clear of the notch and home indicator`);
+    assert.equal(report.apk, 0, `${name}: no Android APK links`);
+    assert.deepEqual(errors, [], name);
+    await page.close();
+  }
+  await context.close();
 });

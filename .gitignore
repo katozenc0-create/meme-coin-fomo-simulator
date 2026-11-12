@@ -3,8 +3,3 @@ __pycache__/
 node_modules/
 package-lock.json
 data/
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
-*.apk

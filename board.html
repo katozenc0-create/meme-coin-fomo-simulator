@@ -86,11 +86,18 @@
       .controls.primary .field { flex: 1 1 100%; }
       .controls.primary select { width: 100%; }
     }
+    /* iPhone / iPad: no text inflation when rotated, and 16px form fields on touch screens
+       (smaller ones make Safari zoom the whole page every time a field is tapped). */
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    @media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
+    /* Home-screen app (status bar black-translucent, viewport-fit=cover): keep clear of the notch,
+       the status bar and the home indicator. */
+    body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   </style>
 </head>
 <body>
   <div class="shell">
-    <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a><a id="apkLink" href="https://github.com/katozenc0-create/meme-coin-fomo-simulator/releases/download/apk-latest/metyu-board.apk" title="Latest Metyu Board APK (Android)">Android app ⬇</a></nav></div>
+    <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a></nav></div>
     <h1>Metyu <span>live board</span></h1>
     <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
     <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No wallet, keys or orders. Live mode reads public Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Polymarket prices · no wallet, no orders · not financial advice</span></p>
@@ -494,7 +501,7 @@
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           status = await response.json();
         } catch (error) {
-          $('#autopilotPanel').hidden = true;            // no server here (GitHub Pages, the APK): nothing to show
+          $('#autopilotPanel').hidden = true;            // no server here (GitHub Pages): nothing to show
           return false;
         }
         $('#autopilotPanel').hidden = false;
@@ -771,12 +778,11 @@
       $('#skillField').hidden = mode() === 'live';
       $('#speedField').hidden = mode() === 'live';
       if (mode() === 'live') $('#mode').dispatchEvent(new Event('change'));
-      // iPhone / iPad: an APK cannot run there. Offer "Add to Home Screen" instead (unless the page is
-      // already running as the home-screen app or the tip was dismissed) and hide the Android link.
+      // iPhone / iPad: show how to install Metyu as a home-screen app (unless it already runs as one
+      // or the tip was dismissed).
       const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
       if (isIOS) {
-        $('#apkLink').hidden = true;
         let dismissed = false;
         try { dismissed = localStorage.getItem('metyuBoard.iosHint') === 'hidden'; } catch (error) { /* ignore */ }
         $('#iosHint').hidden = standalone || dismissed;

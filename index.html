@@ -226,6 +226,10 @@
     [hidden] { display: none !important; }
     @media (max-width: 850px) { header { align-items: start; flex-direction: column; } .subhead { text-align: left; } .top-nav { align-items: start; flex-wrap: wrap; padding: 8px; } .nav-links { gap: 0; flex-wrap: wrap; } .nav-tools { margin-left: auto; } .pulse-panel, .settings-panel { grid-template-columns: 1fr 1fr; } .market-bar, .market-stats { align-items: start; flex-direction: column; } .market-stats { width: 100%; flex-direction: row; justify-content: space-between; gap: 8px; text-align: left; } .practice-config { grid-template-columns: 1fr 1fr; } .load-market { width: 100%; } .case-grid, .knowledge-grid { grid-template-columns: 1fr 1fr; } .learning-strip, .glossary { grid-template-columns: 1fr 1fr; } .terminal-grid { grid-template-columns: 1fr; } .chart-panel { min-height: 440px; } .chart-wrap { height: 300px; } }
     @media (max-width: 520px) { .practice-config, .case-grid, .knowledge-grid, .learning-strip, .glossary { grid-template-columns: 1fr; } }
+    /* iPhone / iPad: no text inflation when rotated, and 16px form fields on touch screens
+       (smaller ones make Safari zoom the whole page every time a field is tapped). */
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    @media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
   </style>
 </head>
 <body>

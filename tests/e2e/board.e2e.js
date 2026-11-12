@@ -233,7 +233,6 @@ test('last 10 trades with P&L: newest first, total and win/loss count', async ()
   assert.equal(await text(page, '#lastTradesSummary'), 'Last 10: +$15 · 6 won · 4 lost');
   assert.match(await text(page, '#lastTrades li'), /NO 1x · 40\.0¢ → 45\.0¢ · edge gone/);
   assert.ok(await noHorizontalScroll(page), 'fits a phone');
-  assert.equal(await page.getAttribute('#apkLink', 'href'), 'https://github.com/katozenc0-create/meme-coin-fomo-simulator/releases/download/apk-latest/metyu-board.apk', 'one tap to the latest APK');
   assert.deepEqual(page.errors, []);
 });
 
@@ -256,7 +255,7 @@ test('autopilot panel lists its last trades, settled ones at $1 / $0', async () 
   assert.deepEqual(page.errors, []);
 });
 
-test('iPhone: an "Add to Home Screen" tip instead of the Android APK link', async () => {
+test('iPhone: an "Add to Home Screen" tip in Safari, gone once dismissed', async () => {
   const { devices } = require('playwright');
   const context = await env.browser.newContext({ ...devices['iPhone 13'] });
   const page = await context.newPage();
@@ -266,16 +265,14 @@ test('iPhone: an "Add to Home Screen" tip instead of the Android APK link', asyn
   await page.goto(`${env.base}/board.html`);
   assert.ok(await page.locator('#iosHint').isVisible(), 'Safari on iPhone shows how to add the app');
   assert.match(await text(page, '#iosHint'), /Add to Home Screen/);
-  assert.ok(await page.locator('#apkLink').isHidden(), 'no APK link on an iPhone');
   await page.click('#iosHintClose');
   await page.reload();
   assert.ok(await page.locator('#iosHint').isHidden(), 'a dismissed tip stays hidden');
   await context.close();
 
-  const android = await env.page({ width: 390, height: 844 });
-  await android.goto(`${env.base}/board.html`);
-  assert.ok(await android.locator('#iosHint').isHidden(), 'no iPhone tip elsewhere');
-  assert.ok(await android.locator('#apkLink').isVisible(), 'the Android link stays for Android and computers');
+  const computer = await env.page();
+  await computer.goto(`${env.base}/board.html`);
+  assert.ok(await computer.locator('#iosHint').isHidden(), 'no iPhone tip on a computer');
   assert.deepEqual(errors, []);
 });
 
