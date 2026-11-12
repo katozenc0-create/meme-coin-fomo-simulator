@@ -7,7 +7,7 @@ let env;
 test.before(async () => { env = await start(); });
 test.after(async () => { await env.stop(); });
 
-test('every page is installable: manifest, iOS tags and icons', async () => {
+test('every page is installable (manifest, iOS tags, icons) and has unique ids', async () => {
   const page = await env.page();
   for (const name of ['board.html', 'polymarket.html', 'index.html']) {
     await page.goto(`${env.base}/${name}`);
@@ -18,6 +18,11 @@ test('every page is installable: manifest, iOS tags and icons', async () => {
       title: document.querySelector('meta[name="apple-mobile-web-app-title"]')?.content
     }));
     assert.deepEqual(head, { manifest: 'manifest.webmanifest', touchIcon: 'icons/icon-180.png', capable: 'yes', title: 'Metyu' }, name);
+    const duplicates = await page.evaluate(() => {
+      const ids = [...document.querySelectorAll('[id]')].map(element => element.id);
+      return ids.filter((id, index) => ids.indexOf(id) !== index);
+    });
+    assert.deepEqual(duplicates, [], `${name}: every id is unique`);
   }
   const manifest = await page.evaluate(async () => (await fetch('manifest.webmanifest')).json());
   assert.equal(manifest.display, 'standalone');
