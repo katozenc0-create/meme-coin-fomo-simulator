@@ -191,11 +191,25 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((status, bad), (200, 400))
         self.assertTrue(seen[0].startswith(server.POLYMARKET_GAMMA_EVENTS_URL), "windows fetch whole events")
         self.assertIn("end_date_min=2026-01-01", seen[0])
+        self.assertIn("end_date_max=2026-01-02", seen[0])
         self.assertNotIn("order=", seen[0], "Gamma rejects ordering together with a date window")
         markets = json.loads(body)["markets"]
         self.assertEqual([m["id"] for m in markets], ["1", "2"], "every candidate of the event")
         self.assertEqual({m["eventId"] for m in markets}, {"55"})
         self.assertNotIn("secret", markets[0])
+
+    def test_ids_with_trailing_newline_are_rejected(self) -> None:
+        for path in ("/api/polymarket/market?id=123%0A", "/api/polymarket/book?token_id=1%0A", "/api/polymarket/resolved?end_min=2026-01-01%0A"):
+            with self.subTest(path=path):
+                status, _, _ = self.get(path)
+                self.assertEqual(status, 400)
+
+    def test_cache_headers(self) -> None:
+        _, _, api_headers = self.get("/api/health")
+        _, _, page_headers = self.get("/")
+        self.assertEqual(api_headers["Cache-Control"], "no-store", "live API data must not be reused by the browser")
+        self.assertEqual(page_headers["Cache-Control"], "no-cache")
+        self.assertEqual(api_headers["Vary"], "Accept-Encoding")
 
     def test_gzip_when_accepted(self) -> None:
         request = urllib.request.Request(self.base + "/", headers={"Accept-Encoding": "gzip"})

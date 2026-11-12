@@ -11,7 +11,7 @@ node research/evaluate.js data/dataset.json    # walk-forward, same code as the 
 
 ## Answer
 
-**No.** After fixing every leak found so far, two independent year-long samples give **no evidence of an edge** after costs. On those samples Metyu makes almost no trades, and its evidence gate stays closed for every model, horizon and spread tried.
+**No.** After fixing every leak found so far, two independent multi-month samples give **no evidence of an edge** after costs. They span about 19 and 29 months. On those samples Metyu makes almost no trades, and its evidence gate stays closed for every model, horizon and spread tried.
 
 What is real is small. A recalibrated forecast is slightly better calibrated than the crowd: its Brier score improves by about 0.003–0.004, and not every test shows it. That is far too little to pay the spread and fees.
 
@@ -19,7 +19,7 @@ What is real is small. A recalibrated forecast is slightly better calibrated tha
 
 | Choice | Why |
 |---|---|
-| Whole **events** per window of scheduled end dates: 5 events per day, one day every six days, going back from yesterday | Taking "the first N markets" of a window can keep an event's losers and drop its winner, which biases the sample toward NO. Big events hold dozens of markets, so 5 events per window spreads 6,000 markets over about a year. |
+| Whole **events** per window of scheduled end dates: 5 events per day, one day every six days, going back from yesterday | Taking "the first N markets" of a window can keep an event's losers and drop its winner, which biases the sample toward NO. Big events hold dozens of markets, so 5 events per window spreads 6,000 markets over many months (19–29 months in the samples below). |
 | Samples: the YES price 1, 3, 7, 14 and 30 days before the **scheduled** end (`endDate`), dropped if the market had already closed | `closedTime` leaks the outcome: "by <date>" markets close early once the event happens. |
 | Prices at ≤1¢ or ≥99¢ are skipped | These markets are effectively resolved. |
 | Each event carries a total weight of 1 | Candidates of an event, and horizons of one market, share an outcome. |
@@ -31,12 +31,12 @@ What is real is small. A recalibrated forecast is slightly better calibrated tha
 
 | Sample | Markets / events (span) | Best 2¢ result | Gate |
 |---|---|---|---|
-| Year A: `collect.py 6000 0 5` | 4,542 / 478 (Apr 2025 – Nov 2026) | no trades at any horizon or model | closed |
-| Year B: `collect.py 6000 3 5` | 4,617 / 716 (Jun 2024 – Nov 2026) | 2–4 trades at most | closed |
+| Sample A: `collect.py 6000 0 5` | 4,542 / 478 (Apr 2025 – Nov 2026) | no trades at any horizon or model | closed |
+| Sample B: `collect.py 6000 3 5` | 4,617 / 716 (Jun 2024 – Nov 2026) | 2–4 trades at most | closed |
 | Old discovery sample, re-evaluated | 5,998 / 1,265 | calibration, 7 d: 1 trade (was 330) | closed |
 | Old replication sample, re-evaluated | 5,999 / 1,309 | calibration, 7 d: 29 trades, −6.8%, 95% [−31.7%, +18.1%] | closed |
 
-Brier scores, crowd → model: Year A 0.1654 → 0.1614, Year B 0.1516 → 0.1483. At a 4¢ spread there are no trades anywhere.
+Brier scores, crowd → model: Sample A 0.1654 → 0.1614, Sample B 0.1516 → 0.1483. At a 4¢ spread there are no trades anywhere.
 
 ## How the earlier "edges" fell apart
 

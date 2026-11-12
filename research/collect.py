@@ -9,7 +9,7 @@ per window reach 6,000 markets within ~2-3 months; 5 spreads the sample over abo
 Notes from running this against the live API:
   * Gamma pagination fails (HTTP 422) past roughly 1,000 rows, and `order=` combined with a
     date filter returns HTTP 500. So whole EVENTS are sampled by *scheduled end date* in
-    windows: one day every six days, going back from yesterday, 25 events per window. That
+    windows: one day every six days, going back from yesterday, 5 events per window. That
     spreads the sample over about a year and never splits an event's candidates.
   * CLOB prices-history ignores fidelity below ~12h when `interval=max` is used, and rejects
     explicit startTs/endTs ranges of 15 days or more. Each history is therefore the full life
@@ -33,14 +33,17 @@ HISTORY = "https://clob.polymarket.com/prices-history"
 HEADERS = {"Accept": "application/json", "User-Agent": "practice-research/1.0"}
 
 
-def get(url, tries=3):
+def get(url, tries=4):
     for attempt in range(tries):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=30) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
-            if error.code < 500 or attempt == tries - 1:
+            # retry server errors and rate limiting (429), not other client errors
+            if (error.code < 500 and error.code != 429) or attempt == tries - 1:
                 raise
+            if error.code == 429:
+                time.sleep(float(error.headers.get("Retry-After") or 5))
         except Exception:  # noqa: BLE001
             if attempt == tries - 1:
                 raise
@@ -61,7 +64,10 @@ def to_ts(value):
     if not value:
         return None
     try:
-        return int(datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T")).timestamp())
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T"))
+        if parsed.tzinfo is None:          # Gamma dates without an offset are UTC (as in the JS side)
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return int(parsed.timestamp())
     except ValueError:
         return None
 

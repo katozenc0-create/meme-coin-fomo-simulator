@@ -80,7 +80,8 @@ The Polymarket proxy endpoints are read-only and polite to the upstream API:
 | `GET /api/polymarket/markets?limit=N` | active markets, busiest first | 30 s |
 | `GET /api/polymarket/market?id=<numeric>` | one market (price, or resolution once closed) | 10 s |
 | `GET /api/polymarket/book?token_id=<numeric>` | CLOB order book, best levels first | 5 s |
-| `GET /api/polymarket/resolved?limit=N&offset=M` | closed markets, most recent first | 5 min |
+| `GET /api/polymarket/resolved?limit=N&offset=M` | closed markets, most recent scheduled end first | 5 min |
+| `GET /api/polymarket/resolved?limit=N&end_min=YYYY-MM-DD&end_max=YYYY-MM-DD` | whole closed **events** whose scheduled end falls in the window, flattened to markets (`limit` counts events, so expect many more markets) | 5 min |
 | `GET /api/polymarket/history?token_id=<numeric>&fidelity=<min>` | price history `[{t, p}]` | 1 h |
 
 Ids are validated as numeric (anything else gets a 400). Responses carry only the fields the pages use, plus a flat `eventId`. If Polymarket is unreachable, the endpoints return 502.
