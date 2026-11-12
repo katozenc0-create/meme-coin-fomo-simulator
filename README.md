@@ -31,7 +31,7 @@ All Polymarket access is **read-only**: no wallet, no keys, and no orders, ever.
 - Distinct meme-coin market scenarios
 - Stochastic market behavior with trend, chop, panic, mean reversion, and random shocks
 - OHLC candlestick chart with close-price line graph
-- Tap or click anywhere on the chart to simulate a market entry
+- Tap or click the chart to buy at the current price
 - Simulated trade feed and wallet P&L
 - Rug-pull and liquidity-risk practice scenarios
 - Beginner crypto learning lab
@@ -91,7 +91,7 @@ Ids are validated as numeric (anything else gets a 400). Responses carry only th
 1. Choose a market case and set a virtual practice bankroll (changing the bankroll starts a new session).
 2. Choose a position size and, optionally, a **stop loss %** and **take profit %**.
 3. Click **Start Trade** to start the market.
-4. Enter by tapping the chart (fills at that candle's price) or with **Buy At Market**, or wait and **Buy The Top** at the peak.
+4. Enter by tapping the chart or with **Buy At Market** (both fill at the current price), or wait and **Buy The Top** at the peak.
 5. Manage the position:
    - **Sell All Now** closes it at market while the price is still rising; you can re-enter before the peak.
    - The **Sell** tab sells 25%, 50% or 100% of the position.

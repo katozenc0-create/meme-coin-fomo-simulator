@@ -30,8 +30,12 @@ test('buy at market, partial and full sells, re-entry, peak exit and session sta
   await page.click('[data-sell="1"]');
   assert.match(await text(page, '#positionLine'), /^NO/, 'flat after selling the rest');
 
-  await chart.click({ position: { x: box.width * 0.3, y: box.height / 2 } });
+  await page.waitForTimeout(800);
+  const priceBefore = await page.evaluate(() => currentValue);
+  await chart.click({ position: { x: 5, y: box.height / 2 } });              // tap the far left: an old, low point
   assert.match(await text(page, '#positionLine'), /^OPEN/, 're-entered by tapping the chart');
+  const entry = await page.evaluate(() => entryValue);
+  assert.ok(entry >= priceBefore * 0.5, `tap fills near the current price (${entry.toFixed(0)} vs ${priceBefore.toFixed(0)}), never at a past low`);
   await waitForPeak(page);
   assert.equal(await text(page, '#panic'), 'Sell All At Peak');
   await page.click('#panic');
