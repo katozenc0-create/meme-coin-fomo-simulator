@@ -25,6 +25,7 @@
     .btn { padding: 10px 14px; background: var(--acid); color: var(--ink); box-shadow: 3px 3px 0 #466d18; }
     .btn.secondary { background: var(--panel-2); color: var(--text); box-shadow: none; border: 1px solid var(--line); }
     .stats { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin: 12px 0; }
+    .card .pm-link { color: var(--green); font: 700 10px Consolas, monospace; text-decoration: underline; }
     .card .close-btn { padding: 3px 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); font-size: 10px; }
     .stat { padding: 10px 12px; border: 1px solid var(--line); background: #0a140e; }
     .stat span { display: block; color: var(--muted); font: 10px Consolas, monospace; text-transform: uppercase; }
@@ -179,7 +180,7 @@
       }
 
       function liveSlot(market) {
-        return { kind: 'live', id: market.id, question: market.question, spread: market.spread, feeRate: market.feeRate || 0, tokenIds: market.tokenIds, endDate: market.endDate, prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
+        return { kind: 'live', id: market.id, question: market.question, spread: market.spread, feeRate: market.feeRate || 0, tokenIds: market.tokenIds, endDate: market.endDate, url: M.polymarketUrl(market), prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
       }
 
       const getJson = M.fetchJson;
@@ -418,22 +419,36 @@
           last.textContent = slot.kind === 'demo' ? `T-${Math.max(0, DEMO_STEPS - slot.step)} · ${slot.last}` : slot.last;
           bottom.append(badge, last);
           card.append(title, top, svg, bottom);
-          if (slot.position) {
-            const closeButton = document.createElement('button');
-            closeButton.className = 'close-btn';
-            closeButton.textContent = 'Close';
-            closeButton.setAttribute('aria-label', `Close position on ${slot.question}`);
-            closeButton.addEventListener('click', () => {
-              if (!slot.position) return;
-              closeOn(slot, 'CLOSE', markOf(slot), 'closed manually by you');
-              slot.manualHold = 5;   // give the user's decision a few ticks before Metyu re-enters
-              afterTick();
-            });
+          // Live markets link to polymarket.com: Metyu advises, the user places any real order.
+          const link = document.createElement('span');
+          if (slot.kind === 'live' && slot.url) {
+            const anchor = document.createElement('a');
+            anchor.className = 'pm-link';
+            anchor.href = slot.url;
+            anchor.target = '_blank';
+            anchor.rel = 'noopener noreferrer';
+            anchor.textContent = 'Polymarket ↗';
+            link.append(anchor);
+          }
+          if (slot.position || link.firstChild) {
             const actions = document.createElement('div');
             actions.className = 'row';
             actions.style.marginTop = '6px';
-            actions.append(document.createElement('span'), closeButton);
+            actions.append(link);
             card.append(actions);
+            if (slot.position) {
+              const closeButton = document.createElement('button');
+              closeButton.className = 'close-btn';
+              closeButton.textContent = 'Close';
+              closeButton.setAttribute('aria-label', `Close position on ${slot.question}`);
+              closeButton.addEventListener('click', () => {
+                if (!slot.position) return;
+                closeOn(slot, 'CLOSE', markOf(slot), 'closed manually by you');
+                slot.manualHold = 5;   // give the user's decision a few ticks before Metyu re-enters
+                afterTick();
+              });
+              actions.append(closeButton);
+            }
           }
           return card;
         }));

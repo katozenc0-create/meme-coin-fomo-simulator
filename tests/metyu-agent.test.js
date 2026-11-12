@@ -360,3 +360,15 @@ test('order-book fill must clear the same threshold as the decision', () => {
   const filled = M.advise({ ...base, book: { YES: [{ price: fillPrice, size: 1e6 }] } });
   assert.equal(filled.action, 'HOLD', 'a fill that only clears min edge is not enough');
 });
+
+test('Polymarket links: event page, market page, never anything off polymarket.com', () => {
+  const parsed = M.parseGammaMarket({ id: 1, question: 'Q?', slug: 'q-market', events: [{ id: 9, slug: 'q-event' }], outcomes: '["Yes","No"]', outcomePrices: '["0.4","0.6"]' });
+  assert.equal(parsed.eventSlug, 'q-event');
+  assert.equal(M.polymarketUrl(parsed), 'https://polymarket.com/event/q-event/q-market');
+  assert.equal(M.polymarketUrl({ slug: 'same', eventSlug: 'same' }), 'https://polymarket.com/event/same');
+  assert.equal(M.polymarketUrl({ slug: 'only-market' }), 'https://polymarket.com/market/only-market');
+  assert.equal(M.polymarketUrl({ slug: 'x', eventSlug: '../evil.com' }), 'https://polymarket.com/market/x', 'a malformed slug is ignored');
+  assert.equal(M.polymarketUrl({ slug: 'a/b?c' }), null);
+  assert.equal(M.polymarketUrl({}), null);
+  assert.equal(M.polymarketUrl(null), null);
+});
