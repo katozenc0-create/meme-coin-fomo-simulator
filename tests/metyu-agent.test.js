@@ -464,3 +464,19 @@ test('live advisor: real price history feeds the gap guard and staleness, never 
   const tracker = M.createMomentumTracker(async () => ({ history }), { now: () => now * 1000 });
   assert.equal((await tracker.recentPrices('1', .5, 5)).length, 5);
 });
+
+test('portfolio: a cluster cap limits correlated positions and cuts the tail of a shared research error', () => {
+  const free = M.capToPortfolio({ equity: 1000, margin: 50, cluster: 'crypto', clusterCount: 1, maxPerCluster: 2 });
+  assert.equal(free.margin, 50);
+  const full = M.capToPortfolio({ equity: 1000, margin: 50, cluster: 'crypto', clusterCount: 2, maxPerCluster: 2 });
+  assert.equal(full.margin, 0);
+  assert.match(full.reason, /crypto/);
+  assert.equal(M.capToPortfolio({ equity: 1000, margin: 50, cluster: null, clusterCount: 5, maxPerCluster: 2 }).margin, 50, 'no known cluster: no cluster cap');
+
+  const capped = M.portfolioStressTest({ trials: 60, maxPerCluster: 2 });
+  const uncapped = M.portfolioStressTest({ trials: 60, maxPerCluster: Infinity });
+  assert.ok(capped.p5Return > uncapped.p5Return + .04, `shared bias: worst 5% ${capped.p5Return} vs ${uncapped.p5Return}`);
+  assert.ok(capped.worstReturn > -.2, `capped worst ${capped.worstReturn}`);
+  const independent = M.portfolioStressTest({ trials: 30, correlation: 0, sharedBias: 0, maxPerCluster: 2 });
+  assert.ok(independent.p5Return > -.05, 'independent markets with honest research stay calm');
+});

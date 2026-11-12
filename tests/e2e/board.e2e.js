@@ -125,6 +125,30 @@ test('live mode with an open-gate model: real 12-hourly history decides leverage
   assert.deepEqual(page.errors, []);
 });
 
+test('live mode: at most 2 open positions per category (correlated markets)', async () => {
+  const page = await env.page();
+  const end = new Date(Date.now() + 40 * 86400000).toISOString();
+  const now = Math.floor(Date.now() / 1000);
+  const markets = Array.from({ length: 6 }, (_, index) => ({
+    id: String(900 + index), eventId: `c${index}`, question: `Will Bitcoin be above ${100 + index * 5}k USD on Friday?`, outcomes: '["Yes","No"]',
+    outcomePrices: '["0.30","0.70"]', bestBid: '0.295', bestAsk: '0.305', endDate: end, clobTokenIds: JSON.stringify([String(9300 + index), String(9400 + index)])
+  }));
+  await page.route('**/api/polymarket/markets?*', route => route.fulfill({ json: { markets } }));
+  await page.route('**/api/polymarket/market?id=*', route => route.fulfill({ json: { market: markets.find(item => item.id === new URL(route.request().url()).searchParams.get('id')) } }));
+  await page.route('**/api/polymarket/history?*', route => route.fulfill({ json: { history: Array.from({ length: 60 }, (_, i) => ({ t: now - (59 - i) * 43200, p: .30 })) } }));
+  await page.addInitScript(() => {
+    localStorage.setItem('metyuModel.v1', JSON.stringify({ kind: 'calib', a: 1.2, b: 1, cov: [[.0005, 0], [0, .0005]], gate: { open: true, meanReturn: .1, ci: [.02, .2] }, source: 'test' }));
+  });
+  await page.goto(`${env.base}/board.html`);
+  await page.click('#resetBtn');
+  await page.selectOption('#mode', 'live');
+  await page.click('#startBtn');
+  await page.waitForFunction(() => /live prices refreshed/.test(document.querySelector('#statusNote').textContent), null, { timeout: 20000 });
+  assert.equal(await page.locator('#board .card.long-yes, #board .card.long-no').count(), 2, 'six Bitcoin markets, two positions');
+  assert.match(await text(page, '#feed'), /max 2 open positions in crypto/);
+  assert.deepEqual(page.errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);

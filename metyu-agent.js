@@ -295,7 +295,9 @@
    * exactly like a well-informed price should. The market price chases that truth with lag and
    * noise, and news jumps gap the price immediately (no chance to exit in between).
    */
-  function createMarket({ seed = 1, steps = 160, startProb = .5, volatility = .06, efficiency = .18, jumpRate = .03, jumpSize = .9, jumpPassThrough = .6, pump = null } = {}) {
+  function createMarket({ seed = 1, steps = 160, startProb = .5, volatility = .06, efficiency = .18, jumpRate = .03, jumpSize = .9, jumpPassThrough = .6, pump = null, common = null, correlation = 0 } = {}) {
+    // common: shared per-step shocks [{ z, jump }] of a cluster of related markets (same driver,
+    // e.g. several crypto price markets); correlation (0-1) is how much of each step comes from it.
     // pump: { at: 0-1 of the market's life, size: log-odds push, halfLife: steps } — a manipulation
     // or overreaction that moves the PRICE but not the truth, then fades. It uses no randomness,
     // so a market with and without a pump shares the same truth and noise.
@@ -308,8 +310,14 @@
     const truth = [];
     const prices = [];
     for (let step = 1; step <= steps; step += 1) {
-      const jump = rng() < jumpRate ? rng.normal() * jumpSize : 0;
-      latent += rng.normal() * volatility + jump;
+      let jump = rng() < jumpRate ? rng.normal() * jumpSize : 0;
+      let shock = rng.normal();
+      if (common && common[step - 1]) {
+        const rho = clamp(correlation, 0, 1);
+        shock = Math.sqrt(1 - rho * rho) * shock + rho * common[step - 1].z;
+        if (common[step - 1].jump) jump = common[step - 1].jump * rho + jump * Math.sqrt(1 - rho * rho);
+      }
+      latent += shock * volatility + jump;
       const next = step === steps ? (latent > 0 ? .999 : .001) : truthAt(latent, step);
       if (jump) price += jumpPassThrough * (next - truthNow);
       price = clamp(price + efficiency * (next - price) + rng.normal() * volatility * .12, .01, .99);
@@ -478,6 +486,67 @@
     });
   }
 
+  /**
+   * Portfolio stress test: `size` markets traded at once, all in ONE cluster that shares a driver
+   * (correlation) and, optionally, a research error in the same direction for every market
+   * (sharedBias, log-odds). Live-Board-like limits; returns the distribution of portfolio returns.
+   */
+  function portfolioStressTest({ trials = 100, seed = 31, size = 8, correlation = .8, sharedBias = .8, skill = .5, maxPerCluster = 2, maxGross = 1.5, maxOpen = 6, config = {}, steps = 160 } = {}) {
+    const cfg = { ...DEFAULT_CONFIG, maxPositionPct: .1, ...config };
+    const results = [];
+    for (let k = 0; k < trials; k += 1) {
+      const rng = createRng(seed + k * 7919);
+      const common = Array.from({ length: steps }, () => ({ z: rng.normal(), jump: rng() < .03 ? rng.normal() * .9 : 0 }));
+      const markets = Array.from({ length: size }, () => createMarket({ seed: Math.floor(rng() * 2 ** 31), steps, startProb: .2 + rng() * .6, common, correlation }));
+      const evidence = markets.map(() => createEvidence({ processVar: .03, measurementVar: Math.pow(researchNoise(skill), 2) }));
+      const readings = createRng(seed + k * 7919 + 1);
+      const positions = markets.map(() => null);
+      let cash = 10000;
+      let peak = cash;
+      let low = cash;
+      let halted = false;
+      const n = markets[0].prices.length;
+      const markOf = (i, t) => (positions[i] ? Math.max(0, markPosition(positions[i], markets[i].prices[t], { spread: .02 }).equity) : 0);
+      for (let t = 0; t < n; t += 1) {
+        for (let i = 0; i < size; i += 1) {
+          const yesPrice = markets[i].prices[t];
+          if (positions[i]) {
+            const liq = liquidationPrice(positions[i], cfg.maintenanceMargin);
+            if (liq > 0 && sidePriceOf(positions[i], yesPrice) <= liq) positions[i] = null;
+          }
+          const equity = cash + positions.reduce((sum, _, j) => sum + markOf(j, t), 0);
+          peak = Math.max(peak, equity);
+          low = Math.min(low, equity);
+          const reading = researchSignal(markets[i].truth[t], skill, readings);
+          const belief = evidence[i].add(clampProb(sigmoid(logit(reading) + sharedBias)), processVarianceAt(1 - t / n));
+          if (halted) continue;
+          const decision = decide({ yesPrice, spread: .02, history: markets[i].prices.slice(Math.max(0, t - 40), t + 1), research: belief.probability, researchVariance: belief.variance, equity, peakEquity: peak, position: positions[i], volatility: .05, timeLeft: 1 - t / n }, cfg);
+          if ((decision.reasons || []).some(reason => reason.startsWith('KILL'))) {
+            halted = true;
+            positions.forEach((position, j) => { if (position) { cash += markOf(j, t); positions[j] = null; } });
+            continue;
+          }
+          if (decision.action === 'CLOSE' && positions[i]) { cash += markOf(i, t); positions[i] = null; }
+          if (decision.action === 'OPEN' && !positions[i]) {
+            const open = positions.filter(Boolean);
+            const guard = capToPortfolio({ equity, openNotional: open.reduce((sum, position) => sum + position.notional, 0), openCount: open.length, margin: Math.min(decision.margin, cash), leverage: decision.leverage, maxGross, maxOpen, cluster: 'cluster', clusterCount: open.length, maxPerCluster });
+            if (guard.margin < 1) continue;
+            positions[i] = openPosition({ side: decision.side, yesPrice, margin: guard.margin, leverage: decision.leverage, spread: .02 });
+            cash -= guard.margin;
+          }
+        }
+      }
+      positions.forEach((position, i) => { if (position) cash += Math.max(0, position.shares * (position.side === markets[i].outcome ? 1 : 0) - position.borrowed - position.interest); });
+      results.push({ ret: cash / 10000 - 1, maxDrawdown: 1 - low / 10000 });
+    }
+    const sorted = results.map(result => result.ret).sort((a, b) => a - b);
+    return {
+      trials, meanReturn: sorted.reduce((sum, value) => sum + value, 0) / trials,
+      p5Return: sorted[Math.floor(.05 * trials)], worstReturn: sorted[0],
+      maxDrawdown: Math.max(...results.map(result => result.maxDrawdown))
+    };
+  }
+
   /** Monte Carlo across many markets for one configuration. */
   function backtest({ markets = 200, bankroll = 1000, skill = .5, config = {}, seed = 42 } = {}) {
     let equity = bankroll;
@@ -553,8 +622,13 @@
    * notional stays within maxGross × equity and the number of open positions within maxOpen.
    * Returns { margin, reason } — margin 0 means the trade must be skipped.
    */
-  function capToPortfolio({ equity, openNotional = 0, openCount = 0, margin, leverage = 1, maxGross = 1.5, maxOpen = 6 }) {
+  // cluster / clusterCount / maxPerCluster: markets that share a driver (same category) move and
+  // mis-forecast together; measured in a correlated-portfolio simulation, a shared research error
+  // across one cluster was the largest portfolio risk, and capping each cluster at 2 positions cut
+  // the worst 5% of outcomes from about -18% to -10%.
+  function capToPortfolio({ equity, openNotional = 0, openCount = 0, margin, leverage = 1, maxGross = 1.5, maxOpen = 6, cluster = null, clusterCount = 0, maxPerCluster = Infinity }) {
     if (openCount >= maxOpen) return { margin: 0, reason: `max ${maxOpen} open positions reached` };
+    if (cluster && clusterCount >= maxPerCluster) return { margin: 0, reason: `max ${maxPerCluster} open positions in ${cluster} (correlated markets) reached` };
     const room = maxGross * equity - openNotional;
     const lev = Math.max(1, leverage);
     if (room < lev) return { margin: 0, reason: `gross exposure cap ${maxGross}x of equity reached` };
@@ -1251,6 +1325,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });
