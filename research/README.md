@@ -11,7 +11,7 @@ node research/evaluate.js data/dataset.json    # walk-forward, same code as the 
 
 ## Answer
 
-**No.** After fixing every leak found so far, two independent multi-month samples give **no evidence of an edge** after costs. They span about 19 and 29 months. On those samples Metyu makes almost no trades, and its evidence gate stays closed for every model, horizon and spread tried.
+**No.** After fixing every leak found so far, and with Polymarket's real fee schedule, a pre-registered replication on four new samples failed (see below). Earlier, two independent multi-month samples gave **no evidence of an edge** after costs. They span about 19 and 29 months. On those samples Metyu makes almost no trades, and its evidence gate stays closed for every model, horizon and spread tried.
 
 What is real is small. A recalibrated forecast is slightly better calibrated than the crowd: its Brier score improves by about 0.003–0.004, and not every test shows it. That is far too little to pay the spread and fees.
 
@@ -48,6 +48,21 @@ Until November 2026 the fee was modelled as `takerBaseFee / 10,000 × min(p, 1 �
 | B: `collect.py 6000 3 5` | 4,333 / 524 | any, even no fee | 0 trades | 0 | 0 |
 
 With the correct fee the gate is still **closed** everywhere. Sample A comes close at 7 days, but the interval still includes a loss, and the independent Sample B produces no trades at all, so the near-miss does not replicate. The rich model is closed on both samples (Sample A: 24 trades at 7 d, −17.5%).
+
+### Pre-registered replication (November 2026)
+
+Sample A's 7-day near-miss was tested on four new independent samples, with the hypothesis fixed **before** looking at them: calibration model, 7-day horizon, 2¢ spread, real `feeSchedule` fees; success = gate open (95% interval above 0, at least 30 trades).
+
+| Sample | Markets / events (span) | Trades | Mean per $1 | 95% interval | Gate |
+|---|---|---|---|---|---|
+| `collect.py 6000 1 5` | 4,519 / 422 (Mar 2025 – Dec 2026) | 1 | — | — | closed |
+| `collect.py 6000 2 5` | 4,394 / 480 (Dec 2024 – Nov 2026) | 0 | — | — | closed |
+| `collect.py 6000 4 5` | 4,617 / 813 (Nov 2023 – Nov 2026) | 102 | +5.9% | [−4.8%, +15.3%] | closed |
+| `collect.py 6000 5 5` | 4,470 / 424 (Apr 2025 – Dec 2026) | 0 | — | — | closed |
+| The four pooled | 17,997 / 2,138 | 0 | — | — | closed |
+| All six pooled, incl. A (biased upward: A is where the idea came from) | 26,795 / 3,361 | 588 | +4.4% | [−0.8%, +9.6%] | closed |
+
+**The replication failed.** Even with the corrected fees there is no reliable edge, and Metyu correctly keeps the gate closed.
 
 Brier scores of the earlier samples, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
 
