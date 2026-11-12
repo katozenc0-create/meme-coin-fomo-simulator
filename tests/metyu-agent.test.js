@@ -480,3 +480,15 @@ test('portfolio: a cluster cap limits correlated positions and cuts the tail of 
   const independent = M.portfolioStressTest({ trials: 30, correlation: 0, sharedBias: 0, maxPerCluster: 2 });
   assert.ok(independent.p5Return > -.05, 'independent markets with honest research stay calm');
 });
+
+test('portfolio clusters: Polymarket fee category first, then keywords; the model feature is untouched', () => {
+  assert.equal(M.marketCluster({ question: 'Jensen Huang out as CEO?', feeType: 'tech_fees' }), 'tech');
+  assert.equal(M.marketCluster({ question: 'Lakers vs Celtics', feeType: 'sports_fees_v3' }), 'sports');
+  assert.equal(M.marketCluster({ question: 'NFL: Bears vs Packers', feeType: 'sports_fees_nfl_cfb_oct26' }), 'sports', 'versioned fee types share a cluster');
+  assert.equal(M.marketCluster({ question: 'Will Rahm Emanuel win the 2028 Democratic presidential nomination?' }), 'politics', 'no fee type: keyword stems');
+  assert.equal(M.marketCluster({ question: 'US announces end of Iranian blockade by November 30?' }), 'politics');
+  assert.equal(M.marketCluster({ question: 'Will Bitcoin be above 100k?', feeType: 'general_fees' }), 'crypto', 'general fees carry no cluster: fall back');
+  assert.equal(M.marketCluster({ question: 'Will Jesus Christ return before 2027?' }), null, 'no known peers');
+  assert.equal(M.marketCategory('Will Rahm Emanuel win the 2028 Democratic presidential nomination?'), 'other', 'the trained-model category feature is unchanged');
+  assert.equal(M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', feeType: 'politics_fees' }).feeType, 'politics_fees');
+});

@@ -70,7 +70,7 @@
         <div class="field"><label for="maxLev">Max leverage</label><select id="maxLev"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option></select></div>
         <div class="field"><label for="maxGross">Max gross exposure</label><select id="maxGross"><option value="1">1x equity</option><option value="1.5" selected>1.5x equity</option><option value="2">2x equity</option><option value="3">3x equity</option></select></div>
         <div class="field"><label for="maxOpen">Max open positions</label><input id="maxOpen" type="number" min="1" max="8" value="6" style="width:90px"></div>
-        <div class="field"><label for="maxCluster" title="Markets of one category (crypto, sports, politics, culture) move and are mis-forecast together">Max per category</label><input id="maxCluster" type="number" min="1" max="8" value="2" style="width:90px"></div>
+        <div class="field"><label for="maxCluster" title="Markets of one category (Polymarket's own: politics, sports, crypto, tech, finance, economics…) move and are mis-forecast together">Max per category</label><input id="maxCluster" type="number" min="1" max="8" value="2" style="width:90px"></div>
         <div class="field" id="speedField"><label for="speed">Speed <output id="speedOut">2x</output></label><input id="speed" type="range" min="1" max="10" value="2"></div>
         <button class="btn" id="startBtn">Start board</button>
         <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
@@ -182,7 +182,7 @@
       }
 
       function liveSlot(market) {
-        return { kind: 'live', id: market.id, question: market.question, slug: market.slug || '', spread: market.spread, feeRate: market.feeRate || 0, feeExponent: market.feeExponent ?? 1, tokenIds: market.tokenIds, endDate: market.endDate, url: M.polymarketUrl(market), prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
+        return { kind: 'live', id: market.id, question: market.question, slug: market.slug || '', feeType: market.feeType || '', spread: market.spread, feeRate: market.feeRate || 0, feeExponent: market.feeExponent ?? 1, tokenIds: market.tokenIds, endDate: market.endDate, url: M.polymarketUrl(market), prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
       }
 
       const getJson = M.fetchJson;
@@ -200,9 +200,7 @@
       // Correlation cluster of a slot: its category for live markets. Demo markets are independent
       // simulations, and an uncategorised live market has no known peers, so each is its own cluster.
       function clusterOf(slot) {
-        if (slot.kind !== 'live') return null;
-        const category = M.marketCategory(`${slot.question} ${slot.slug || ''}`);
-        return category === 'other' ? null : category;
+        return slot.kind === 'live' ? M.marketCluster(slot) : null;
       }
 
       function openOn(slot, decision) {

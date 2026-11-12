@@ -95,6 +95,29 @@
   }
 
   /**
+   * Portfolio cluster of a market: markets in one cluster share a driver and tend to be
+   * mis-forecast together. Polymarket's own fee category (Gamma `feeType`, e.g. 'politics_fees',
+   * 'sports_fees_v3', 'tech_fees') is used first; otherwise the keyword category. Returns null for
+   * markets with no known peers ('general' fees, uncategorised). Kept separate from marketCategory,
+   * which is a trained-model feature and must not change under saved models.
+   */
+  const CLUSTER_STEMS = [
+    ['politics', /\b(democrat\w*|republican\w*|nominat\w*|elect\w*|iran\w*|israel\w*|ukrain\w*|russia\w*|chin\w*|xi jinping|regime|blockade|hormuz|sanction\w*|prime minister|parliament\w*)\b/],
+    ['tech', /\b(nvidia|openai|anthropic|apple|google|microsoft|meta|tesla|ai)\b/]
+  ];
+  function marketCluster(market) {
+    const feeType = String((market && market.feeType) || '').toLowerCase();
+    const prefix = feeType.split('_')[0];
+    if (prefix && prefix !== 'general' && /_fees/.test(feeType)) return prefix;
+    const text = `${(market && market.question) || ''} ${(market && market.slug) || ''}`;
+    const category = marketCategory(text);
+    if (category !== 'other') return category;
+    const lower = text.toLowerCase();
+    for (const [name, pattern] of CLUSTER_STEMS) if (pattern.test(lower)) return name;
+    return null;
+  }
+
+  /**
    * Fair-probability estimate in log-odds space.
    *  - starts from the market's implied probability (the crowd is usually well calibrated),
    *  - blends in the agent's research reading when available,
@@ -736,6 +759,7 @@
       negRisk: raw.negRisk === true || raw.negRisk === 'true',
       feeRate: takerFeeRate(raw),
       feeExponent: takerFeeExponent(raw),
+      feeType: typeof raw.feeType === 'string' ? raw.feeType : '',
       eventId: (() => {
         const eventId = raw.eventId ?? (Array.isArray(raw.events) && raw.events[0] && raw.events[0].id);
         return eventId === undefined || eventId === null || eventId === false ? String(raw.id ?? raw.slug ?? raw.question) : String(eventId);
@@ -1325,6 +1349,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });

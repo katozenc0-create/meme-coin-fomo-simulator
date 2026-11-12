@@ -59,7 +59,7 @@ class ServerTests(unittest.TestCase):
 
     def test_polymarket_proxy_returns_compact_markets(self) -> None:
         original = server._http_get_json
-        server._http_get_json = lambda url, timeout=8.0: [{"id": "1", "question": "Q?", "outcomes": '["Yes","No"]', "outcomePrices": '["0.4","0.6"]', "slug": "q-market", "feesEnabled": True, "feeSchedule": {"exponent": 1, "rate": 0.04}, "events": [{"id": 9, "slug": "q-event", "description": "x" * 500}], "secret": "x"}]
+        server._http_get_json = lambda url, timeout=8.0: [{"id": "1", "question": "Q?", "outcomes": '["Yes","No"]', "outcomePrices": '["0.4","0.6"]', "slug": "q-market", "feesEnabled": True, "feeSchedule": {"exponent": 1, "rate": 0.04}, "feeType": "politics_fees", "events": [{"id": 9, "slug": "q-event", "description": "x" * 500}], "secret": "x"}]
         try:
             status, body, _ = self.get("/api/polymarket/markets?limit=5")
         finally:
@@ -72,6 +72,7 @@ class ServerTests(unittest.TestCase):
         # the event slug survives compaction (it builds the polymarket.com link); the nested events do not
         self.assertEqual(data["markets"][0]["eventSlug"], "q-event")
         self.assertEqual(data["markets"][0]["feeSchedule"], {"exponent": 1, "rate": 0.04}, "the real fee rate reaches the agent")
+        self.assertEqual(data["markets"][0]["feeType"], "politics_fees", "Polymarket's category reaches the portfolio clusters")
         self.assertEqual(data["markets"][0]["eventId"], "9")
         self.assertNotIn("events", data["markets"][0])
 
