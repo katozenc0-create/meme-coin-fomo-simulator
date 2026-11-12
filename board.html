@@ -61,18 +61,41 @@
     .note { margin: 6px 0 0; color: var(--muted); font: 11px/1.45 Consolas, monospace; }
     [hidden] { display: none !important; }
     @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(4, 1fr); } }
-    @media (max-width: 560px) { .stats { grid-template-columns: 1fr 1fr; } }
+    .disclaimer .short { display: none; }
+    .controls.primary { margin-bottom: 10px; }
+    .settings > summary { cursor: pointer; color: var(--acid); font: 800 11px Consolas, monospace; text-transform: uppercase; letter-spacing: .04em; padding: 4px 0; }
+    .settings[open] > summary { margin-bottom: 10px; }
+    @media (max-width: 560px) {
+      /* Phones: the market cards should be reachable without scrolling past the whole form. */
+      h1 { font-size: 30px; margin: 10px 0 8px; }
+      .disclaimer { padding: 8px 10px; font-size: 11px; }
+      .disclaimer .long { display: none; } .disclaimer .short { display: inline; }
+      .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+      .stat { padding: 7px 8px; }
+      .stat span { font-size: 9px; }
+      .stat strong { font-size: 14px; }
+      .stat.optional { display: none; }
+      .controls.primary .field { flex: 1 1 100%; }
+      .controls.primary select { width: 100%; }
+    }
   </style>
 </head>
 <body>
   <div class="shell">
     <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a></nav></div>
     <h1>Metyu <span>live board</span></h1>
-    <p class="disclaimer">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No wallet, keys or orders. Live mode reads public Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</p>
+    <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No wallet, keys or orders. Live mode reads public Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Polymarket prices · no wallet, no orders · not financial advice</span></p>
 
     <section class="panel">
-      <div class="controls">
+      <div class="controls primary">
         <div class="field"><label for="mode">Mode</label><select id="mode"><option value="demo" selected>Demo · simulated live markets</option><option value="live">Live · Polymarket prices (read-only)</option></select></div>
+        <button class="btn" id="startBtn">Start board</button>
+        <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
+        <button class="btn secondary" id="flattenBtn">Flatten all</button>
+      </div>
+      <details class="settings" id="settings" open>
+        <summary>Settings &amp; limits</summary>
+      <div class="controls">
         <div class="field" id="skillField"><label for="skill">Research accuracy <output id="skillOut">70%</output></label><input id="skill" type="range" min="0" max="100" value="70"></div>
         <div class="field"><label for="bankroll">Virtual bankroll $</label><input id="bankroll" type="number" min="100" step="100" value="10000" style="width:120px"></div>
         <div class="field"><label for="maxLev">Max leverage</label><select id="maxLev"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option></select></div>
@@ -80,13 +103,11 @@
         <div class="field"><label for="maxOpen">Max open positions</label><input id="maxOpen" type="number" min="1" max="8" value="6" style="width:90px"></div>
         <div class="field"><label for="maxCluster" title="Markets of one category (Polymarket's own: politics, sports, crypto, tech, finance, economics…) move and are mis-forecast together">Max per category</label><input id="maxCluster" type="number" min="1" max="8" value="2" style="width:90px"></div>
         <div class="field" id="speedField"><label for="speed">Speed <output id="speedOut">2x</output></label><input id="speed" type="range" min="1" max="10" value="2"></div>
-        <button class="btn" id="startBtn">Start board</button>
-        <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
-        <button class="btn secondary" id="flattenBtn">Flatten all</button>
         <button class="btn secondary" id="exportBtn">Export trades (CSV)</button>
         <button class="btn secondary" id="resetBtn">Reset account</button>
       </div>
       <p class="note" id="modeNote">Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu's research accuracy sets how much it knows beyond the price.</p>
+      </details>
     </section>
 
     <div class="stats">
@@ -96,10 +117,10 @@
       <div class="stat"><span>Trades · win rate</span><strong id="sTrades">0 · —</strong></div>
       <div class="stat"><span>Drawdown</span><strong id="sDd">0.0%</strong></div>
       <div class="stat"><span>Gross exposure</span><strong id="sGross">0.00x</strong></div>
-      <div class="stat"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
+      <div class="stat optional"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
     </div>
 
-    <section class="panel" id="autopilotPanel" style="margin-bottom:12px">
+    <section class="panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
       <h2>Autopilot · 24/7 · virtual money</h2>
       <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
       <div class="stats" id="apStats" hidden>
@@ -424,9 +445,10 @@
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           status = await response.json();
         } catch (error) {
-          $('#apStatus').textContent = 'No autopilot view here: open this page through python server.py to see a running autopilot.';
+          $('#autopilotPanel').hidden = true;            // no server here (GitHub Pages, the APK): nothing to show
           return false;
         }
+        $('#autopilotPanel').hidden = false;
         if (!status.available) { $('#apStatus').textContent = `${status.reason}.`; $('#apStats').hidden = true; return true; }
         const account = status.account;
         // Open positions are marked at their last price with Metyu's own accounting.
@@ -669,6 +691,31 @@
       $('#skill').addEventListener('input', () => { $('#skillOut').textContent = `${$('#skill').value}%`; });
       $('#speed').addEventListener('input', () => { $('#speedOut').textContent = `${$('#speed').value}x`; if (running && mode() === 'demo') schedule(); });
       window.addEventListener('pagehide', save);
+
+      // Settings survive a reload (a phone reopening the app comes back to its mode and limits).
+      const SETTINGS_KEY = 'metyuBoard.settings.v1';
+      const SETTING_IDS = ['mode', 'skill', 'maxLev', 'maxGross', 'maxOpen', 'maxCluster', 'speed'];
+      try {
+        const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+        if (savedSettings) SETTING_IDS.forEach(id => {
+          const element = $(`#${id}`);
+          if (savedSettings[id] === undefined || !element) return;
+          if (element.tagName === 'SELECT' && ![...element.options].some(option => option.value === savedSettings[id])) return;
+          element.value = savedSettings[id];
+        });
+      } catch (error) { /* storage unavailable */ }
+      const saveSettings = () => {
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.fromEntries(SETTING_IDS.map(id => [id, $(`#${id}`).value])))); } catch (error) { /* ignore */ }
+      };
+      SETTING_IDS.forEach(id => $(`#${id}`).addEventListener('change', saveSettings));
+      // Sync the labels and the mode-dependent fields with the restored values.
+      $('#skillOut').textContent = `${$('#skill').value}%`;
+      $('#speedOut').textContent = `${$('#speed').value}x`;
+      $('#skillField').hidden = mode() === 'live';
+      $('#speedField').hidden = mode() === 'live';
+      if (mode() === 'live') $('#mode').dispatchEvent(new Event('change'));
+      // Phones start with the settings folded away; the board itself comes first.
+      if (window.matchMedia('(max-width: 560px)').matches) $('#settings').open = false;
 
       load();
       renderBoard();

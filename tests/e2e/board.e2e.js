@@ -175,6 +175,41 @@ test('autopilot panel shows the server-side autopilot (read-only)', async () => 
   assert.ok(await idle.locator('#apStats').isHidden());
 });
 
+test('phone layout: settings folded, the market cards close to the top; desktop keeps them open', async () => {
+  const phone = await env.page({ width: 390, height: 844 });
+  await phone.route('**/api/autopilot/status', route => route.abort());      // like GitHub Pages: no server
+  await phone.goto(`${env.base}/board.html`);
+  assert.equal(await phone.evaluate(() => document.querySelector('#settings').open), false, 'settings folded on a phone');
+  assert.ok(await phone.locator('#autopilotPanel').isHidden(), 'no server: no autopilot panel');
+  assert.ok(await phone.locator('#startBtn').isVisible(), 'Start stays visible');
+  await phone.click('#startBtn');
+  await phone.waitForSelector('#board .card');
+  const top = await phone.evaluate(() => document.querySelector('#board .card').getBoundingClientRect().top + scrollY);
+  assert.ok(top < 844, `the first market card starts within the first screen (${Math.round(top)}px)`);
+  await phone.click('#settings > summary');
+  assert.ok(await phone.locator('#maxLev').isVisible(), 'settings open on tap');
+  assert.deepEqual(phone.errors, []);
+
+  const desk = await env.page();
+  await desk.goto(`${env.base}/board.html`);
+  assert.equal(await desk.evaluate(() => document.querySelector('#settings').open), true, 'settings open on a computer');
+});
+
+test('board settings survive a reload', async () => {
+  const page = await env.page();
+  await page.goto(`${env.base}/board.html`);
+  await page.selectOption('#maxLev', '2');
+  await page.fill('#maxCluster', '3'); await page.dispatchEvent('#maxCluster', 'change');
+  await page.selectOption('#mode', 'live');
+  await page.reload();
+  assert.equal(await page.inputValue('#mode'), 'live');
+  assert.equal(await page.inputValue('#maxLev'), '2');
+  assert.equal(await page.inputValue('#maxCluster'), '3');
+  assert.ok(await page.locator('#skillField').isHidden(), 'live mode hides the demo-only fields after a reload too');
+  assert.match(await text(page, '#modeNote'), /^Live:/);
+  assert.deepEqual(page.errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);
