@@ -138,7 +138,8 @@
       }
       function save() {
         lastSave = Date.now();
-        try { localStorage.setItem(STORE_KEY, JSON.stringify({ account: { ...account, cash: account.cash + slots.reduce((sum, slot) => sum + (slot.position ? slot.position.margin : 0), 0) } })); } catch (error) { /* ignore */ }
+        // Open positions are not restored on reload: store what they are worth now (a loss stays a loss).
+        try { localStorage.setItem(STORE_KEY, JSON.stringify({ account: { ...account, cash: account.cash + slots.reduce((sum, slot) => sum + markOf(slot), 0) } })); } catch (error) { /* ignore */ }
       }
       function load() {
         try {
@@ -255,7 +256,8 @@
         const decision = M.decide({
           // taker fee per share is a cost like half the spread
           yesPrice, spread: slot.spread + 2 * M.feePerShare(slot.feeRate || 0, yesPrice, slot.feeExponent ?? 1), history: slot.prices.slice(-40), research, researchVariance,
-          equity: eq, peakEquity: account.peak, position: slot.position, volatility: .05, timeLeft
+          // The fee is already in the spread above, so the position decide() marks must not pay it again.
+          equity: eq, peakEquity: account.peak, position: slot.position && { ...slot.position, takerRate: 0 }, volatility: .05, timeLeft
         }, cfg());
         slot.fairs.push(decision.fair);
         slot.edge = decision.edge;
@@ -497,6 +499,7 @@
       async function start() {
         if (running) return;
         $('#startBtn').disabled = true;
+        $('#mode').disabled = true;               // a mode switch mid-load would mix live slots with demo ticks
         try {
           if (!slots.length || slots[0].kind !== mode()) {
             if (slots.some(slot => slot.position)) {
@@ -520,6 +523,7 @@
           running = false;
         } finally {
           $('#startBtn').disabled = running;
+          $('#mode').disabled = false;
         }
       }
 

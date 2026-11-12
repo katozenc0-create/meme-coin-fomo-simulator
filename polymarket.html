@@ -535,7 +535,9 @@
       $('#buyYes').addEventListener('click', () => manualBuy('YES'));
       $('#buyNo').addEventListener('click', () => manualBuy('NO'));
       $('#closeBtn').addEventListener('click', () => { close('manual close'); render(state.sim.prices[state.step], state.fairs[state.fairs.length - 1] ?? null); updateTradeButtons(); });
-      $('#resetAccount').addEventListener('click', () => { resetAccount(); newMarket(); saveStore(); log('INFO', `account reset to ${formatMoney(account.bankroll)}`); });
+      $('#resetAccount').addEventListener('click', () => {
+        if (state) state.position = null;       // a reset discards everything, including the open position
+        resetAccount(); newMarket(); saveStore(); log('INFO', `account reset to ${formatMoney(account.bankroll)}`); });
 
       $('#loadLive').addEventListener('click', async () => {
         const note = $('#liveNote');
@@ -632,7 +634,7 @@
           const settings = {};
           ['kelly', 'maxLev', 'minEdge', 'stopLoss', 'maxDd', 'uncert', 'skill', 'advBankroll'].forEach(id => { settings[id] = $(`#${id}`).value; });
           const { bankroll, cash, peak, realized, trades, wins, markets: marketCount, brierSum, halted } = account;
-          localStorage.setItem(STORE_KEY, JSON.stringify({ paper, settings, account: { bankroll, cash: state && state.position ? cash + state.position.margin : cash, peak, realized, trades, wins, markets: marketCount, brierSum, halted } }));
+          localStorage.setItem(STORE_KEY, JSON.stringify({ paper, settings, account: { bankroll, cash: state && state.position ? cash + Math.max(0, M.markPosition(state.position, state.sim.prices[Math.max(0, state.step)], { spread: state.meta.spread }).equity) : cash, peak, realized, trades, wins, markets: marketCount, brierSum, halted } }));
         } catch (error) { /* storage unavailable */ }
       }
 
@@ -896,7 +898,7 @@
                 settledNow += 1;
               });
               const gone = advisorMarkets.findIndex(item => item.id === id);
-              if (gone >= 0) { advisorMarkets.splice(gone, 1); fillAdvisorMarkets(advisorMarkets); }
+              if (gone >= 0) fillAdvisorMarkets(advisorMarkets.filter(item => item.id !== id));   // new array: the old selection is still readable
               continue;
             }
             paper.forEach(item => { if (item.liveId === id) item.lastYes = fresh.yesPrice; });
@@ -955,17 +957,23 @@
         const seen = new Set();
         const day = 86400000;
         const isoDay = time => new Date(time).toISOString().slice(0, 10);
-        for (let window = 0; resolved.length < count && window < 400; window += 1) {
+        const fetchWindow = async window => {
           const endMax = Date.now() - day - window * 6 * day;
           const from = isoDay(endMax - day);
           const to = isoDay(endMax);
-          report(`fetching resolved markets… ${resolved.length}/${count} (ended ${from})`);
           const data = await getJson([`/api/polymarket/resolved?limit=5&end_min=${from}&end_max=${to}`, `https://gamma-api.polymarket.com/events?closed=true&limit=5&end_date_min=${from}&end_date_max=${to}`]);
-          const rows = M.flattenEvents(Array.isArray(data) ? data : data.markets || []);
-          // Keep whole windows (and so whole events), even if that overshoots `count` a little.
-          rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => {
-            if (!seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
-          });
+          return { from, rows: M.flattenEvents(Array.isArray(data) ? data : data.markets || []) };
+        };
+        // Four windows at a time (like the histories below), added in window order.
+        for (let window = 0; resolved.length < count && window < 400; window += 4) {
+          const batch = await Promise.all([0, 1, 2, 3].map(offset => window + offset).filter(index => index < 400).map(fetchWindow));
+          for (const { rows } of batch) {
+            // Keep whole windows (and so whole events), even if that overshoots `count` a little.
+            rows.map(M.parseResolvedForTraining).filter(Boolean).forEach(market => {
+              if (!seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
+            });
+          }
+          report(`fetching resolved markets… ${resolved.length}/${count} (ended ${batch[batch.length - 1].from})`);
         }
         let done = 0;
         const queue = resolved.slice();

@@ -404,9 +404,11 @@
     let tradeCount = 0;
     let liquidations = 0;
     let brier = 0;
+    let played = 0;
     const rng = createRng(seed);
     for (let index = 0; index < markets; index += 1) {
       if (equity < 1) break;
+      played += 1;
       const market = createMarket({ seed: Math.floor(rng() * 2 ** 31), startProb: .15 + rng() * .7 });
       const result = runAgentOnMarket(market, { bankroll: equity, skill, config, seed: index + 1 });
       equity = result.finalEquity;
@@ -423,7 +425,7 @@
       trades: tradeCount,
       winRate: tradeCount ? wins / tradeCount : 0,
       liquidations,
-      brier: brier / markets
+      brier: played ? brier / played : 0     // a ruined run stops early: average over markets played
     };
   }
 
@@ -1065,23 +1067,30 @@
 
   /** A model read back from storage: either kind, with its covariance. */
   function isValidSavedModel(saved) {
-    return Boolean(saved && Array.isArray(saved.cov) && ((saved.kind === 'rich' && Array.isArray(saved.beta)) || (Number.isFinite(saved.a) && Number.isFinite(saved.b))));
+    if (!saved || !Array.isArray(saved.cov)) return false;
+    // The covariance must be a finite n x n matrix matching the model's parameters, or prediction breaks.
+    const square = n => saved.cov.length === n && saved.cov.every(row => Array.isArray(row) && row.length === n && row.every(Number.isFinite));
+    if (saved.kind === 'rich') {
+      const n = richFeatures({ p: .5, horizon: 1 }).length;   // a model saved with another feature layout is stale
+      return Array.isArray(saved.beta) && saved.beta.length === n && saved.beta.every(Number.isFinite) && square(n);
+    }
+    return Number.isFinite(saved.a) && Number.isFinite(saved.b) && square(2);
   }
 
   /**
    * 3-day momentum exactly as the rich model was trained on it: price now minus the price three
    * days ago, from the market's CLOB history (cached per token; refreshed every `ttlMs`).
    */
-  function createMomentumTracker(fetchJsonImpl, { ttlMs = 6 * 3600 * 1000, now = () => Date.now() } = {}) {
+  function createMomentumTracker(fetchJsonImpl, { ttlMs = 6 * 3600 * 1000, retryMs = 5 * 60 * 1000, now = () => Date.now() } = {}) {
     const cache = new Map();
     return async function threeDayMomentum(tokenId, priceNow) {
       if (!tokenId) return 0;
       let entry = cache.get(tokenId);
-      if (!entry || now() - entry.at > ttlMs) {
+      if (!entry || now() - entry.at > (entry.failed ? retryMs : ttlMs)) {
         try {
           const data = await fetchJsonImpl([`/api/polymarket/history?token_id=${encodeURIComponent(tokenId)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(tokenId)}&interval=max&fidelity=720`]);
           entry = { at: now(), history: normaliseHistory(data) };
-        } catch (error) { entry = { at: now(), history: [] }; }
+        } catch (error) { entry = { at: now(), history: [], failed: true }; }   // retried soon, not in 6 h
         cache.set(tokenId, entry);
       }
       const before = priceAt(entry.history, now() / 1000 - 3 * 86400);

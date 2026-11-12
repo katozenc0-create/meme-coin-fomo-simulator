@@ -187,6 +187,13 @@ test('switching markets closes an open position; closing a paper position realiz
   assert.ok(cash > 900, `the position was closed back into cash, not discarded (cash ${cash})`);
   assert.match(await text(page, '#log'), /market switched/);
 
+  await page.click('#startBtn');
+  await page.waitForTimeout(300);
+  await page.fill('#margin', '200');
+  await page.click('#buyYes');
+  await page.click('#resetAccount');
+  assert.equal(money(await text(page, '#cash')), 1000, 'a reset starts clean: the old position is not credited to the new account');
+
   await page.fill('#advPrice', '40'); await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
   await page.click('#advAsk');
   await page.click('#advTrack');
