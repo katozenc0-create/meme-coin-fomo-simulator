@@ -1,0 +1,24 @@
+# Read-only Polymarket proxy + pages (virtual money only). Install:
+#   sudo cp deploy/metyu-*.service /etc/systemd/system/
+#   mkdir -p data   (systemd needs the writable folder to exist)
+#   edit User= and WorkingDirectory= below, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now metyu-server metyu-autopilot
+[Unit]
+Description=Metyu server (read-only Polymarket proxy and pages)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=metyu
+WorkingDirectory=/opt/meme-coin-fomo-simulator
+ExecStart=/usr/bin/python3 server.py --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=10
+# Nothing here needs privileges or writes outside the project's data/ folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/meme-coin-fomo-simulator/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

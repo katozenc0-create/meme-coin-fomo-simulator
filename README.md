@@ -175,6 +175,22 @@ node autopilot.js --api http://127.0.0.1:8000 --train 1500 --retrain 24   # trai
 
 Its state (account, positions, trade history and log) lives in `data/autopilot.json`, which is git-ignored. The file is written atomically after every tick and on Ctrl-C, so a restart continues where it left off. The `model.json` is a model trained in the Prediction Lab and saved with its **Download model (autopilot)** button. Currently every honest model's gate is closed (see `research/README.md`), so the autopilot will watch rather than trade, which is the correct behaviour.
 
+**Watching it:** open the Live Board through `python3 server.py`. The **Autopilot · 24/7** panel at the top shows the running autopilot, read-only and refreshed every 30 s:
+- equity, with open positions marked by Metyu's own accounting;
+- realized P&L, trades and win rate;
+- open positions;
+- the evidence gate, the last training and the last tick;
+- the autopilot's log.
+
+It reads `GET /api/autopilot/status`, which summarises the state file (`--autopilot-state` or `AUTOPILOT_STATE`, default `data/autopilot.json`) without the model's parameters.
+
+**Running it continuously:**
+- **Linux (systemd):** `deploy/metyu-server.service` and `deploy/metyu-autopilot.service` restart on failure, start at boot, and may write only to `data/`. Run `mkdir -p data` first, because systemd needs the writable folder to exist. Then copy them to `/etc/systemd/system/`, set `User=` and `WorkingDirectory=`, and run `sudo systemctl enable --now metyu-server metyu-autopilot`. Watch the output with `journalctl -fu metyu-autopilot`.
+- **Without a service manager:** run one tick every 5 minutes from cron, for example `*/5 * * * * cd /path/to/repo && node autopilot.js --once --api http://127.0.0.1:8000 --train 1500`. Each run loads the state file, ticks, saves and exits.
+- **Windows:** use Task Scheduler with the same `--once` command.
+
+Stopping it (Ctrl-C, `systemctl stop`, SIGTERM) saves the state first.
+
 ## Metyu Live Board (virtual money)
 
 Open `board.html`, or use **Live Board** in the navigation. Metyu trades eight markets at once from one virtual account.

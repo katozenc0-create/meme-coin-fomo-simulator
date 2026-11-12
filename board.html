@@ -91,6 +91,21 @@
       <div class="stat"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
     </div>
 
+    <section class="panel" id="autopilotPanel" style="margin-bottom:12px">
+      <h2>Autopilot · 24/7 · virtual money</h2>
+      <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
+      <div class="stats" id="apStats" hidden>
+        <div class="stat"><span>Equity</span><strong id="apEquity">—</strong></div>
+        <div class="stat"><span>Realized P&amp;L</span><strong id="apRealized">—</strong></div>
+        <div class="stat"><span>Trades · win rate</span><strong id="apTrades">—</strong></div>
+        <div class="stat"><span>Open positions</span><strong id="apOpen">—</strong></div>
+        <div class="stat"><span>Evidence gate</span><strong id="apGate">—</strong></div>
+        <div class="stat"><span>Last training</span><strong id="apTrained">—</strong></div>
+        <div class="stat"><span>Last tick</span><strong id="apTick">—</strong></div>
+      </div>
+      <ul class="feed" id="apFeed" style="max-height:220px"></ul>
+    </section>
+
     <div class="layout">
       <section><div class="board" id="board"></div></section>
       <aside>
@@ -391,6 +406,46 @@
         afterTick();
         $('#statusNote').textContent = `${refreshed}/${slots.filter(slot => !slot.done).length} live prices refreshed at ${new Date().toLocaleTimeString()} · next in 30s · belief: ${M.modelMayTrade(trainedModel) ? `trained model (${trainedModel.source || 'saved'}), evidence gate open` : trainedModel ? 'trained model saved but its evidence gate is closed → no trades' : 'market only (no trained model → no edge, no trades)'}`;
       }
+
+      // ---------- autopilot (server-side, read-only view) ----------
+      const signed = (element, value, text) => { element.textContent = text; element.className = value > 0 ? 'positive' : value < 0 ? 'negative' : ''; };
+      async function refreshAutopilot() {
+        let status;
+        try {
+          const response = await fetch('/api/autopilot/status', { headers: { Accept: 'application/json' } });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          status = await response.json();
+        } catch (error) {
+          $('#apStatus').textContent = 'No autopilot view here: open this page through python server.py to see a running autopilot.';
+          return false;
+        }
+        if (!status.available) { $('#apStatus').textContent = `${status.reason}.`; $('#apStats').hidden = true; return true; }
+        const account = status.account;
+        // Open positions are marked at their last price with Metyu's own accounting.
+        const marks = status.positions.reduce((sum, held) => sum + Math.max(0, M.markPosition(held.position, held.lastYes, { spread: held.spread || 0 }).equity), 0);
+        const equityNow = account.cash + marks;
+        const gate = status.model && status.model.gate;
+        const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
+        $('#apStats').hidden = false;
+        $('#apStatus').textContent = `${age < 15 ? 'Running' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : 'watching only (no model with an open evidence gate)'}`;
+        signed($('#apEquity'), equityNow - account.bankroll, `${formatMoney(equityNow)}`);
+        signed($('#apRealized'), account.realized, `${account.realized >= 0 ? '+' : ''}${formatMoney(account.realized)}`);
+        $('#apTrades').textContent = account.trades ? `${account.trades} · ${Math.round(account.wins / account.trades * 100)}%` : '0 · —';
+        $('#apOpen').textContent = String(status.positions.length);
+        $('#apGate').textContent = gate ? (gate.open ? `OPEN · ${gate.trades} trades` : `closed · ${gate.trades} trades`) : 'no model';
+        $('#apTrained').textContent = status.model && status.model.trainedAt ? new Date(status.model.trainedAt).toLocaleString() : '—';
+        $('#apTick').textContent = status.lastTick ? new Date(status.lastTick).toLocaleTimeString() : '—';
+        $('#apFeed').replaceChildren(...status.log.slice(0, 40).map(entry => {
+          const item = document.createElement('li');
+          item.className = entry.kind;
+          const head = document.createElement('b');
+          head.textContent = `${new Date(entry.at).toLocaleString()} ${entry.kind} `;
+          item.append(head, entry.text);
+          return item;
+        }));
+        return true;
+      }
+      refreshAutopilot().then(served => { if (served) setInterval(refreshAutopilot, 30000); });
 
       // ---------- render ----------
       function spark(values, cls) {

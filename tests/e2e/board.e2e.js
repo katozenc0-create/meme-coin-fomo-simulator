@@ -149,6 +149,32 @@ test('live mode: at most 2 open positions per category (correlated markets)', as
   assert.deepEqual(page.errors, []);
 });
 
+test('autopilot panel shows the server-side autopilot (read-only)', async () => {
+  const page = await env.page();
+  const now = new Date().toISOString();
+  await page.route('**/api/autopilot/status', route => route.fulfill({ json: {
+    available: true, virtualMoney: true, lastTick: now, watching: 12,
+    account: { bankroll: 10000, cash: 9600, peak: 10050, halted: false, realized: 50, trades: 2, wins: 1 },
+    model: { source: 'autopilot · 407 resolved markets', trainedAt: Date.now(), kind: 'calib', gate: { open: false, trades: 0 } },
+    positions: [{ id: '1', question: 'Q?', lastYes: .45, spread: 0, position: { side: 'YES', shares: 1000, borrowed: 0, interest: 0, margin: 400, leverage: 1, takerRate: 0 } }],
+    history: [], trainings: [], log: [{ at: now, kind: 'TRAIN', text: 'retrained on 407 resolved markets · evidence gate closed' }]
+  } }));
+  await page.goto(`${env.base}/board.html`);
+  await page.waitForFunction(() => /Running/.test(document.querySelector('#apStatus').textContent));
+  assert.match(await text(page, '#apStatus'), /watching 12 markets · watching only/);
+  assert.equal(await text(page, '#apEquity'), '$10,050', 'cash 9,600 + 1,000 shares marked at 45c');
+  assert.equal(await text(page, '#apTrades'), '2 · 50%');
+  assert.match(await text(page, '#apGate'), /^closed/);
+  assert.match(await text(page, '#apFeed'), /retrained on 407 resolved markets/);
+  assert.deepEqual(page.errors, []);
+
+  const idle = await env.page();
+  await idle.route('**/api/autopilot/status', route => route.fulfill({ json: { available: false, reason: 'no autopilot state yet: run node autopilot.js' } }));
+  await idle.goto(`${env.base}/board.html`);
+  await idle.waitForFunction(() => /no autopilot state yet/.test(document.querySelector('#apStatus').textContent));
+  assert.ok(await idle.locator('#apStats').isHidden());
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);
