@@ -191,6 +191,20 @@ It reads `GET /api/autopilot/status`, which summarises the state file (`--autopi
 
 Stopping it (Ctrl-C, `systemctl stop`, SIGTERM) saves the state first.
 
+## Metyu Board for Android (APK)
+
+**Metyu Board** is an Android app for watching the Live Board on your phone. It trades virtual money only: market data is read-only, and it has no wallet and never places an order.
+
+**Download:** on your phone, open the repository's [Releases](../../releases/tag/apk-latest) page and download `metyu-board.apk`. Allow installing apps from that source when Android asks, then open **Metyu Board**. Every change to `main` rebuilds the APK and replaces the file under the same link, and a newer build installs over the old one.
+
+**Two ways to use it:**
+- **Built-in board (default):** the APK contains the same pages as the website (the Live Board, the Prediction Lab and the game). Live mode reads Polymarket prices directly from the phone, so you don't need a computer.
+- **Your server:** choose **⋮ → Connect to my server…** and enter your `server.py` address, for example `http://192.168.1.20:8000`. Start the server with `python3 server.py --host 0.0.0.0` so the phone on the same network can reach it. The board then also shows the **Autopilot · 24/7** panel of your running `autopilot.js`. **⋮ → Use the built-in board** switches back.
+
+Links to polymarket.com open in the phone's browser, and the screen stays on while the board is open.
+
+**How it is built:** the source is in `android/`. It is a plain-Java WebView app with no third-party libraries. The pages are copied from the repository at build time, so they are never duplicated in git. `.github/workflows/android.yml` builds the APK on GitHub's runners, which include the Android SDK. It also checks that the pages are inside the APK and publishes the result. To build locally with the Android SDK installed, run `gradle -p android assembleDebug`.
+
 ## Metyu Live Board (virtual money)
 
 Open `board.html`, or use **Live Board** in the navigation. Metyu trades eight markets at once from one virtual account.
