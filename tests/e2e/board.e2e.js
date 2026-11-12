@@ -256,6 +256,29 @@ test('autopilot panel lists its last trades, settled ones at $1 / $0', async () 
   assert.deepEqual(page.errors, []);
 });
 
+test('iPhone: an "Add to Home Screen" tip instead of the Android APK link', async () => {
+  const { devices } = require('playwright');
+  const context = await env.browser.newContext({ ...devices['iPhone 13'] });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/autopilot/status', route => route.abort());
+  await page.goto(`${env.base}/board.html`);
+  assert.ok(await page.locator('#iosHint').isVisible(), 'Safari on iPhone shows how to add the app');
+  assert.match(await text(page, '#iosHint'), /Add to Home Screen/);
+  assert.ok(await page.locator('#apkLink').isHidden(), 'no APK link on an iPhone');
+  await page.click('#iosHintClose');
+  await page.reload();
+  assert.ok(await page.locator('#iosHint').isHidden(), 'a dismissed tip stays hidden');
+  await context.close();
+
+  const android = await env.page({ width: 390, height: 844 });
+  await android.goto(`${env.base}/board.html`);
+  assert.ok(await android.locator('#iosHint').isHidden(), 'no iPhone tip elsewhere');
+  assert.ok(await android.locator('#apkLink').isVisible(), 'the Android link stays for Android and computers');
+  assert.deepEqual(errors, []);
+});
+
 test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);

@@ -62,6 +62,8 @@
     [hidden] { display: none !important; }
     @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(4, 1fr); } }
     .disclaimer .short { display: none; }
+    .install-hint { position: relative; margin: 0 0 10px; padding: 10px 34px 10px 12px; border: 1px solid var(--acid); background: #13230f; color: var(--text); font: 12px/1.5 Consolas, monospace; }
+    .install-hint button { position: absolute; top: 6px; right: 6px; padding: 2px 7px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
     .trades { margin: 0; padding: 0; list-style: none; font: 11px/1.45 Consolas, monospace; }
     .trades li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 7px 0; border-top: 1px solid var(--line); }
     .trades .market { color: var(--text); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -90,6 +92,7 @@
   <div class="shell">
     <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a><a id="apkLink" href="https://github.com/katozenc0-create/meme-coin-fomo-simulator/releases/download/apk-latest/metyu-board.apk" title="Latest Metyu Board APK (Android)">Android app ⬇</a></nav></div>
     <h1>Metyu <span>live board</span></h1>
+    <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
     <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No wallet, keys or orders. Live mode reads public Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Polymarket prices · no wallet, no orders · not financial advice</span></p>
 
     <section class="panel">
@@ -768,6 +771,20 @@
       $('#skillField').hidden = mode() === 'live';
       $('#speedField').hidden = mode() === 'live';
       if (mode() === 'live') $('#mode').dispatchEvent(new Event('change'));
+      // iPhone / iPad: an APK cannot run there. Offer "Add to Home Screen" instead (unless the page is
+      // already running as the home-screen app or the tip was dismissed) and hide the Android link.
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+      if (isIOS) {
+        $('#apkLink').hidden = true;
+        let dismissed = false;
+        try { dismissed = localStorage.getItem('metyuBoard.iosHint') === 'hidden'; } catch (error) { /* ignore */ }
+        $('#iosHint').hidden = standalone || dismissed;
+        $('#iosHintClose').addEventListener('click', () => {
+          $('#iosHint').hidden = true;
+          try { localStorage.setItem('metyuBoard.iosHint', 'hidden'); } catch (error) { /* ignore */ }
+        });
+      }
       // Phones start with the settings folded away; the board itself comes first.
       if (window.matchMedia('(max-width: 560px)').matches) $('#settings').open = false;
 

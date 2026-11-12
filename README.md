@@ -197,6 +197,7 @@ iOS does not install apps from downloaded files. A native App Store or TestFligh
 
 1. Open the Live Board over HTTPS. One option is your GitHub Pages address (see [GitHub Pages](#github-pages)), for example `https://YOUR-USERNAME.github.io/meme-coin-fomo-simulator/board.html`. Another is your own `server.py` behind HTTPS.
 2. **iPhone / iPad (Safari):** tap **Share → Add to Home Screen → Add**. **Android (Chrome):** tap **⋮ → Install app**.
+   On an iPhone the Live Board shows this tip itself (until you dismiss it or open Metyu from the home screen), and the Android link is hidden there. `icons/iphone-qr.svg` is a QR code for the GitHub Pages board of this repository.
 3. Open **Metyu** from the home screen. It opens full screen with its own icon. Live mode reads Polymarket directly, and the board, the Lab and the game also open without a network.
 
 How it works:
