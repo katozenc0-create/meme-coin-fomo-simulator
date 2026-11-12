@@ -405,3 +405,34 @@ test('Polymarket links: event page, market page, never anything off polymarket.c
   assert.equal(M.polymarketUrl({}), null);
   assert.equal(M.polymarketUrl(null), null);
 });
+
+test('stress test: Metyu bends but never breaks; reckless rules do break', () => {
+  const rows = M.stressTest({ markets: 60, seed: 11 });
+  assert.equal(rows.length, M.STRESS_SCENARIOS.length);
+  assert.deepEqual(M.stressTest({ markets: 60, seed: 11 }), rows, 'reproducible');
+  for (const row of rows) {
+    assert.ok(row.meanReturn > -.03, `${row.name}: mean ${row.meanReturn}`);
+    assert.ok(row.worstReturn > -.25, `${row.name}: worst market ${row.worstReturn}`);
+  }
+  const efficient = rows.find(row => row.id === 'efficient');
+  assert.ok(efficient.trades <= 6, `no information, (almost) no trades: ${efficient.trades}`);
+  const reckless = M.stressTest({ markets: 60, seed: 11, config: { minEdge: 0, uncertaintyMultiple: 0, maxLeverage: 10, forceLeverage: true, maxDrawdownPct: 1, kellyMultiplier: 1, maxPositionPct: 1 } });
+  assert.ok(reckless.some(row => row.worstReturn < -.5), 'the same guarantees fail without Metyu\'s rules');
+});
+
+test('gap guard: leverage is cut when recent jumps could skip past the liquidation price', () => {
+  const state = { yesPrice: .40, spread: .02, research: .62, researchVariance: .02, equity: 1000, peakEquity: 1000, volatility: .01, timeLeft: 1 };
+  const calm = M.decide({ ...state, history: Array(30).fill(.40) }, { stalenessWeight: 0 });
+  const jumpy = M.decide({ ...state, history: Array.from({ length: 30 }, (_, i) => (i % 2 ? .40 : .48)) }, { stalenessWeight: 0 });
+  assert.equal(calm.action, 'OPEN');
+  assert.ok(calm.leverage > 1, `calm market may use leverage (${calm.leverage}x)`);
+  assert.equal(jumpy.leverage, 1, '8c jumps: no leverage');
+  assert.ok(jumpy.reasons.some(reason => reason.startsWith('leverage cut')));
+});
+
+test('staleness: research counts for less after the market has just moved', () => {
+  const base = { price: .40, research: .60, researchVariance: .05 };
+  const still = M.estimateFairProbability({ ...base, history: Array(12).fill(.40) });
+  const moved = M.estimateFairProbability({ ...base, history: [.2, .25, .3, .35, .4, .35, .3, .38, .45, .4, .42, .40] }, { ...M.DEFAULT_CONFIG, momentumWeight: 0, fadeWeight: 0 });
+  assert.ok(moved.probability < still.probability, `${moved.probability} < ${still.probability}`);
+});

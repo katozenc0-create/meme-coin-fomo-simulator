@@ -241,6 +241,13 @@
     </section>
 
     <section class="panel wide">
+      <h2>Scenario stress test</h2>
+      <p class="note">Metyu, with your current rules, against the situations a prediction-market trader actually meets: news gaps, manipulation, wrong or late research, thin books, disputed resolutions. Each scenario runs many independent markets with a fresh $1,000; the worst market matters as much as the average.</p>
+      <div class="controls"><div class="field" style="width:140px"><label for="stMarkets">Markets per scenario</label><input id="stMarkets" type="number" min="20" max="400" step="20" value="100"></div><button class="btn" id="runStress">Run stress test</button><span class="note" id="stStatus"></span></div>
+      <div class="table-scroll"><table><thead><tr><th>Scenario</th><th>Avg return</th><th>Worst 5%</th><th>Worst market</th><th>Markets lost</th><th>Trades</th><th>Liquidations</th></tr></thead><tbody id="stBody"><tr><td colspan="7">Run the stress test to see where Metyu bends.</td></tr></tbody></table></div>
+    </section>
+
+    <section class="panel wide">
       <h2>Metyu knowledge base</h2>
       <div class="kb">
         <article><h3>1 · How Polymarket prices work</h3><p>Each market has YES and NO shares that settle at $1 or $0 when the question resolves. Because YES + NO ≈ $1, the YES price is the crowd's implied probability. Orders match on a central limit order book; you pay the ask and sell at the bid.</p><div class="formula">implied p = YES price · NO ≈ 1 − YES</div></article>
@@ -596,6 +603,32 @@
             const cell = document.createElement('td');
             cell.textContent = value;
             if (column === 2) cell.className = result.totalReturn >= 0 ? 'positive' : 'negative';
+            row.append(cell);
+          });
+          body.append(row);
+          index += 1;
+          setTimeout(next, 10);
+        };
+        setTimeout(next, 10);
+      });
+
+      $('#runStress').addEventListener('click', () => {
+        const button = $('#runStress');
+        button.disabled = true;
+        const count = Math.max(20, Math.min(400, Number($('#stMarkets').value) || 100));
+        const cfg = config();
+        const body = $('#stBody');
+        body.replaceChildren();
+        let index = 0;
+        $('#stStatus').textContent = `${count} markets per scenario…`;
+        const next = () => {
+          if (index >= M.STRESS_SCENARIOS.length) { button.disabled = false; $('#stStatus').textContent = 'done'; return; }
+          const [result] = M.stressTest({ markets: count, config: cfg, scenarios: [M.STRESS_SCENARIOS[index]], seed: 2027 + index * 7919 });
+          const row = document.createElement('tr');
+          [result.name, pct(result.meanReturn), pct(result.p5Return), pct(result.worstReturn), pct(result.lossRate), String(result.trades), String(result.liquidations)].forEach((value, column) => {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            if (column >= 1 && column <= 3) cell.className = (column === 1 ? result.meanReturn : column === 2 ? result.p5Return : result.worstReturn) >= 0 ? 'positive' : 'negative';
             row.append(cell);
           });
           body.append(row);

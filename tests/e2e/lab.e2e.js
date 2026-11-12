@@ -203,6 +203,19 @@ test('switching markets closes an open position; closing a paper position realiz
   assert.deepEqual(page.errors, []);
 });
 
+test('scenario stress test runs every scenario', async () => {
+  const page = await env.page();
+  await page.goto(`${env.base}/polymarket.html`);
+  await page.fill('#stMarkets', '20');
+  await page.click('#runStress');
+  const scenarios = await page.evaluate(() => Metyu.STRESS_SCENARIOS.length);
+  await page.waitForFunction(count => document.querySelectorAll('#stBody tr').length === count && !document.querySelector('#runStress').disabled, scenarios, { timeout: 90000 });
+  const rows = await page.$$eval('#stBody tr', trs => trs.map(tr => [...tr.children].map(td => td.textContent)));
+  assert.match(rows.find(row => row[0].startsWith('Pump and dump')).join(' '), /%/);
+  assert.match(await text(page, '#stStatus'), /done/);
+  assert.deepEqual(page.errors, []);
+});
+
 test('lab layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/polymarket.html`);

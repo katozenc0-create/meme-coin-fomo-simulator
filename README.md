@@ -113,10 +113,15 @@ Open `polymarket.html` (or **Metyu Lab** in the top navigation). Metyu is a pape
 - **Fair value**: combines the market price and private research by precision (Bayesian, log-odds space), tracking evidence with a time-aware Kalman filter.
 - **Trade filter**: trades only when the edge beats the spread, a minimum edge, and 1.5σ of its own uncertainty. With no information it does not trade.
 - **Sizing**: fractional (¼) Kelly with a per-position cap and a drawdown kill-switch.
-- **Leverage**: a simulated margin account with interest, a liquidation price, and a liquidation penalty. Metyu scales leverage with edge/volatility and never holds leverage into resolution.
+- **Leverage**: a simulated margin account with interest, a liquidation price, and a liquidation penalty. Metyu scales leverage with edge/volatility and never holds leverage into resolution. A **gap guard** keeps the liquidation price at least 8¢, and at least 3× the largest recent one-step move, away from the entry, because news gaps skip past any stop.
+- **Stale information**: research may predate the market's latest moves, so the log-odds variance of recent moves is added (×0.1) to the research's uncertainty. Metyu then bets less against a crowd that has just learned something.
 - **Exits**: when the edge is gone, near liquidation, on a broken thesis, or by the kill-switch. There are no blind price stops on unlevered binaries.
 - **Decision log**: every action comes with its reasons. Brier scores compare Metyu with the crowd.
 - **Backtest lab**: compares Metyu's rules with full Kelly, forced 3x/10x leverage, and "trade every signal" over many simulated markets.
+- **Scenario stress test** (`Metyu.stressTest`): your current rules against 13 situations. These are an efficient crowd, noisy, biased and stale research, news shocks, pump-and-dump with and without research, an 8¢ spread, whipsaw, a sharp crowd, a slow crowd, late reversals, and disputed resolutions. Each scenario runs many markets with a fresh $1,000 and reports the average, worst 5%, worst market, share of markets lost, and liquidations. The test suite requires every scenario to average better than −3% with no market worse than −25%, and checks that reckless rules fail the same bar.
+  - With the default rules, no scenario averages worse than about −0.5%, and the worst single market loses about 8%. Two choices were measured and are deliberate:
+    1. A robust (Huber) down-weighting of far-off research was **not** adopted: it removed only 0.1 points of loss from biased research and cost about 30% of the profit from good research.
+    2. The staleness rule gives up most of the profit from fading a pump-and-dump, because in the moment a manipulated move and an informed move look the same.
 - **Knowledge base**: Polymarket mechanics, EV, Kelly, leverage on binaries, costs, resolution, and calibration.
 
 **Live advisor:** pick a live market, or type a price, then enter **your** probability and how sure you are. Metyu applies its rules and shows:
