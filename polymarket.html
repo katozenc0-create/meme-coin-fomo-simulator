@@ -645,6 +645,8 @@
       let lastAdvice = null;
       let paper = [];
       const PAPER_MAX_PER_CLUSTER = 2;
+      const PAPER_MAX_GROSS = 1.5;      // total open notional / paper equity (Live Board default)
+      const PAPER_MAX_OPEN = 6;
       // Paper account: the advisor sizes from paper equity (bankroll + all paper P&L) and its
       // kill-switch compares that with the peak, so a losing streak really does stop Metyu.
       let paperPeak = null;              // { bankroll, equity }
@@ -856,6 +858,8 @@
         const accountNow = paperAccount();
         request.bankroll = Math.max(1, accountNow.equity);
         request.peakEquity = accountNow.peak;
+        const openPaper = paper.filter(item => !item.settled && !(inputs.market && item.liveId === inputs.market.id));
+        request.portfolio = { openNotional: openPaper.reduce((sum, item) => sum + item.margin + item.borrowed, 0), openCount: openPaper.length, maxGross: PAPER_MAX_GROSS, maxOpen: PAPER_MAX_OPEN };
         let advice = M.advise(request, config());
         inputs.execution = inputs.market ? 'quote' : 'manual';
         // A model without an open evidence gate never trades — decide that before touching the order book.
