@@ -12,12 +12,15 @@ const waitForPeak = page => page.waitForFunction(() => document.querySelector('#
 
 test('buy at market, partial and full sells, re-entry, peak exit and session stats', async () => {
   const page = await env.page();
+  // The pump lasts ~3.6 s of game time and the chart tap below only works while it runs. Real time
+  // made this a race on a busy machine, so the game clock is held still while the test acts.
+  await page.clock.install();
   await page.goto(`${env.base}/index.html`);
   const chart = page.locator('#chartWrap');
   const box = await chart.boundingBox();
   await page.fill('#amount', '500');
   await page.click('#start');
-  await page.waitForTimeout(600);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 600);
   await page.click('#buy');
   assert.equal(await page.locator('#modal').isHidden(), false, 'FOMO warning shown before an early buy');
   await page.click('#closeModal');
@@ -30,12 +33,13 @@ test('buy at market, partial and full sells, re-entry, peak exit and session sta
   await page.click('[data-sell="1"]');
   assert.match(await text(page, '#positionLine'), /^NO/, 'flat after selling the rest');
 
-  await page.waitForTimeout(800);
+  await page.clock.runFor(800);                                              // still well inside the pump
   const priceBefore = await page.evaluate(() => currentValue);
   await chart.click({ position: { x: 5, y: box.height / 2 } });              // tap the far left: an old, low point
   assert.match(await text(page, '#positionLine'), /^OPEN/, 're-entered by tapping the chart');
   const entry = await page.evaluate(() => entryValue);
   assert.ok(entry >= priceBefore * 0.5, `tap fills near the current price (${entry.toFixed(0)} vs ${priceBefore.toFixed(0)}), never at a past low`);
+  await page.clock.resume();
   await waitForPeak(page);
   assert.equal(await text(page, '#panic'), 'Sell All At Peak');
   await page.click('#panic');
