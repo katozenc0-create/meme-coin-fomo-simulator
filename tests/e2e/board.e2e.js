@@ -233,6 +233,7 @@ test('last 10 trades with P&L: newest first, total and win/loss count', async ()
   assert.equal(await text(page, '#lastTradesSummary'), 'Last 10: +$15 · 6 won · 4 lost');
   assert.match(await text(page, '#lastTrades li'), /NO 1x · 40\.0¢ → 45\.0¢ · edge gone/);
   assert.ok(await noHorizontalScroll(page), 'fits a phone');
+  assert.equal(await page.getAttribute('#apkLink', 'href'), 'https://github.com/katozenc0-create/meme-coin-fomo-simulator/releases/download/apk-latest/metyu-board.apk', 'one tap to the latest APK');
   assert.deepEqual(page.errors, []);
 });
 

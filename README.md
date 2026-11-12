@@ -211,6 +211,10 @@ The service worker runs only on `https://` or `localhost`. Inside the Android AP
 
 **Metyu Board** is an Android app for watching the Live Board on your phone. It trades virtual money only: market data is read-only, and it has no wallet and never places an order.
 
+<img src="icons/apk-qr.svg" alt="QR code: download the Metyu Board APK" width="160" align="right">
+
+**Quickest:** scan the QR code with the phone camera; it downloads the latest `metyu-board.apk`. The Live Board's top menu also has an **Android app ⬇** link to the same file, so a phone that opened the web version can install the app in one tap.
+
 **Download:** on your phone, open the repository's [Releases](../../releases/tag/apk-latest) page and download `metyu-board.apk`. Allow installing apps from that source when Android asks, then open **Metyu Board**. Every change to `main` rebuilds the APK and replaces the file under the same link, and a newer build installs over the old one.
 
 **Two ways to use it:**
