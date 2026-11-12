@@ -92,7 +92,7 @@ def binary_resolved(raw, event_id=None):
         "question": raw.get("question"), "slug": raw.get("slug"), "outcome": outcome, "yesToken": tokens[yes_index],
         "endDate": raw.get("endDate"), "closedTime": raw.get("closedTime"), "startDate": raw.get("startDate"),
         "volume": raw.get("volumeNum"), "negRisk": bool(raw.get("negRisk")),
-        "feesEnabled": bool(raw.get("feesEnabled")), "takerBaseFee": raw.get("takerBaseFee"),
+        "feesEnabled": bool(raw.get("feesEnabled")), "takerBaseFee": raw.get("takerBaseFee"), "feeSchedule": raw.get("feeSchedule"),
     }
 
 

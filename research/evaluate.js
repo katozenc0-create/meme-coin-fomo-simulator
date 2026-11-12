@@ -15,7 +15,7 @@ const markets = raw
   .filter(market => market.history && market.history.length)
   .map(market => ({
     id: market.id, eventId: market.eventId, question: market.question, slug: market.slug, negRisk: market.negRisk,
-    outcome: market.outcome, history: market.history, feeRate: M.takerFeeRate(market),
+    outcome: market.outcome, history: market.history, feeRate: M.takerFeeRate(market), feeExponent: M.takerFeeExponent(market),
     endTs: toTs(market.endDate) ?? toTs(market.closedTime ?? market.end), closedTs: toTs(market.closedTime ?? market.end)
   }))
   .filter(market => Number.isFinite(market.endTs));

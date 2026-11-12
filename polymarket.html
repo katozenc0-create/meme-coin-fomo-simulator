@@ -790,7 +790,7 @@
           inputs.belief = prediction.probability;
           inputs.beliefVariance = prediction.variance;
         }
-        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, feeRate: inputs.market ? inputs.market.feeRate || 0 : 0, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft };
+        const request = { yesPrice: inputs.yesPrice, spread: inputs.spread, feeRate: inputs.market ? inputs.market.feeRate || 0 : 0, feeExponent: inputs.market ? inputs.market.feeExponent ?? 1 : 1, belief: inputs.belief, beliefVariance: inputs.beliefVariance, confidence: inputs.confidence, bankroll: inputs.bankroll, daysLeft: inputs.daysLeft };
         let advice = M.advise(request, config());
         inputs.execution = inputs.market ? 'quote' : 'manual';
         // A model without an open evidence gate never trades — decide that before touching the order book.
@@ -821,7 +821,7 @@
 
       function markPaper(item) {
         if (item.settled) return { pnl: item.settled.pnl, returnOnMargin: item.settled.pnl / item.margin, mark: item.side === item.settled.outcome ? 1 : 0 };
-        const position = { side: item.side, shares: item.shares, borrowed: item.borrowed, interest: 0, margin: item.margin, takerRate: item.takerRate || 0 };
+        const position = { side: item.side, shares: item.shares, borrowed: item.borrowed, interest: 0, margin: item.margin, takerRate: item.takerRate || 0, takerExponent: item.takerExponent ?? 1 };
         return M.markPosition(position, item.lastYes, { spread: item.spread });
       }
 
@@ -924,7 +924,7 @@
         paper.unshift({
           question: inputs.question, liveId: inputs.market ? inputs.market.id : null, url: inputs.market ? M.polymarketUrl(inputs.market) : null, side: advice.side, leverage: advice.leverage,
           entry: advice.entry, shares: advice.shares, margin: advice.maxLoss, borrowed: advice.notional - advice.maxLoss,
-          liquidation: advice.liquidation, spread: inputs.spread, takerRate: inputs.market ? inputs.market.feeRate || 0 : 0, lastYes: inputs.yesPrice, openedAt: Date.now()
+          liquidation: advice.liquidation, spread: inputs.spread, takerRate: inputs.market ? inputs.market.feeRate || 0 : 0, takerExponent: inputs.market ? inputs.market.feeExponent ?? 1 : 1, lastYes: inputs.yesPrice, openedAt: Date.now()
         });
         paper = paper.slice(0, 30);
         saveStore();

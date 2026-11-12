@@ -169,7 +169,7 @@ test('training: calibration fit is neutral on a calibrated crowd and finds longs
 
 test('training: parses resolved Gamma markets with YES token and end time', () => {
   const parsed = M.parseResolvedForTraining({ id: 5, question: 'Q', closed: true, outcomes: '["No","Yes"]', outcomePrices: '["0","1"]', clobTokenIds: '["11","22"]', closedTime: '2026-01-02T00:00:00Z' });
-  assert.deepEqual(parsed, { id: '5', question: 'Q', slug: '', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, closedTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5', negRisk: false, feeRate: 0 });
+  assert.deepEqual(parsed, { id: '5', question: 'Q', slug: '', endTs: Date.parse('2026-01-02T00:00:00Z') / 1000, closedTs: Date.parse('2026-01-02T00:00:00Z') / 1000, outcome: 'YES', yesToken: '22', eventId: '5', negRisk: false, feeRate: 0, feeExponent: 1 });
   assert.equal(M.parseResolvedForTraining({ closed: false, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
   assert.equal(M.parseResolvedForTraining({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', clobTokenIds: '["1","2"]', endDate: '2026-01-01' }), null);
 });
@@ -250,9 +250,17 @@ test('data client skips a missing local proxy after the first miss, but not afte
 });
 
 test('fees, categories and rich features use only information known at decision time', () => {
-  assert.equal(M.takerFeeRate({ feesEnabled: true, takerBaseFee: 1000 }), .1);
-  assert.equal(M.takerFeeRate({ feesEnabled: false, takerBaseFee: 1000 }), 0);
-  close(M.feePerShare(.1, .9), .01);
+  // The rate comes from Gamma's feeSchedule; takerBaseFee (1000 everywhere) is not the rate.
+  const politics = { feesEnabled: true, takerBaseFee: 1000, feeSchedule: { exponent: 1, rate: .04, takerOnly: true, rebateRate: .25 } };
+  assert.equal(M.takerFeeRate(politics), .04);
+  assert.equal(M.takerFeeExponent(politics), 1);
+  assert.equal(M.takerFeeRate({ ...politics, feeSchedule: JSON.stringify(politics.feeSchedule) }), .04, 'schedule may arrive as a JSON string');
+  assert.equal(M.takerFeeRate({ ...politics, feesEnabled: false }), 0);
+  assert.equal(M.takerFeeRate({ feesEnabled: true, takerBaseFee: 1000 }), .07, 'no schedule: the highest category rate, never 10%');
+  close(M.feePerShare(.04, .5), .01, 1e-12, 'peak fee: 1c per share at 50c');
+  close(M.feePerShare(.04, .9), .0036, 1e-12, 'falls to 0.36c at 90c');
+  close(M.feePerShare(.04, .5, 2), .0025, 1e-12, 'exponent applies to p(1-p)');
+  assert.equal(M.parseGammaMarket({ outcomes: '["Yes","No"]', outcomePrices: '["0.5","0.5"]', ...politics }).feeRate, .04);
   assert.equal(M.marketCategory('Counter-Strike: MOUZ vs G2 (BO3)'), 'sports');
   assert.equal(M.marketCategory('Will Bitcoin be above $100k?'), 'crypto');
   assert.equal(M.marketCategory('Who will be the next Attorney General?'), 'politics');
@@ -292,12 +300,12 @@ test('live safety: fees cost edge, horizons are clamped, only an open gate may t
   const base = { yesPrice: .40, spread: .02, belief: .62, confidence: 'high', bankroll: 1000, daysLeft: 45 };
   const free = M.advise(base);
   assert.equal(free.action, 'OPEN', 'edge without fees');
-  const lowFee = M.advise({ ...base, feeRate: .1 });           // 0.1 x 0.4 = 4c per share
-  close(lowFee.feePerShare, .04, 1e-12);
-  close(free.edge - lowFee.edge, .04, 1e-9, 'the fee comes straight off the edge');
-  assert.equal(M.advise({ ...base, feeRate: .2 }).action, 'HOLD', 'an 8c fee eats the edge');
+  const lowFee = M.advise({ ...base, feeRate: .1 });           // 0.1 x 0.4 x 0.6 = 2.4c per share
+  close(lowFee.feePerShare, .024, 1e-12);
+  close(free.edge - lowFee.edge, .024, 1e-9, 'the fee comes straight off the edge');
+  assert.equal(M.advise({ ...base, feeRate: .2 }).action, 'HOLD', 'a 4.8c fee eats the edge');
   const filled = M.advise({ ...base, belief: .62, feeRate: .1, book: { YES: [{ price: .41, size: 1e6 }] } });
-  close(filled.entry, .41 + .04, 1e-12);
+  close(filled.entry, .41 + .024, 1e-12);
   const far = M.richFeatures({ p: .5, horizon: 700 });
   const thirty = M.richFeatures({ p: .5, horizon: 30 });
   assert.deepEqual(far, thirty, 'horizons beyond 30 days are clamped');
@@ -328,8 +336,8 @@ test('walk-forward purges training events that resolved after a test decision', 
 
 test('fees live inside positions; helpers for pages', () => {
   const position = M.openPosition({ side: 'YES', yesPrice: .4, margin: 100, leverage: 1, takerRate: .1 });
-  close(position.entry, .44, 1e-12);                        // 4c fee per share on entry
-  close(M.markPosition(position, .4).mark, .36, 1e-12);     // and again on a sale before resolution
+  close(position.entry, .424, 1e-12);                       // 0.1 x 0.4 x 0.6 = 2.4c fee per share on entry
+  close(M.markPosition(position, .4).mark, .376, 1e-12);    // and again on a sale before resolution
   close(M.settlePosition(position, 'YES').payout, position.shares, 1e-9);   // redemption is free
   assert.equal(M.isValidSavedModel({ a: 0, b: 1, cov: [[1, 0], [0, 1]] }), true);
   assert.equal(M.isValidSavedModel({ kind: 'rich', beta: [1], cov: [[1]] }), true);

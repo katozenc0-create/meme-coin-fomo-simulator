@@ -180,7 +180,7 @@
       }
 
       function liveSlot(market) {
-        return { kind: 'live', id: market.id, question: market.question, spread: market.spread, feeRate: market.feeRate || 0, tokenIds: market.tokenIds, endDate: market.endDate, url: M.polymarketUrl(market), prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
+        return { kind: 'live', id: market.id, question: market.question, spread: market.spread, feeRate: market.feeRate || 0, feeExponent: market.feeExponent ?? 1, tokenIds: market.tokenIds, endDate: market.endDate, url: M.polymarketUrl(market), prices: [market.yesPrice], fairs: [], position: null, done: false, last: 'watching' };
       }
 
       const getJson = M.fetchJson;
@@ -208,7 +208,7 @@
           return;
         }
         const yesPrice = slot.prices[slot.prices.length - 1];
-        slot.position = M.openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread: slot.spread, takerRate: slot.feeRate || 0 });
+        slot.position = M.openPosition({ side: decision.side, yesPrice, margin, leverage: decision.leverage, spread: slot.spread, takerRate: slot.feeRate || 0, takerExponent: slot.feeExponent ?? 1 });
         slot.position.openedAt = new Date().toISOString();
         slot.position.fairAtEntry = decision.fair;
         account.cash -= margin;
@@ -254,7 +254,7 @@
         account.peak = Math.max(account.peak, eq);
         const decision = M.decide({
           // taker fee per share is a cost like half the spread
-          yesPrice, spread: slot.spread + 2 * M.feePerShare(slot.feeRate || 0, yesPrice), history: slot.prices.slice(-40), research, researchVariance,
+          yesPrice, spread: slot.spread + 2 * M.feePerShare(slot.feeRate || 0, yesPrice, slot.feeExponent ?? 1), history: slot.prices.slice(-40), research, researchVariance,
           equity: eq, peakEquity: account.peak, position: slot.position, volatility: .05, timeLeft
         }, cfg());
         slot.fairs.push(decision.fair);
@@ -353,6 +353,7 @@
             refreshed += 1;
             const daysLeft = Number.isFinite(Date.parse(slot.endDate)) ? Math.max(0, (Date.parse(slot.endDate) - Date.now()) / 86400000) : 30;
             slot.feeRate = fresh.feeRate || 0;
+            slot.feeExponent = fresh.feeExponent ?? 1;
             if (M.modelMayTrade(trainedModel)) {
               const mom = trainedModel.kind === 'rich' && slot.tokenIds ? await threeDayMomentum(slot.tokenIds.YES, fresh.yesPrice) : 0;
               if (stale()) return;
