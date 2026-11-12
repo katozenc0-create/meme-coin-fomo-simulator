@@ -554,7 +554,31 @@
     return { ok: reasons.length === 0, reasons, riskAmount, maxMargin, maxLeverage: book === 'gated' ? rules.maxLeverage : rules.learnMaxLeverage };
   }
 
+  // ---------- the real-money lock ----------
+  /**
+   * Real orders are locked. This lists what must ALL be true before the owner may even decide to
+   * unlock them, so the board can show the honest distance. There is no order code in Metyu: when
+   * every condition holds, the next step is still a deliberate, reviewed change by the owner,
+   * starting at LIVE_LIMITS. `forward` is forwardEvidence() over the closed trades (in R).
+   */
+  const LIVE_LIMITS = Object.freeze({ maxOrderUsd: 25, maxDailyLossUsd: 50, maxOpenUsd: 100, maxLeverage: 1 });
+  function liveReadiness({ forward, createdAt, account, accountLink, now = Date.now(), approval = null, minDays = 14 }) {
+    const days = createdAt ? (now - Date.parse(createdAt)) / DAY : 0;
+    const drawdown = account && account.peak > 0 ? 1 - (account.equity ?? account.cash) / account.peak : 0;
+    const conditions = [
+      { id: 'days', ok: days >= minDays, text: `forward test ran ${minDays}+ days (now ${Math.floor(days)})` },
+      { id: 'trades', ok: !!forward && forward.trades >= RULES.minTrades, text: `${RULES.minTrades}+ closed forward-test trades (now ${forward ? forward.trades : 0})` },
+      { id: 'edge', ok: !!forward && forward.trades >= RULES.minTrades && forward.ci[0] > 0, text: `95% interval of the mean R above zero (now ${forward && forward.trades ? `[${forward.ci[0].toFixed(2)}, ${forward.ci[1].toFixed(2)}]` : 'no trades'})` },
+      { id: 'risk', ok: !!account && !account.halted && drawdown < .1, text: `no kill-switch and drawdown under 10% (now ${(drawdown * 100).toFixed(1)}%)` },
+      { id: 'account', ok: !!(accountLink && accountLink.linked && accountLink.viewOnly), text: 'a real exchange account linked with a verified view-only key' },
+      { id: 'approval', ok: !!approval, text: "the owner's explicit approval, with the limits below" }
+    ];
+    const met = conditions.filter(c => c.ok).length;
+    return { locked: true, met, total: conditions.length, ready: met === conditions.length, conditions, limits: LIVE_LIMITS };
+  }
+
   return {
+    LIVE_LIMITS, liveReadiness,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

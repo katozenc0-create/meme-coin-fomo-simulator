@@ -24,7 +24,7 @@ jobs:
       - name: Agent tests (Node)
         run: node --test tests/*.test.js
       - name: Syntax check browser scripts
-        run: node --check metyu-agent.js && node --check autopilot.js && node --check metyu-exchange.js && node --check exchange-autopilot.js
+        run: node --check metyu-agent.js && node --check autopilot.js && node --check metyu-exchange.js && node --check exchange-autopilot.js && node --check metyu-vault.js && node --check account-sync.js
 
   e2e:
     runs-on: ubuntu-latest

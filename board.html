@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -157,6 +158,10 @@
     .ex-strats { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
     .ex-strats li { padding: 7px 9px; border: 1px solid var(--line); background: #0a140e; font: 11px/1.45 Consolas, monospace; color: var(--muted); }
     .ex-strats b { color: var(--text); }
+    .ac-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+    .ac-form input { flex: 1 1 200px; min-width: 0; padding: 8px; border: 1px solid var(--line); background: #0a140e; color: var(--text); font: 700 13px Consolas, monospace; }
+    .lock-list { list-style: none; margin: 4px 0 0; padding: 0; font: 11px/1.6 Consolas, monospace; color: var(--muted); }
+    .lock-list li::before { content: '✗ '; color: var(--red); font-weight: 800; } .lock-list li.ok::before { content: '✓ '; color: var(--green); }
     .panel h3 { margin: 12px 0 4px; color: var(--muted); font: 800 10px Consolas, monospace; text-transform: uppercase; }
   </style>
 </head>
@@ -288,6 +293,26 @@
       <ul class="feed" id="apFeed" style="max-height:220px"></ul>
     </section>
 
+    <section class="panel" id="accountPanel" style="margin-bottom:12px" hidden>
+      <h2>My exchange account · verified · read-only</h2>
+      <p class="note" id="acStatus">Your real balances are published encrypted. Enter your board passphrase to open them on this device.</p>
+      <form class="ac-form" id="acForm" autocomplete="on">
+        <input type="text" name="username" value="metyu-board" autocomplete="username" hidden aria-hidden="true">
+        <input type="password" id="acPass" name="password" autocomplete="current-password" placeholder="Board passphrase" aria-label="Board passphrase" minlength="12" required>
+        <button class="btn" type="submit" id="acOpen">Unlock</button>
+      </form>
+      <div id="acBody" hidden>
+        <div class="stats">
+          <div class="stat"><span>Total (USD)</span><strong id="acTotal">—</strong></div>
+          <div class="stat"><span>Exchange</span><strong id="acProvider">—</strong></div>
+          <div class="stat"><span>Key</span><strong id="acKey">—</strong></div>
+          <div class="stat"><span>Verified</span><strong id="acVerified">—</strong></div>
+        </div>
+        <ul class="trades" id="acBalances"></ul>
+        <button class="btn secondary" type="button" id="acLock" style="margin-top:8px">Lock</button>
+      </div>
+    </section>
+
     <section class="panel" id="exchangePanel" style="margin-bottom:12px" hidden>
       <h2>Exchange · crypto · 24/7 · virtual money</h2>
       <p class="note" id="exStatus">Checking for the exchange autopilot (node exchange-autopilot.js)…</p>
@@ -311,6 +336,9 @@
         <span><i style="background:var(--muted)"></i>support / resistance</span><span><i style="background:var(--red)"></i>stop · liquidation</span><span><i style="background:var(--green)"></i>target</span>
       </div>
       <ul class="ex-notes" id="exNotes"></ul>
+      <h3 id="exLiveHead">Real money: locked</h3>
+      <ul class="lock-list" id="exLive"></ul>
+      <p class="note" id="exLiveLimits"></p>
       <h3>Open positions</h3>
       <ul class="trades" id="exPositions"></ul>
       <h3>Strategies · evidence gate (out of sample, after costs)</h3>
@@ -331,6 +359,7 @@
   </div>
 
   <script src="metyu-agent.js"></script>
+  <script src="metyu-vault.js"></script>
   <script>
     (() => {
       const M = window.Metyu;
@@ -886,6 +915,14 @@
         select.value = symbols.includes(chosen) ? chosen : (status.positions[0] && symbols.includes(status.positions[0].symbol) ? status.positions[0].symbol : symbols[0] || '');
         $('#exChartHead').hidden = !symbols.length;
         drawExchangeChart();
+        // Real money: locked; show exactly which conditions are still unmet.
+        const live = status.live;
+        $('#exLiveHead').hidden = $('#exLive').hidden = $('#exLiveLimits').hidden = !live;
+        if (live) {
+          $('#exLiveHead').textContent = `Real money: LOCKED · ${live.met}/${live.total} conditions met`;
+          $('#exLive').replaceChildren(...live.conditions.map(condition => { const li = document.createElement('li'); li.className = condition.ok ? 'ok' : ''; li.textContent = condition.text; return li; }));
+          $('#exLiveLimits').textContent = `Even then, the first real orders are capped: $${live.limits.maxOrderUsd} per order, $${live.limits.maxOpenUsd} open in total, $${live.limits.maxDailyLossUsd} maximum loss per day, no leverage.`;
+        }
         // Open positions with live P&L.
         $('#exPositions').replaceChildren(...(status.positions.length ? status.positions.map(position => {
           const item = document.createElement('li');
@@ -926,6 +963,89 @@
       $('#exSymbol').addEventListener('change', drawExchangeChart);
       refreshExchange();
       setInterval(refreshExchange, 60000);                     // keeps looking: the first run may publish later
+
+      // ---------- my exchange account (end-to-end encrypted, view-only) ----------
+      // account-sync.js seals the balances with the owner's passphrase on the GitHub runner; only
+      // ciphertext is public. It is opened here, in memory: the passphrase and the balances are never
+      // stored, and the view locks itself when the page has been in the background for 5 minutes.
+      function accountSources() {
+        const override = new URLSearchParams(location.search).get('account');
+        if (override) return [override];
+        const sources = ['/api/account'];
+        if (location.hostname.endsWith('.github.io')) {
+          const owner = location.hostname.split('.')[0];
+          const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
+          sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/account.enc.json`);
+        }
+        return sources;
+      }
+      let accountBox = null;
+      async function loadAccountBox() {
+        for (const source of accountSources()) {
+          try {
+            const response = await fetch(source, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            if (!response.ok) continue;
+            const box = await response.json();
+            if (box && box.v === 1 && box.ct) { accountBox = box; break; }
+          } catch (error) { /* try the next source */ }
+        }
+        $('#accountPanel').hidden = !accountBox;
+        return accountBox;
+      }
+      function lockAccount(message) {
+        $('#acBody').hidden = true;
+        $('#acBalances').replaceChildren();
+        $('#acForm').hidden = false;
+        $('#acPass').value = '';
+        if (message) $('#acStatus').textContent = message;
+      }
+      function showAccount(snapshot) {
+        $('#acForm').hidden = true;
+        $('#acBody').hidden = false;
+        const age = (Date.now() - Date.parse(snapshot.verifiedAt)) / 60000;
+        $('#acStatus').textContent = `Opened on this device only. ${snapshot.viewOnly ? 'The API key is verified view-only: Metyu can read balances, it cannot trade or withdraw.' : ''}`;
+        $('#acTotal').textContent = formatMoney(snapshot.totalUsd);
+        $('#acProvider').textContent = snapshot.provider;
+        $('#acKey').textContent = snapshot.viewOnly ? 'view-only ✓' : 'NOT view-only';
+        $('#acKey').className = snapshot.viewOnly ? 'positive' : 'negative';
+        $('#acVerified').textContent = age < 60 ? `${Math.max(0, Math.round(age))} min ago` : new Date(snapshot.verifiedAt).toLocaleString();
+        $('#acBalances').replaceChildren(...snapshot.balances.map(balance => {
+          const item = document.createElement('li');
+          const name = document.createElement('span');
+          name.className = 'market';
+          name.textContent = balance.asset;
+          const value = document.createElement('span');
+          value.className = 'pnl';
+          value.textContent = balance.usd === null ? 'no USD price' : formatMoney(balance.usd);
+          const detail = document.createElement('span');
+          detail.className = 'detail';
+          detail.textContent = `${balance.total.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${balance.asset}${balance.locked > 0 ? ` · ${balance.locked.toLocaleString(undefined, { maximumFractionDigits: 8 })} in orders` : ''}`;
+          item.append(name, value, detail);
+          return item;
+        }));
+      }
+      $('#acForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const passphrase = $('#acPass').value;
+        $('#acOpen').disabled = true;
+        $('#acStatus').textContent = 'Opening…';
+        try {
+          if (!accountBox) await loadAccountBox();
+          showAccount(await MetyuVault.open(accountBox, passphrase));
+        } catch (error) {
+          lockAccount(error.message === 'wrong passphrase or damaged data' ? 'Wrong passphrase (or the data was damaged). Nothing was opened.' : `Could not open: ${error.message}`);
+        } finally {
+          $('#acOpen').disabled = false;
+          $('#acPass').value = '';
+        }
+      });
+      $('#acLock').addEventListener('click', () => lockAccount('Locked.'));
+      let hiddenSince = 0;
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) hiddenSince = Date.now();
+        else if (hiddenSince && Date.now() - hiddenSince > 5 * 60000 && !$('#acBody').hidden) lockAccount('Locked after 5 minutes in the background.');
+      });
+      loadAccountBox();
 
       // ---------- render ----------
       function spark(values, cls) {

@@ -28,6 +28,11 @@ POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
 AUTOPILOT_STATE = Path(os.environ.get("AUTOPILOT_STATE", str(ROOT / "data" / "autopilot.json")))
 EXCHANGE_STATUS = Path(os.environ.get("EXCHANGE_STATUS", str(ROOT / "data" / "exchange-status.json")))
+ACCOUNT_BOX = Path(os.environ.get("ACCOUNT_BOX", str(ROOT / "data" / "account.enc.json")))
+# The same policy is in each page's <meta http-equiv="Content-Security-Policy"> (GitHub Pages cannot
+# send headers); tests keep the two identical. frame-ancestors only works as a header.
+CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com; object-src 'none'; base-uri 'none'; form-action 'none'"
+
 mimetypes.add_type("application/manifest+json", ".webmanifest")   # PWA manifest (home-screen install)
 SERVED_EXTENSIONS = {".webmanifest", ".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
 
@@ -226,6 +231,17 @@ def exchange_status(path: Path) -> dict:
     return status
 
 
+def account_box(path: Path) -> dict | None:
+    """The sealed account snapshot, only if it really is a sealed box (never plaintext balances)."""
+    try:
+        box = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(box, dict) or box.get("v") != 1 or not isinstance(box.get("ct"), str) or "balances" in box:
+        return None
+    return {key: box[key] for key in ("v", "alg", "label", "iterations", "salt", "iv", "ct", "sealedAt") if key in box}
+
+
 class SimulatorHandler(BaseHTTPRequestHandler):
     server_version = "FomoPractice/1.0"
 
@@ -238,7 +254,11 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Accept-Encoding")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        if content_type.startswith("text/html"):
+            self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY + "; frame-ancestors 'none'")
+            self.send_header("X-Frame-Options", "DENY")
         if compressed:
             self.send_header("Content-Encoding", "gzip")
 
@@ -258,6 +278,14 @@ class SimulatorHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/autopilot/status":
             self._send_json(autopilot_status(self.server.autopilot_state if hasattr(self.server, "autopilot_state") else AUTOPILOT_STATE))
+            return
+        if route == "/api/account":
+            # Ciphertext only (account-sync.js seals it); opened in the owner's browser.
+            box = account_box(getattr(self.server, "account_box", ACCOUNT_BOX))
+            if box is None:
+                self._send_json({"error": "no linked account"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(box)
             return
         if route == "/api/exchange/status":
             self._send_json(exchange_status(getattr(self.server, "exchange_status", EXCHANGE_STATUS)))
@@ -355,11 +383,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", default=HOST, help=f"interface to bind (default: {HOST})")
     parser.add_argument("--port", type=int, default=PORT, help=f"port to listen on (default: {PORT})")
     parser.add_argument("--autopilot-state", default=str(AUTOPILOT_STATE), help="autopilot state file shown at /api/autopilot/status")
+    parser.add_argument("--account-box", default=str(ACCOUNT_BOX), help="sealed account snapshot shown at /api/account")
     parser.add_argument("--exchange-status", default=str(EXCHANGE_STATUS), help="exchange autopilot status file shown at /api/exchange/status")
     args = parser.parse_args(argv)
     server = ThreadingHTTPServer((args.host, args.port), SimulatorHandler)
     server.autopilot_state = Path(args.autopilot_state)
     server.exchange_status = Path(args.exchange_status)
+    server.account_box = Path(args.account_box)
     print(f"Meme Coin FOMO Simulator: http://{args.host}:{args.port}")
     print("Practice only: no wallet connection and no real funds.")
     try:
