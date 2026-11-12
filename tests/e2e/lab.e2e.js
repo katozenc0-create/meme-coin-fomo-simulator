@@ -222,6 +222,29 @@ test('live advisor reads the market history: a view after big moves counts for l
   assert.deepEqual(page.errors, []);
 });
 
+test('paper portfolio: at most 2 open positions per category', async () => {
+  const page = await env.page();
+  await page.goto(`${env.base}/polymarket.html`);
+  const ask = async question => {
+    await page.fill('#advQuestion', question);
+    await page.fill('#advPrice', '40'); await page.fill('#advBelief', '62'); await page.selectOption('#advConfidence', 'high');
+    await page.click('#advAsk');
+    await page.waitForTimeout(150);
+    return text(page, '#advVerdict h3');
+  };
+  assert.equal(await ask('Will Bitcoin be above 120k on Friday?'), 'Buy YES');
+  await page.click('#advTrack');
+  assert.equal(await ask('Will Ethereum be above 5k on Friday?'), 'Buy YES');
+  await page.click('#advTrack');
+  assert.equal(await ask('Will Solana be above 300 on Friday?'), 'No trade', 'a third crypto position is refused');
+  assert.match(await text(page, '#advVerdict'), /2 open paper positions in crypto/);
+  assert.ok(await page.isDisabled('#advTrack'));
+  assert.equal(await ask('Will the Senate pass the budget bill?'), 'Buy YES', 'another category is still open');
+  await page.locator('#paperList button').first().click();             // close one crypto position
+  assert.equal(await ask('Will Solana be above 300 on Friday?'), 'Buy YES', 'a closed position frees the slot');
+  assert.deepEqual(page.errors, []);
+});
+
 test('scenario stress test runs every scenario', async () => {
   const page = await env.page();
   await page.goto(`${env.base}/polymarket.html`);

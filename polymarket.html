@@ -643,6 +643,10 @@
       let advisorMarkets = [];
       let lastAdvice = null;
       let paper = [];
+      const PAPER_MAX_PER_CLUSTER = 2;
+      // Positions saved before clusters existed get theirs from the question text.
+      function paperCluster(item) { return item.cluster !== undefined ? item.cluster : M.marketCluster({ question: item.question }); }
+
       let autoTimer = null;
 
       function loadStore() {
@@ -841,6 +845,15 @@
             ? `evidence gate closed: out-of-sample return ${pct(gate.meanReturn)} with 95% interval [${pct(gate.ci[0])}, ${pct(gate.ci[1])}] does not clear zero — Metyu will not trade on this model`
             : 'this model was saved without an evidence gate — retrain it to test whether it may trade'] };
         }
+        // Same portfolio rule as the Live Board: markets of one category move and are mis-forecast
+        // together, so at most PAPER_MAX_PER_CLUSTER open paper positions per category.
+        if (advice.action === 'OPEN') {
+          const cluster = M.marketCluster(inputs.market || { question: inputs.question });
+          const held = cluster ? paper.filter(item => !item.settled && paperCluster(item) === cluster && !(inputs.market && item.liveId === inputs.market.id)).length : 0;
+          if (held >= PAPER_MAX_PER_CLUSTER) {
+            advice = { ...advice, action: 'HOLD', reasons: [...advice.reasons, `portfolio: you already hold ${held} open paper positions in ${cluster}; correlated markets are mis-forecast together, so Metyu stops at ${PAPER_MAX_PER_CLUSTER} per category`] };
+          }
+        }
         const tokenIds = inputs.market && inputs.market.tokenIds;
         if (advice.action === 'OPEN' && tokenIds && tokenIds[advice.side]) {
           renderVerdict(advice, { ...inputs, execution: 'checking' });
@@ -963,7 +976,7 @@
         if (!lastAdvice || lastAdvice.advice.action !== 'OPEN') return;
         const { advice, inputs } = lastAdvice;
         paper.unshift({
-          question: inputs.question, liveId: inputs.market ? inputs.market.id : null, url: inputs.market ? M.polymarketUrl(inputs.market) : null, side: advice.side, leverage: advice.leverage,
+          question: inputs.question, liveId: inputs.market ? inputs.market.id : null, url: inputs.market ? M.polymarketUrl(inputs.market) : null, cluster: M.marketCluster(inputs.market || { question: inputs.question }), side: advice.side, leverage: advice.leverage,
           entry: advice.entry, shares: advice.shares, margin: advice.maxLoss, borrowed: advice.notional - advice.maxLoss,
           liquidation: advice.liquidation, spread: inputs.spread, takerRate: inputs.market ? inputs.market.feeRate || 0 : 0, takerExponent: inputs.market ? inputs.market.feeExponent ?? 1 : 1, lastYes: inputs.yesPrice, openedAt: Date.now()
         });
