@@ -179,7 +179,7 @@ node autopilot.js --api http://127.0.0.1:8000 --train 1500 --retrain 24   # trai
 
 Its state (account, positions, trade history and log) lives in `data/autopilot.json`, which is git-ignored. The file is written atomically after every tick and on Ctrl-C, so a restart continues where it left off. The `model.json` is a model trained in the Prediction Lab and saved with its **Download model (autopilot)** button. Currently every honest model's gate is closed (see `research/README.md`), so the autopilot will watch rather than trade, which is the correct behaviour.
 
-**24/7 on GitHub (no computer needed):** `.github/workflows/autopilot.yml` runs one tick every 15 minutes on GitHub's own runners, which is free for public repositories. Each run:
+**24/7 on GitHub (no computer needed):** `.github/workflows/autopilot.yml` runs one tick every 5 minutes (best-effort: GitHub skips slots under load) on GitHub's own runners, which is free for public repositories. Each run:
 1. restores the state from the `autopilot-data` branch;
 2. runs `node autopilot.js --once --train 1500 --retrain 24 --learn`;
 3. saves the state and a public `status.json` back to that branch.

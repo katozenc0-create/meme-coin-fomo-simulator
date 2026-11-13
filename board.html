@@ -721,10 +721,10 @@
       const TRAINING_DAYS = 3;
       let autopilotStatus = null;                              // the 24/7 Polymarket autopilot, for the terminal
       // How alive an autopilot is, from its last tick: the real-time runner (scripts/realtime.sh)
-      // ticks every minute and publishes every 5; GitHub Actions ticks every 15 minutes.
+      // ticks every minute and publishes every 5; GitHub Actions ticks on a best-effort schedule.
       function liveness(lastTick, paused) {
         const age = lastTick ? (Date.now() - Date.parse(lastTick)) / 60000 : Infinity;
-        const state = age < 7 ? 'Live · real time' : age < 40 ? 'Running 24/7 · every 15 min' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`;
+        const state = age < 7 ? 'Live · real time' : age < 40 ? 'Running 24/7 · scheduled' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`;
         return paused ? `${state} · PAUSED by the owner (no new positions)` : state;
       }
       const trainingDay = createdAt => (createdAt ? Math.floor((Date.now() - Date.parse(createdAt)) / 86400000) + 1 : 1);
@@ -776,7 +776,7 @@
         $('#apStats').hidden = false;
         const learningOpen = status.positions.filter(held => held.learning).length;
         const learningEver = learningOpen + (status.history || []).filter(trade => trade.learning).length;
-        // The GitHub Actions autopilot ticks every 15 minutes: "running" means seen within ~40 minutes.
+        // The GitHub Actions autopilot ticks on a schedule: "running" means seen within ~40 minutes.
         $('#apStatus').textContent = `${liveness(status.lastTick, status.paused)} · watching ${status.watching} markets · ${account.halted ? 'HALTED by the kill-switch' : gate && gate.open ? 'may trade (evidence gate open)' : learningEver ? 'learning book: small unlevered test trades (evidence gate closed)' : 'watching only (no model with an open evidence gate)'}`;
         const forward = status.forward && status.forward.learning;
         $('#apForward').hidden = !forward;
