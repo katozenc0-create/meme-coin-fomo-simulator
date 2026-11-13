@@ -220,7 +220,12 @@ function parseArgs(argv) {
 async function main(env = process.env, argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   let provider;
-  try { provider = providerFromEnv(env); } catch (error) { console.error(`account sync: ${redact(error.message, env)}`); return 2; }
+  try { provider = providerFromEnv(env); } catch (error) {
+    // A misconfigured secret (e.g. not a wallet address) is a warning: the board-side link works
+    // without it, and the autopilot must not look broken because of it.
+    console.log(`::warning title=account sync::${redact(error.message, env)}`);
+    return 0;
+  }
   if (!provider) {
     // The owner removed the key (or never set one): unpublish any earlier snapshot too.
     for (const file of [args.out, args['public-out']].filter(Boolean)) fs.rmSync(file, { force: true });

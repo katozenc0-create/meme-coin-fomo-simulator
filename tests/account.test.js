@@ -263,10 +263,10 @@ test('Solana wallet: bad addresses (or a seed phrase) are refused, RPC errors re
   assert.equal(A.providerFromEnv({ SOLANA_WALLET_ADDRESS: WALLET }).name, 'solana');
   assert.equal(A.redact(`fetch failed for ${WALLET}`, { SOLANA_WALLET_ADDRESS: WALLET }), 'fetch failed for [SOLANA_WALLET_ADDRESS]');
   const lines = [];
-  const original = console.error;
-  console.error = (...a) => lines.push(a.join(' '));
-  try { assert.equal(await A.main({ SOLANA_WALLET_ADDRESS: 'my seed words here', METYU_BOARD_PASSPHRASE: PASS }, ['--out', path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'metyu-sol-')), 'x.json')]), 2); } finally { console.error = original; }
-  assert.match(lines.join('\n'), /not a Solana address/);
+  const original = { log: console.log, error: console.error };
+  console.log = console.error = (...a) => lines.push(a.join(' '));
+  try { assert.equal(await A.main({ SOLANA_WALLET_ADDRESS: 'my seed words here', METYU_BOARD_PASSPHRASE: PASS }, ['--out', path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'metyu-sol-')), 'x.json')]), 0, 'a bad secret is a warning, not a failed step'); } finally { Object.assign(console, original); }
+  assert.match(lines.join('\n'), /::warning title=account sync::.*not a Solana address/);
   assert.ok(!lines.join('\n').includes('my seed words here'), 'never echoed');
 });
 
@@ -291,6 +291,7 @@ test('wallet reader: Jupiter balances first (one request), Solana RPC as the fal
       const target = new URL(url);
       const reply = body => ({ ok: true, status: 200, json: async () => body });
       if (target.host === 'lite-api.jup.ag' && target.pathname === '/price/v3') return reply({ [MEME2]: { usdPrice: .5 } });
+      if (target.host === 'lite-api.jup.ag' && target.pathname === '/tokens/v2/search') return reply([{ id: MEME2, symbol: 'FIGHT<script>', name: 'Fight Coin', usdPrice: .4 }]);
       if (target.host === 'lite-api.jup.ag') {
         if (jupiter !== 'ok') return { ok: false, status: 503, json: async () => ({}) };
         assert.equal(target.pathname, `/ultra/v1/balances/${WALLET}`);
@@ -303,7 +304,7 @@ test('wallet reader: Jupiter balances first (one request), Solana RPC as the fal
     return { urls, fetchImpl };
   };
   const first = make();
-  assert.deepEqual(await W.solanaBalances({ address: WALLET, fetchImpl: first.fetchImpl }), [{ asset: 'SOL', free: 2, locked: 0 }, { asset: 'KMnD…pump', mint: MEME2, free: 10, locked: 0, price: .5 }], 'malformed keys and empty tokens are skipped');
+  assert.deepEqual(await W.solanaBalances({ address: WALLET, fetchImpl: first.fetchImpl }), [{ asset: 'SOL', free: 2, locked: 0 }, { asset: 'FIGHTscript', mint: MEME2, name: 'Fight Coin', free: 10, locked: 0, price: .5 }], 'malformed keys and empty tokens are skipped; the symbol comes from the token list, cleaned');
   assert.ok(!first.urls.some(url => new URL(url).host === 'api.mainnet-beta.solana.com'), 'no RPC call when Jupiter answers');
   const fallback = make({ jupiter: 'down' });
   assert.deepEqual(await W.solanaBalances({ address: WALLET, fetchImpl: fallback.fetchImpl }), [{ asset: 'SOL', free: 1, locked: 0 }]);

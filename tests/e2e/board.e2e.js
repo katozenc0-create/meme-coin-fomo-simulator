@@ -553,6 +553,7 @@ test('Solana wallet linked on this device: balances read from the network, addre
     return route.fulfill({ json: { jsonrpc: '2.0', id, result: { value: legacy ? [account('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 20), account(meme, 1000)] : [] } } });
   });
   await page.route('https://lite-api.jup.ag/price/v3?**', route => route.fulfill({ json: { [meme]: { usdPrice: .01 } } }));
+  await page.route('https://lite-api.jup.ag/tokens/v2/search?**', route => route.fulfill({ json: [{ id: meme, symbol: 'BONK', name: 'Bonk' }] }));
   // Jupiter's balances API is the primary source in the browser; fail it once to exercise the RPC fallback.
   let jupiterUp = false;
   await page.route(`https://lite-api.jup.ag/ultra/v1/balances/${wallet}`, route => (jupiterUp
@@ -570,7 +571,7 @@ test('Solana wallet linked on this device: balances read from the network, addre
   await page.waitForFunction(() => /address: Metyu reads/.test(document.querySelector('#wStatus').textContent));
   assert.equal(await text(page, '#wTotal'), '$255', '1.5 SOL × $150 + 20 USDC + 1000 × $0.01');
   assert.equal(await text(page, '#wShort'), '7xKX…gAsU');
-  assert.match(await text(page, '#wBalances'), /SOL\$225.*USDC\$20.*Dz9m…bonk\$10/);
+  assert.match(await text(page, '#wBalances'), /SOL\$225.*USDC\$20.*BONK\$10.*Bonk · Dz9m…bonk/);
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), wallet);
   const leaks = seen.filter(r => (r.url.includes(wallet) || r.body.includes(wallet)) && !['api.mainnet-beta.solana.com', 'lite-api.jup.ag'].includes(new URL(r.url).host));
   assert.deepEqual(leaks, [], 'the address only ever goes to the balance sources (Jupiter, Solana RPC)');
