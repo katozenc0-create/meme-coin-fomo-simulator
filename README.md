@@ -271,6 +271,27 @@ The GitHub Actions workflow `autopilot.yml` runs it every 15 minutes next to the
 - each strategy's gate;
 - the last trades and the log.
 
+## Reliable 15-minute ticks (when GitHub's schedule skips)
+
+GitHub runs scheduled workflows on a best-effort basis. Under load it delays them or skips them, and forks are affected most. Metyu's board shows this honestly ("Last seen N min ago"). For dependable ticks without your own machine, let a free external cron service start the workflow every 15 minutes through GitHub's API:
+
+1. **Create a token.** On GitHub, go to Settings → Developer settings → Fine-grained tokens → Generate new token.
+   - Repository access: **only this repository**.
+   - Permissions: **Actions: Read and write** and nothing else.
+   - Set an expiry date, and renew the token when it expires.
+2. **Create the cron job** in a cron service (for example cron-job.org):
+   - **URL:** `https://api.github.com/repos/<owner>/<repo>/actions/workflows/autopilot.yml/dispatches`
+   - **Method:** `POST`
+   - **Schedule:** every 15 minutes
+   - **Headers:**
+     - `Accept: application/vnd.github+json`
+     - `Authorization: Bearer <token>`
+     - `X-GitHub-Api-Version: 2022-11-28`
+   - **Body:** `{"ref":"main"}`
+3. The workflow's concurrency group keeps one tick at a time. If the GitHub schedule and the cron job fire together, the second run simply waits.
+
+The token can only start this repository's workflows. It cannot read secrets, push code or touch the exchange. If it leaks, revoke it.
+
 ## Metyu 2.0: real time (virtual money)
 
 GitHub Actions runs a tick every 15 minutes. For **real time**, run `scripts/realtime.sh` on any always-on machine: a home server, a Raspberry Pi or a small VPS.

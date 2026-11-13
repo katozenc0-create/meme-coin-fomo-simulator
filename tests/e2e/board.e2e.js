@@ -339,6 +339,77 @@ test('terminal view: every pipeline step is logged with its reason', async () =>
   assert.deepEqual(page.errors, []);
 });
 
+test('terminal shows the 24/7 autopilots: crypto by default, Polymarket and this device on demand', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const H = X.HOUR;
+  const now = Date.now();
+  const bars = Array.from({ length: 300 }, (_, i) => { const t = Math.floor(now / H) * H - (300 - i) * H; const p = 60000 + 3000 * Math.sin(i / 25) + 20 * i; return { t, o: p - 40, h: p + 120, l: p - 150, c: p + 30, v: 100 }; });
+  const state = freshState();
+  state.createdAt = new Date(now - X.DAY / 2).toISOString();
+  state.lastTick = new Date(now - 2 * 60000).toISOString();
+  state.marks = { 'BTC-USD': { price: bars[299].c, at: state.lastTick, source: 'coinbase' } };
+  const entry = bars[299].c - 300;
+  state.positions.x1 = { id: 'x1', symbol: 'BTC-USD', strategy: 'trend', book: 'learning', side: 'LONG', entry, qty: .05, notional: entry * .05, margin: entry * .05 / 1.5, leverage: 1.5, stop: entry - 900, initialStop: entry - 900, target: entry + 1400, liquidation: entry * .34, entryFee: 3, risk: 25, atr: 400, openedAt: now - H, reason: 'uptrend pullback: RSI 48' };
+  state.account.cash -= state.positions.x1.margin;
+  state.history = [{ id: 'x0', symbol: 'ETH-USD', strategy: 'breakout', side: 'SHORT', book: 'learning', learning: true, leverage: 2, entry: 2100, exit: 2050, margin: 300, risk: 25, pnl: 21.5, r: .86, reason: 'take profit', openedAt: new Date(now - 9 * H).toISOString(), closedAt: new Date(now - 4 * H).toISOString() }];
+  state.account.trades = 1; state.account.wins = 1; state.account.realized = 21.5; state.account.cash += 21.5;
+  state.model = { trainedAt: now - H, bars: 24000, symbols: ['BTC-USD'], strategies: { trend: { label: 'Trend pullback', params: {}, gate: { open: false, trades: 150, wins: 51, meanR: -.13, ci: [-.28, .03] } } } };
+  state.log = [
+    { at: new Date(now - 60 * 60000).toISOString(), kind: 'LEARN', text: 'BTC-USD LONG 1.5x @ 64000 · Trend pullback: uptrend pullback · stop 63100 · margin $2,133.33 · risk $25.00' },
+    { at: new Date(now - 4 * 60 * 60000).toISOString(), kind: 'LEARN-CLOSE', text: 'ETH-USD SHORT 2.0x · take profit @ 2050 · +$21.50 (+0.86R)' },
+    { at: new Date(now - 5 * 60 * 60000).toISOString(), kind: 'SKIP', text: 'SOL-USD LONG (trend): cool-down after a loss (6 h)' }
+  ];
+  const exchange = statusOf(state, { now, series: { 'BTC-USD': bars } });
+  const polymarket = {
+    available: true, virtualMoney: true, createdAt: new Date(now - X.DAY).toISOString(), lastTick: new Date(now - 20 * 60000).toISOString(), watching: 12,
+    account: { bankroll: 10000, cash: 9900, peak: 10000, halted: false, realized: 0, trades: 0, wins: 0 },
+    model: { source: 'autopilot', trainedAt: now, kind: 'calib', gate: { open: false, trades: 0 } },
+    positions: [{ id: '1', question: 'Will it snow in Paris?', learning: true, lastYes: .4, spread: 0, openedAt: new Date(now - H).toISOString(), position: { side: 'NO', shares: 160, borrowed: 0, interest: 0, margin: 100, leverage: 1, entry: .6, notional: 100, takerRate: 0 } }],
+    history: [], trainings: [], log: [{ at: new Date(now - H).toISOString(), kind: 'LEARN', text: 'Will it snow in Paris? — NO 1x @ 60.0c · margin 100.00 · NO edge 2.0 pts' }],
+    forward: { learning: { trades: 0, wins: 0, pnl: 0, meanReturn: 0, ci: [0, 0], days: 0, convincing: false } }
+  };
+  const page = await env.page({ width: 390, height: 844 }, { view: 'terminal' });
+  const ex = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  const pm = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/status.json';
+  await page.route(ex, route => route.fulfill({ json: exchange }));
+  await page.route(pm, route => route.fulfill({ json: polymarket }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(ex)}&autopilot=${encodeURIComponent(pm)}`);
+  await page.waitForFunction(() => document.querySelector('#terminal').dataset.source === 'exchange');
+  assert.equal(await text(page, '#tMode'), 'paper · 24/7 crypto');
+  assert.match(await text(page, '#tRun'), /live · real time/);
+  assert.match(await text(page, '#tClock'), /last tick/);
+  assert.match(await text(page, '#tTag'), /Training · day 1\/3 · real money locked \(\d\/6\)/);
+  assert.equal(await text(page, '#tTrades'), '1');
+  assert.equal(await text(page, '#tWins'), '1');
+  assert.match(await text(page, '#tTradeMarket'), /BTC-USD · trend/);
+  assert.match(await text(page, '#tTradeKv'), /entry\$[\d,]+.*stop\$[\d,]+.*target\$[\d,]+.*liq\.\$[\d,]+.*learning/);
+  assert.match(await text(page, '#tTradeChip'), /LONG 1\.5x/);
+  assert.match(await text(page, '#agScannerLast'), /1 coins · \d up · \d down · \d range/);
+  assert.match(await text(page, '#agSizerLast'), /0\.25% risk per trade \(learning\)/);
+  assert.match(await text(page, '#agEquityLast'), /drawdown .*kill at 15%/);
+  assert.match(await text(page, '#tFlow'), /BTC-USD\$[\d,]+ · \w+ · RSI \d+ · LONG/);
+  assert.equal(await text(page, '#tFiltered'), '1');
+  assert.match(await text(page, '#tLog'), /enter.*BTC-USD.*margin \$2,133\.33.*exit.*ETH-USD.*\+\$21\.50.*filtered.*SOL-USD.*cool-down/);
+  assert.match(await text(page, '#tWL'), /1 W \/ 0 L · realized \+\$21\.5/);
+  assert.ok(await noHorizontalScroll(page), 'fits the phone');
+
+  await page.selectOption('#tSource', 'polymarket');
+  assert.equal(await text(page, '#tMode'), 'paper · 24/7 Polymarket');
+  assert.match(await text(page, '#tRun'), /running 24\/7 · every 15 min/);
+  assert.match(await text(page, '#tTradeMarket'), /it snow in Paris/);
+  assert.match(await text(page, '#tLog'), /enter.*it snow in Paris\?.*margin \$100\.00/);
+  assert.match(await text(page, '#agRiskLast'), /evidence gate closed: learning book only/);
+
+  await page.selectOption('#tSource', 'device');
+  assert.match(await text(page, '#tMode'), /paper · (demo|live)/);
+  assert.match(await text(page, '#tTail'), /press Start/);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#terminal').dataset.source === 'device');
+  assert.equal(await page.inputValue('#tSource'), 'device', 'the choice is remembered');
+  assert.deepEqual(page.errors, []);
+});
+
 test('terminal: a candidate the risk check blocks is logged as FILTERED with the rule', async () => {
   const page = await env.page({ width: 1366, height: 900 }, { view: 'terminal' });
   const end = new Date(Date.now() + 40 * 86400000).toISOString();
