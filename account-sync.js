@@ -246,8 +246,10 @@ async function syncAccount({ provider, passphrase, getJson, now = () => Date.now
 
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
-  fs.writeFileSync(`${file}.tmp`, JSON.stringify(value));
-  fs.renameSync(`${file}.tmp`, file);
+  // Owner-only, and a fresh temporary file each time (never an existing one): atomic and private.
+  const temp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(value), { mode: 0o600, flag: 'wx' });
+  fs.renameSync(temp, file);
 }
 
 function parseArgs(argv) {

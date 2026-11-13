@@ -263,7 +263,7 @@ test('Solana wallet: bad addresses (or a seed phrase) are refused, RPC errors re
   const lines = [];
   const original = console.error;
   console.error = (...a) => lines.push(a.join(' '));
-  try { assert.equal(await A.main({ SOLANA_WALLET_ADDRESS: 'my seed words here', METYU_BOARD_PASSPHRASE: PASS }, ['--out', path.join(os.tmpdir(), 'x.json')]), 2); } finally { console.error = original; }
+  try { assert.equal(await A.main({ SOLANA_WALLET_ADDRESS: 'my seed words here', METYU_BOARD_PASSPHRASE: PASS }, ['--out', path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'metyu-sol-')), 'x.json')]), 2); } finally { console.error = original; }
   assert.match(lines.join('\n'), /not a Solana address/);
   assert.ok(!lines.join('\n').includes('my seed words here'), 'never echoed');
 });
