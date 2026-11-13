@@ -122,8 +122,16 @@
    * fetch in the autopilot). Coinbase serves 300 bars per request; `bars` above that pages back.
    * Kraken (720 most recent bars) is the fallback when Coinbase fails.
    */
-  async function fetchCandles(getJson, symbol, { granularity = 3600, bars = 300, now = Date.now() } = {}) {
+  async function fetchCandles(getJson, symbol, { granularity = 3600, bars = 300, now = Date.now(), maxAgeMs } = {}) {
     const intervalMs = granularity * 1000;
+    // Stale data is refused: a newest bar older than 3 intervals (at least 30 min) means the feed
+    // stalled, and a signal or a mark from it would trade on a price that no longer exists.
+    const maxAge = maxAgeMs ?? Math.max(3 * intervalMs, 30 * 60000);
+    const fresh = (candles, source) => {
+      const last = candles[candles.length - 1];
+      if (now - last.t > maxAge) throw new Error(`stale ${source} data (newest bar ${Math.round((now - last.t) / 60000)} min old)`);
+      return candles;
+    };
     try {
       const pages = Math.max(1, Math.ceil(bars / 300));
       const rows = [];
@@ -139,7 +147,7 @@
       }
       const candles = parseCoinbaseCandles(rows);
       if (!candles.length) throw new Error('no Coinbase candles');
-      return { source: 'coinbase', candles: candles.slice(-bars) };
+      return { source: 'coinbase', candles: fresh(candles, 'Coinbase').slice(-bars) };
     } catch (error) {
       const pair = KRAKEN_PAIRS[symbol];
       if (!pair) throw error;
@@ -147,6 +155,7 @@
       if (data && Array.isArray(data.error) && data.error.length) throw new Error(`Coinbase: ${error.message}; Kraken: ${data.error.join(', ')}`);
       const candles = parseKrakenCandles(data);
       if (!candles.length) throw new Error(`Coinbase: ${error.message}; Kraken: no candles`);
+      try { fresh(candles, 'Kraken'); } catch (stale) { throw new Error(`Coinbase: ${error.message}; ${stale.message}`); }
       return { source: 'kraken', candles: candles.slice(-bars) };
     }
   }

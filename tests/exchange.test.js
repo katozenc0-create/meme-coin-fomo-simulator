@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const X = require('../metyu-exchange.js');
-const { createExchangeAutopilot, freshState, forwardEvidence, statusOf, loadState, saveState, parseArgs, learnable } = require('../exchange-autopilot.js');
+const { createExchangeAutopilot, freshState, forwardEvidence, statusOf, loadState, saveState, parseArgs, learnable, healthOf } = require('../exchange-autopilot.js');
 
 const H = X.HOUR;
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≈ ${b}`);
@@ -65,10 +65,15 @@ test('fetchCandles pages Coinbase and falls back to Kraken when Coinbase fails',
   const failing = async url => {
     if (url.includes('coinbase')) throw new Error('HTTP 503');
     assert.match(url, /api\.kraken\.com\/0\/public\/OHLC\?pair=XBTUSD&interval=60/);
-    return { error: [], result: { XXBTZUSD: [[3600, 1, 2, .5, 1.5, 1, 3, 1]] } };
+    return { error: [], result: { XXBTZUSD: [[(now - H) / 1000, 1, 2, .5, 1.5, 1, 3, 1]] } };
   };
   const fallback = await X.fetchCandles(failing, 'BTC-USD', { now });
   assert.equal(fallback.source, 'kraken');
+  // Stale data is refused: a stalled Coinbase feed falls back to Kraken; both stale is an error.
+  const staleCoinbase = async url => (url.includes('coinbase') ? [[(now - 10 * H) / 1000, 99, 101, 100, 100, 1]] : { error: [], result: { XXBTZUSD: [[(now - H) / 1000, 1, 2, .5, 1.5, 1, 3, 1]] } });
+  assert.equal((await X.fetchCandles(staleCoinbase, 'BTC-USD', { now })).source, 'kraken');
+  const allStale = async url => (url.includes('coinbase') ? [[(now - 10 * H) / 1000, 99, 101, 100, 100, 1]] : { error: [], result: { XXBTZUSD: [[(now - 10 * H) / 1000, 1, 2, .5, 1.5, 1, 3, 1]] } });
+  await assert.rejects(X.fetchCandles(allStale, 'BTC-USD', { now }), /stale Coinbase data .*stale Kraken data/);
   await assert.rejects(X.fetchCandles(async () => { throw new Error('down'); }, 'BTC-USD', { now }), /down/);
 });
 
@@ -498,4 +503,17 @@ test('the live watchdog demotes an open-gate strategy that keeps losing live: le
   assert.equal(status.model.strategies.test.demoted, true);
   assert.equal(status.model.strategies.test.learnable, true);
   assert.equal(status.model.strategies.test.live.trades, 20);
+});
+
+test('healthOf flags stale prices, a burst of errors and an old model', () => {
+  const now = 100 * H;
+  const at = ms => new Date(ms).toISOString();
+  const healthy = { marks: { 'BTC-USD': { at: at(now - 60000) } }, log: [{ kind: 'ERROR', at: at(now - 2 * H) }], model: { trainedAt: now - 3 * H } };
+  assert.deepEqual(healthOf(healthy, now), { staleMarks: [], errorsLastHour: 0, modelAgeHours: 3, ok: true });
+  const sick = { marks: { 'BTC-USD': { at: at(now - 60000) }, 'SUI-USD': { at: at(now - 2 * H) } }, log: Array(30).fill({ kind: 'ERROR', at: at(now - 60000) }), model: { trainedAt: now - 50 * H } };
+  const health = healthOf(sick, now);
+  assert.deepEqual(health.staleMarks, ['SUI-USD']);
+  assert.equal(health.errorsLastHour, 30);
+  assert.equal(health.ok, false);
+  assert.equal(healthOf({ marks: {}, log: [] }, now).ok, false, 'no model yet');
 });

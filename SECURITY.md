@@ -77,6 +77,7 @@ Even then, the first orders are capped at **$25 per order, $100 open, $50 maximu
   - the account sync gets the view-only exchange key;
   - only the publisher gets the GitHub token.
 - **Systemd hardening:** `deploy/metyu-realtime.service` runs as an unprivileged user with a read-only system, write access to `data/` only, no capabilities and a `0077` umask.
+- **Watchdog:** an hourly workflow that only reads (`issues: write` is its only write permission) and opens an issue while an agent is silent, halted, on stale prices or on an old model. Stale market data is refused before it can drive a trade, and every request times out after 15 s.
 - **Emergency pause:** the `METYU_PAUSE=true` repository variable stops new positions from the phone. `METYU_RUNNER=external` keeps a single writer of the state.
 - **Repository settings you should turn on:**
   - branch protection on `main` (require the `test` and `e2e` checks);
