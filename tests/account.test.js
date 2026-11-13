@@ -205,3 +205,63 @@ test('nothing in the repository holds a private key, an API secret or a .env fil
   }
   assert.deepEqual(offenders, []);
 });
+
+// ---------- Solana wallet (e.g. the Fomo app): public address only ----------
+const WALLET = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+const MEME = 'Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk';
+function fakeSolana({ lamports = 2_500_000_000, prices = { [MEME]: { usdPrice: 0.002 } }, rpcError = null } = {}) {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url, init });
+    const reply = body => ({ ok: true, status: 200, json: async () => body });
+    if (url.startsWith('https://lite-api.jup.ag/price/v3')) return reply(prices);
+    const { method, params, id } = JSON.parse(init.body);
+    if (rpcError) return reply({ jsonrpc: '2.0', id, error: { message: rpcError } });
+    if (method === 'getBalance') return reply({ jsonrpc: '2.0', id, result: { value: lamports } });
+    if (method === 'getTokenAccountsByOwner') {
+      const legacy = params[1].programId === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+      const account = (mint, amount) => ({ account: { data: { parsed: { info: { mint, tokenAmount: { uiAmountString: String(amount) } } } } } });
+      return reply({ jsonrpc: '2.0', id, result: { value: legacy ? [account('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 12.5), account(MEME, 1000), account(MEME, 500), account('Zero1111111111111111111111111111111111111111', 0)] : [] } });
+    }
+    throw new Error(`unexpected ${method}`);
+  };
+  return { calls, fetchImpl };
+}
+
+test('Solana wallet: SOL and tokens read from the public address, priced, and view-only by construction', async () => {
+  const fake = fakeSolana();
+  const provider = A.solanaProvider({ address: WALLET, fetchImpl: fake.fetchImpl });
+  assert.equal(A.assertViewOnly(await provider.permissions()), true);
+  assert.deepEqual((await provider.permissions()).raw, { type: 'public address', network: 'solana', canSign: false });
+  const balances = await provider.balances();
+  assert.deepEqual(balances.map(b => [b.asset, b.free]), [['SOL', 2.5], ['USDC', 12.5], [`${MEME.slice(0, 4)}…${MEME.slice(-4)}`, 1500]], 'accounts of one mint add up; empty ones are skipped');
+  assert.equal(balances[2].price, .002);
+  const rpcCalls = fake.calls.filter(c => c.url === 'https://api.mainnet-beta.solana.com');
+  assert.ok(rpcCalls.every(c => c.init.method === 'POST' && ['getBalance', 'getTokenAccountsByOwner'].includes(JSON.parse(c.init.body).method)), 'read-only RPC methods only');
+  assert.match(fake.calls.find(c => c.url.includes('jup.ag')).url, new RegExp(`ids=${MEME}$`), 'only unlisted tokens are priced on Jupiter');
+
+  const getJson = async url => { if (url.includes('SOL-USD')) return { price: '150' }; throw new Error('HTTP 404'); };
+  const { box, publicInfo, snapshot } = await A.syncAccount({ provider: A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana().fetchImpl }), passphrase: PASS, getJson, now: () => 0 });
+  assert.equal(snapshot.totalUsd, 2.5 * 150 + 12.5 + 1500 * .002);
+  assert.deepEqual(publicInfo, { kind: 'account-public', linked: true, provider: 'solana', verifiedAt: '1970-01-01T00:00:00.000Z', viewOnly: true });
+  assert.ok(!JSON.stringify(box).includes(WALLET) && !JSON.stringify(publicInfo).includes(WALLET), 'the address itself is never public');
+  assert.equal((await Vault.open(box, PASS)).permissions.type, 'public address');
+});
+
+test('Solana wallet: bad addresses (or a seed phrase) are refused, RPC errors reported, the address redacted', async () => {
+  for (const bad of ['', 'not-an-address', 'abandon ability able about above absent absorb abstract absurd abuse access accident', '0xAbC123']) {
+    assert.throws(() => A.solanaProvider({ address: bad, fetchImpl: async () => { throw new Error('never called'); } }), /not a Solana address.*never a seed phrase/);
+  }
+  assert.throws(() => A.solanaProvider({ address: WALLET, rpcUrl: 'http://evil.example' }), /https URL/);
+  await assert.rejects(A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana({ rpcError: 'rate limited' }).fetchImpl }).balances(), /Solana RPC getBalance: rate limited/);
+  const unpriced = await A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana({ prices: {} }).fetchImpl }).balances();
+  assert.equal(unpriced[2].price, undefined, 'no Jupiter price: shown without a USD value');
+  assert.equal(A.providerFromEnv({ SOLANA_WALLET_ADDRESS: WALLET }).name, 'solana');
+  assert.equal(A.redact(`fetch failed for ${WALLET}`, { SOLANA_WALLET_ADDRESS: WALLET }), 'fetch failed for [SOLANA_WALLET_ADDRESS]');
+  const lines = [];
+  const original = console.error;
+  console.error = (...a) => lines.push(a.join(' '));
+  try { assert.equal(await A.main({ SOLANA_WALLET_ADDRESS: 'my seed words here', METYU_BOARD_PASSPHRASE: PASS }, ['--out', path.join(os.tmpdir(), 'x.json')]), 2); } finally { console.error = original; }
+  assert.match(lines.join('\n'), /not a Solana address/);
+  assert.ok(!lines.join('\n').includes('my seed words here'), 'never echoed');
+});

@@ -311,7 +311,7 @@ The real-time runner is meant for your own machine. GitHub Actions is used for s
 
 ## Your exchange account on the board (view-only, encrypted) and the real-money lock
 
-`account-sync.js` links your real Coinbase or Binance account to the Live Board **read-only**:
+`account-sync.js` links your real Coinbase or Binance account, or a **Solana wallet by its public address** (for example the Fomo app; no key needed, see SECURITY.md), to the Live Board **read-only**:
 - It verifies with the exchange that the API key is view-only, and refuses any key that can trade, withdraw or transfer.
 - It reads your balances and prices them in USD.
 - It seals them end-to-end with your board passphrase (`metyu-vault.js`: PBKDF2-SHA256 → AES-256-GCM).
