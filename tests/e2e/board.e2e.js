@@ -366,7 +366,7 @@ test('terminal shows the 24/7 autopilots: crypto by default, Polymarket and this
     account: { bankroll: 10000, cash: 9900, peak: 10000, halted: false, realized: 0, trades: 0, wins: 0 },
     model: { source: 'autopilot', trainedAt: now, kind: 'calib', gate: { open: false, trades: 0 } },
     positions: [{ id: '1', question: 'Will it snow in Paris?', learning: true, lastYes: .4, spread: 0, openedAt: new Date(now - H).toISOString(), position: { side: 'NO', shares: 160, borrowed: 0, interest: 0, margin: 100, leverage: 1, entry: .6, notional: 100, takerRate: 0 } }],
-    history: [], trainings: [], log: [{ at: new Date(now - H).toISOString(), kind: 'LEARN', text: 'Will it snow in Paris? — NO 1x @ 60.0c · margin 100.00 · NO edge 2.0 pts' }],
+    history: [], trainings: [], log: [{ at: new Date(now - H).toISOString(), kind: 'LEARN', text: 'Will it snow in Paris? — NO 1x @ 60.0c · margin 100.00 · NO edge 2.0 pts' }, { at: new Date(now - 2 * H).toISOString(), kind: 'SETTLE', text: 'Commanders vs. Giants — NO resolved YES · -100.00 · market resolved' }],
     forward: { learning: { trades: 0, wins: 0, pnl: 0, meanReturn: 0, ci: [0, 0], days: 0, convincing: false } }
   };
   const page = await env.page({ width: 390, height: 844 }, { view: 'terminal' });
@@ -399,6 +399,7 @@ test('terminal shows the 24/7 autopilots: crypto by default, Polymarket and this
   assert.match(await text(page, '#tRun'), /running 24\/7 · scheduled/);
   assert.match(await text(page, '#tTradeMarket'), /it snow in Paris/);
   assert.match(await text(page, '#tLog'), /enter.*it snow in Paris\?.*margin \$100\.00/);
+  assert.match(await text(page, '#tLog'), /exit.*Commanders vs\. Giants.*resolved YES.*-\$100\.00/, 'a settled market shows its loss');
   assert.match(await text(page, '#agRiskLast'), /evidence gate closed: learning book only/);
 
   await page.selectOption('#tSource', 'device');

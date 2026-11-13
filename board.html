@@ -1211,7 +1211,8 @@
         const dash = text.indexOf(' — ');
         const symbol = text.match(/^([A-Z0-9]+-USD)\b\s*(.*)$/);
         if (dash > 0) { market = text.slice(0, dash); reason = text.slice(dash + 3); } else if (symbol) { market = symbol[1]; reason = symbol[2]; }
-        const money = text.match(/([+-])\$([\d,]+(?:\.\d+)?)/);
+        // "+$21.50" (crypto) or "· -100.00 ·" (a settled Polymarket market): a signed amount with cents
+        const money = text.match(/([+-])\$([\d,]+(?:\.\d+)?)/) || text.match(/(?:^|\s)([+-])([\d,]+\.\d{2})(?=\s|$)/);
         const margin = text.match(/margin \$?([\d,]+(?:\.\d+)?)/);
         const value = kind === 'EXIT' && money ? `${money[1]}$${money[2]}` : kind === 'ENTER' && margin ? `margin $${margin[1]}` : kind === 'FILTER' ? 'not traded' : '';
         return { at: Date.parse(entry.at), kind, market, reason, value };
