@@ -556,7 +556,7 @@ test('Solana wallet linked on this device: balances read from the network, addre
   // Jupiter's balances API is the primary source in the browser; fail it once to exercise the RPC fallback.
   let jupiterUp = false;
   await page.route(`https://lite-api.jup.ag/ultra/v1/balances/${wallet}`, route => (jupiterUp
-    ? route.fulfill({ json: { SOL: { uiAmount: 1.5 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 20 }, [meme]: { uiAmount: 1000 } } })
+    ? route.fulfill({ json: { SOL: { uiAmount: 1.5 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 20 }, [meme]: { uiAmount: 1000 }, Ht3cqPuEUR6jiNiFsF1n93TPokuq1jqiMKujAjDdxXCB: { uiAmount: 1 }, '43mFcHg1TGjPXLXZymDWG1ttdcKXZTvP9zEPnpjGfhXM': { uiAmount: 1 } } })
     : route.fulfill({ status: 503, json: {} })));
   await page.route('https://api.exchange.coinbase.com/products/SOL-USD/ticker', route => route.fulfill({ json: { price: '150' } }));
   await page.goto(`${env.base}/board.html`);
@@ -577,6 +577,8 @@ test('Solana wallet linked on this device: balances read from the network, addre
   jupiterUp = true;
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#wTotal').textContent === '$255');
+  assert.match(await text(page, '#wBalances'), /\+ 2 tokens without a USD price \(NFTs, airdrops or unlisted coins\)/, 'unpriced tokens are summed up, not listed');
+  assert.equal(await page.locator('#wBalances li').count(), 4, 'SOL, USDC, the priced meme coin and one summary line');
   await page.click('#wUnlink');
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), null);
   assert.equal(await page.locator('#wForm').isVisible(), true);
