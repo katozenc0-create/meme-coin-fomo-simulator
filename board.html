@@ -1151,7 +1151,7 @@
             value.textContent = row.usd === null ? 'no USD price' : formatMoney(row.usd);
             const detail = document.createElement('span');
             detail.className = 'detail';
-            detail.textContent = `${row.free.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${row.asset}`;
+            detail.textContent = `${row.free.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${row.asset}${row.name && row.name !== row.asset ? ` · ${row.name}` : ''}${row.mint ? ` · ${MetyuWallet.shortAddress(row.mint)}` : ''}`;
             item.append(name, value, detail);
             return item;
           }), ...summary] : [Object.assign(document.createElement('li'), { textContent: 'This wallet is empty.' })]));

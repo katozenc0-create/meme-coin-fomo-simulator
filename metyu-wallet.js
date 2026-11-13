@@ -28,6 +28,8 @@
   const DEFAULT_BALANCES = 'https://lite-api.jup.ag/ultra/v1/balances';
   const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
   const DEFAULT_PRICES = 'https://lite-api.jup.ag/price/v3';
+  // Token symbols and names (and a USD price when the price API has none), up to 100 mints a call.
+  const DEFAULT_TOKENS = 'https://lite-api.jup.ag/tokens/v2/search';
   const HTTPS_URL = /^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i;
 
   /**
@@ -46,7 +48,7 @@
    * priced by the caller (Coinbase, $1). Sources are tried in order; if all fail, the error names
    * each source and why. `balancesUrl: null` skips Jupiter's balances API.
    */
-  async function solanaBalances({ address, rpcUrl, rpcUrls, balancesUrl = DEFAULT_BALANCES, priceUrl = DEFAULT_PRICES, fetchImpl = fetch }) {
+  async function solanaBalances({ address, rpcUrl, rpcUrls, balancesUrl = DEFAULT_BALANCES, priceUrl = DEFAULT_PRICES, tokensUrl = DEFAULT_TOKENS, fetchImpl = fetch }) {
     const wallet = normaliseAddress(address);
     if (!wallet) throw new Error('not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key.');
     const endpoints = rpcUrls || (rpcUrl ? [rpcUrl] : [DEFAULT_RPC]);
@@ -59,7 +61,9 @@
     for (const source of sources) {
       try {
         const { lamports, byMint } = await source.read();
-        return assemble({ lamports, byMint, prices: await priceMints({ mints: [...byMint.keys()], priceUrl, fetchImpl }) });
+        const mints = [...byMint.keys()];
+        const [prices, tokens] = await Promise.all([priceMints({ mints, priceUrl, fetchImpl }), tokenInfo({ mints, tokensUrl, fetchImpl })]);
+        return assemble({ lamports, byMint, prices, tokens });
       } catch (error) { errors.push(`${source.name}: ${error.message}`); }   // try the next source
     }
     throw new Error(errors.join('; '));
@@ -121,15 +125,39 @@
     return prices;
   }
 
-  function assemble({ lamports, byMint, prices }) {
+  /** Symbol, name and USD price per mint from Jupiter's token list; {} when unavailable. */
+  async function tokenInfo({ mints, tokensUrl, fetchImpl }) {
+    const info = {};
+    if (!tokensUrl) return info;
+    for (let i = 0; i < mints.length; i += 100) {
+      try {
+        const query = new URLSearchParams({ query: mints.slice(i, i + 100).join(',') });
+        const response = await fetchImpl(`${tokensUrl}?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+        if (!response.ok) continue;
+        const list = await response.json();
+        for (const token of Array.isArray(list) ? list : []) {
+          if (token && SOLANA_ADDRESS.test(String(token.id))) info[token.id] = token;
+        }
+      } catch (error) { /* names are a nicety: fall back to short addresses */ }
+    }
+    return info;
+  }
+
+  // A display-safe symbol: letters, digits and a few marks, at most 12 characters.
+  const cleanSymbol = value => String(value || '').replace(/[^\p{L}\p{N}$._-]/gu, '').slice(0, 12);
+
+  function assemble({ lamports, byMint, prices, tokens = {} }) {
     const out = lamports > 0 ? [{ asset: 'SOL', free: lamports / 1e9, locked: 0 }] : [];
     for (const [mint, amount] of byMint) {
       const known = MINTS[mint];
-      const price = prices[mint] && Number(prices[mint].usdPrice ?? prices[mint].price);
-      out.push({ asset: known || shortAddress(mint), mint, free: amount, locked: 0, ...(Number.isFinite(price) && price > 0 ? { price } : {}) });
+      const token = tokens[mint] || {};
+      const fromPrices = prices[mint] && Number(prices[mint].usdPrice ?? prices[mint].price);
+      const price = Number.isFinite(fromPrices) && fromPrices > 0 ? fromPrices : Number(token.usdPrice);
+      const symbol = known || cleanSymbol(token.symbol) || shortAddress(mint);
+      out.push({ asset: symbol, mint, ...(token.name ? { name: String(token.name).slice(0, 40) } : {}), free: amount, locked: 0, ...(Number.isFinite(price) && price > 0 ? { price } : {}) });
     }
     return out;
   }
 
-  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_BALANCES, DEFAULT_RPC, DEFAULT_PRICES, normaliseAddress, shortAddress, solanaBalances };
+  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_BALANCES, DEFAULT_RPC, DEFAULT_PRICES, DEFAULT_TOKENS, normaliseAddress, shortAddress, solanaBalances };
 }));
