@@ -293,7 +293,7 @@ test('wallet reader falls back to the second public RPC when the first refuses',
   const balances = await W.solanaBalances({ address: WALLET, fetchImpl });
   assert.deepEqual(balances, [{ asset: 'SOL', free: 1, locked: 0 }]);
   assert.equal(hosts[0], 'api.mainnet-beta.solana.com');
-  assert.ok(hosts.includes('solana-rpc.publicnode.com'), 'the fallback answered');
+  assert.ok(hosts.some(host => host === 'solana-rpc.publicnode.com'), 'the fallback answered');
   await assert.rejects(W.solanaBalances({ address: WALLET, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }) }), /HTTP 503/, 'all endpoints down: the last error');
   assert.throws(() => A.solanaProvider({ address: 'METYU_BOARD_PASSPHRASE' }), /link the wallet on the Live Board instead/);
 });
