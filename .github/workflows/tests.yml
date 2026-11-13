@@ -26,7 +26,7 @@ jobs:
       - name: Agent tests (Node)
         run: node --test tests/*.test.js
       - name: Syntax check browser scripts
-        run: node --check metyu-agent.js && node --check autopilot.js && node --check metyu-exchange.js && node --check exchange-autopilot.js && node --check metyu-vault.js && node --check account-sync.js
+        run: node --check metyu-agent.js && node --check autopilot.js && node --check metyu-exchange.js && node --check exchange-autopilot.js && node --check metyu-vault.js && node --check account-sync.js && node --check metyu-wallet.js
       - name: Shell scripts parse
         run: for f in scripts/*.sh; do bash -n "$f"; done
 

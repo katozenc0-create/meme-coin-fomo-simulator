@@ -539,6 +539,45 @@ test('account panel: the sealed snapshot opens only with the right passphrase, t
   assert.deepEqual(page.errors, []);
 });
 
+test('Solana wallet linked on this device: balances read from the network, address never uploaded', async () => {
+  const wallet = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+  const meme = 'Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk';
+  const page = await env.page({ width: 390, height: 844 });
+  const seen = [];
+  page.on('request', request => seen.push({ url: request.url(), body: request.postData() || '' }));
+  await page.route('https://api.mainnet-beta.solana.com/', async route => {
+    const { method, params, id } = JSON.parse(route.request().postData());
+    if (method === 'getBalance') return route.fulfill({ json: { jsonrpc: '2.0', id, result: { value: 1_500_000_000 } } });
+    const legacy = params[1].programId.startsWith('Tokenkeg');
+    const account = (mint, amount) => ({ account: { data: { parsed: { info: { mint, tokenAmount: { uiAmountString: String(amount) } } } } } });
+    return route.fulfill({ json: { jsonrpc: '2.0', id, result: { value: legacy ? [account('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 20), account(meme, 1000)] : [] } } });
+  });
+  await page.route('https://lite-api.jup.ag/price/v3?**', route => route.fulfill({ json: { [meme]: { usdPrice: .01 } } }));
+  await page.route('https://api.exchange.coinbase.com/products/SOL-USD/ticker', route => route.fulfill({ json: { price: '150' } }));
+  await page.goto(`${env.base}/board.html`);
+  assert.ok(await page.locator('#walletPanel').isVisible());
+  await page.fill('#wAddress', 'abandon ability able about above absent absorb abstract absurd abuse access accident');
+  await page.click('#wLink');
+  assert.match(await text(page, '#wStatus'), /not a Solana address.*Never paste a seed phrase/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), null, 'nothing stored');
+  await page.fill('#wAddress', `  solana:${wallet}?amount=1 `);
+  await page.click('#wLink');
+  await page.waitForFunction(() => /address: Metyu reads/.test(document.querySelector('#wStatus').textContent));
+  assert.equal(await text(page, '#wTotal'), '$255', '1.5 SOL × $150 + 20 USDC + 1000 × $0.01');
+  assert.equal(await text(page, '#wShort'), '7xKX…gAsU');
+  assert.match(await text(page, '#wBalances'), /SOL\$225.*USDC\$20.*Dz9m…bonk\$10/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), wallet);
+  const leaks = seen.filter(r => (r.url.includes(wallet) || r.body.includes(wallet)) && !r.url.startsWith('https://api.mainnet-beta.solana.com/'));
+  assert.deepEqual(leaks, [], 'the address only ever goes to the Solana network');
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#wTotal').textContent === '$255');
+  await page.click('#wUnlink');
+  assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), null);
+  assert.equal(await page.locator('#wForm').isVisible(), true);
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});
+
 test('real-money lock is shown with every unmet condition and the first-order limits', async () => {
   const X = require('../../metyu-exchange.js');
   const { freshState, statusOf } = require('../../exchange-autopilot.js');

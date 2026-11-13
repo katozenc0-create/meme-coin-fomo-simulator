@@ -34,6 +34,14 @@ Metyu trades with **virtual money**. It reads real balances only through a **vie
 
 ## Linking a Solana wallet (for example the Fomo app)
 
+**The simplest way (no GitHub settings):** on the Live Board, open the **My Solana wallet** panel, paste the wallet's public address and tap **Link**.
+- The address is kept on that device only (`localStorage`); it is never uploaded.
+- The phone reads the balances straight from the Solana network (`metyu-wallet.js`).
+- The page's CSP allows only the Solana RPC and Jupiter price hosts for this.
+- **Unlink** removes the address from the device.
+
+**For the 24/7 autopilot as well (optional):** use GitHub secrets, as described below.
+
 A Solana wallet needs **no key at all**. Its balances are public on-chain data, and Metyu reads them from the wallet's **public address** over Solana's JSON-RPC (`getBalance`, `getTokenAccountsByOwner`). An address cannot sign a transaction, so the link is view-only by construction.
 
 1. **Copy the public address.** In the Fomo app it is behind **Deposit** (or Receive), under the Solana address: a base58 text of 32–44 characters.

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -298,6 +298,26 @@
       <ul class="feed" id="apFeed" style="max-height:220px"></ul>
     </section>
 
+    <section class="panel" id="walletPanel" style="margin-bottom:12px">
+      <h2>My Solana wallet · read-only</h2>
+      <p class="note" id="wStatus">Paste your wallet's PUBLIC address (for example from the Fomo app: Deposit → Solana). It stays on this device only; balances are read directly from the Solana network. Never paste a seed phrase or a private key.</p>
+      <form class="ac-form" id="wForm" autocomplete="off">
+        <input type="text" id="wAddress" placeholder="Solana address (32-44 characters)" aria-label="Solana wallet address" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" required>
+        <button class="btn" type="submit" id="wLink">Link</button>
+      </form>
+      <div id="wBody" hidden>
+        <div class="stats">
+          <div class="stat"><span>Total (USD)</span><strong id="wTotal">—</strong></div>
+          <div class="stat"><span>Wallet</span><strong id="wShort">—</strong></div>
+          <div class="stat"><span>Access</span><strong class="positive">address only ✓</strong></div>
+          <div class="stat"><span>Updated</span><strong id="wUpdated">—</strong></div>
+        </div>
+        <ul class="trades" id="wBalances"></ul>
+        <button class="btn secondary" type="button" id="wRefresh" style="margin-top:8px">Refresh</button>
+        <button class="btn secondary" type="button" id="wUnlink" style="margin-top:8px">Unlink</button>
+      </div>
+    </section>
+
     <section class="panel" id="accountPanel" style="margin-bottom:12px" hidden>
       <h2>My account · verified · read-only</h2>
       <p class="note" id="acStatus">Your real balances are published encrypted. Enter your board passphrase to open them on this device.</p>
@@ -365,6 +385,7 @@
 
   <script src="metyu-agent.js"></script>
   <script src="metyu-vault.js"></script>
+  <script src="metyu-wallet.js"></script>
   <script>
     (() => {
       const M = window.Metyu;
@@ -940,7 +961,12 @@
         $('#exChartHead').hidden = !symbols.length;
         drawExchangeChart();
         // Real money: locked; show exactly which conditions are still unmet.
-        const live = status.live;
+        let live = status.live;
+        if (live && walletAddress) {
+          // A wallet linked on this device (public address) satisfies the read-only link condition here.
+          const conditions = live.conditions.map(c => (c.id === 'account' && !c.ok ? { ...c, ok: true, text: `${c.text}: Solana wallet linked on this device` } : c));
+          live = { ...live, conditions, met: conditions.filter(c => c.ok).length };
+        }
         $('#exLiveHead').hidden = $('#exLive').hidden = $('#exLiveLimits').hidden = !live;
         if (live) {
           $('#exLiveHead').textContent = `Real money: LOCKED · ${live.met}/${live.total} conditions met`;
@@ -1071,6 +1097,82 @@
         else if (hiddenSince && Date.now() - hiddenSince > 5 * 60000 && !$('#acBody').hidden) lockAccount('Locked after 5 minutes in the background.');
       });
       loadAccountBox();
+
+      // ---------- my Solana wallet, linked on this device (public address only) ----------
+      // The address is kept in this browser only (localStorage) and never uploaded; the balances are
+      // read straight from the Solana network (and priced via Coinbase / Jupiter) by this device.
+      const WALLET_KEY = 'metyuBoard.solanaWallet';
+      let walletAddress = null;
+      try { walletAddress = MetyuWallet.normaliseAddress(localStorage.getItem(WALLET_KEY)); } catch (error) { /* ignore */ }
+      const STABLES = new Set(['USDC', 'USDT']);
+      async function solUsd() {
+        try {
+          const response = await fetch('https://api.exchange.coinbase.com/products/SOL-USD/ticker', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+          const price = Number((await response.json()).price);
+          return price > 0 ? price : null;
+        } catch (error) { return null; }
+      }
+      function showWalletForm(message) {
+        $('#wForm').hidden = false;
+        $('#wBody').hidden = true;
+        $('#wBalances').replaceChildren();
+        if (message) $('#wStatus').textContent = message;
+      }
+      async function refreshWallet() {
+        if (!walletAddress) { showWalletForm(); return; }
+        $('#wForm').hidden = true;
+        $('#wBody').hidden = false;
+        $('#wShort').textContent = MetyuWallet.shortAddress(walletAddress);
+        $('#wShort').title = walletAddress;
+        $('#wStatus').textContent = 'Reading the Solana network…';
+        try {
+          const [balances, sol] = await Promise.all([MetyuWallet.solanaBalances({ address: walletAddress }), solUsd()]);
+          const rows = balances.map(b => {
+            const usd = b.asset === 'SOL' ? (sol ? b.free * sol : null) : STABLES.has(b.asset) ? b.free : Number.isFinite(b.price) ? b.free * b.price : null;
+            return { ...b, usd };
+          }).sort((a, c) => (c.usd || 0) - (a.usd || 0));
+          const total = rows.reduce((sum, row) => sum + (row.usd || 0), 0);
+          $('#wTotal').textContent = formatMoney(total);
+          $('#wUpdated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          $('#wStatus').textContent = 'Linked on this device by its public address: Metyu reads the on-chain balances and can never sign or move funds. Positions inside the app itself (e.g. perps) are not wallet balances.';
+          $('#wBalances').replaceChildren(...(rows.length ? rows.map(row => {
+            const item = document.createElement('li');
+            const name = document.createElement('span');
+            name.className = 'market';
+            name.textContent = row.asset;
+            if (row.mint) name.title = row.mint;
+            const value = document.createElement('span');
+            value.className = 'pnl';
+            value.textContent = row.usd === null ? 'no USD price' : formatMoney(row.usd);
+            const detail = document.createElement('span');
+            detail.className = 'detail';
+            detail.textContent = `${row.free.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${row.asset}`;
+            item.append(name, value, detail);
+            return item;
+          }) : [Object.assign(document.createElement('li'), { textContent: 'This wallet is empty.' })]));
+        } catch (error) {
+          $('#wStatus').textContent = `Could not read the wallet right now (${error.message}). It stays linked; try Refresh.`;
+        }
+        renderTerminal();
+      }
+      $('#wForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const address = MetyuWallet.normaliseAddress($('#wAddress').value);
+        if (!address) { showWalletForm('That is not a Solana address. Copy the PUBLIC address (32-44 letters and digits) from the app\'s Deposit / Receive screen. Never paste a seed phrase or a private key.'); return; }
+        walletAddress = address;
+        try { localStorage.setItem(WALLET_KEY, address); } catch (error) { /* this session only */ }
+        $('#wAddress').value = '';
+        refreshWallet();
+      });
+      $('#wRefresh').addEventListener('click', refreshWallet);
+      $('#wUnlink').addEventListener('click', () => {
+        walletAddress = null;
+        try { localStorage.removeItem(WALLET_KEY); } catch (error) { /* ignore */ }
+        showWalletForm('Unlinked: the address was removed from this device.');
+        renderTerminal();
+      });
+      refreshWallet();
+      setInterval(() => { if (walletAddress && !document.hidden) refreshWallet(); }, 120000);
 
       // ---------- render ----------
       function spark(values, cls) {
