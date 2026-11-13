@@ -11,6 +11,9 @@
 //
 // Coinbase (Advanced Trade / CDP key):  COINBASE_API_KEY_NAME, COINBASE_API_PRIVATE_KEY
 // Binance (read-only key):              BINANCE_API_KEY, BINANCE_API_SECRET [, BINANCE_BASE_URL]
+// Solana wallet (e.g. the Fomo app):    SOLANA_WALLET_ADDRESS [, SOLANA_RPC_URL]
+//   Only the PUBLIC address: balances are public on-chain data; an address cannot sign, so it can
+//   never move funds. Never give Metyu (or anyone) a seed phrase or a private key.
 // Always:                               METYU_BOARD_PASSPHRASE (12+ characters)
 //
 //   node account-sync.js --out data/account.enc.json --public-out data/account-public.json
@@ -21,7 +24,8 @@ const path = require('node:path');
 const Vault = require('./metyu-vault.js');
 
 const STABLE = new Set(['USD', 'USDC', 'USDT', 'DAI', 'PYUSD', 'FDUSD', 'TUSD', 'USDP']);
-const SECRET_ENV = ['COINBASE_API_KEY_NAME', 'COINBASE_API_PRIVATE_KEY', 'BINANCE_API_KEY', 'BINANCE_API_SECRET', 'METYU_BOARD_PASSPHRASE'];
+// The wallet address is not a secret, but it links this repository to the owner's funds: kept private.
+const SECRET_ENV = ['COINBASE_API_KEY_NAME', 'COINBASE_API_PRIVATE_KEY', 'BINANCE_API_KEY', 'BINANCE_API_SECRET', 'METYU_BOARD_PASSPHRASE', 'SOLANA_WALLET_ADDRESS'];
 
 class RefusedKeyError extends Error {}
 
@@ -124,6 +128,65 @@ function binanceProvider({ apiKey, apiSecret, baseUrl = 'https://api.binance.com
   };
 }
 
+// ---------- Solana: a public wallet address read over JSON-RPC (no key at all) ----------
+const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;                 // base58 public key
+const SOLANA_TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'];
+const SOLANA_MINTS = Object.freeze({
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: 'USDC',
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: 'USDT',
+  So11111111111111111111111111111111111111112: 'wSOL'
+});
+function solanaProvider({ address, rpcUrl = 'https://api.mainnet-beta.solana.com', priceUrl = 'https://lite-api.jup.ag/price/v3', fetchImpl = fetch }) {
+  const wallet = String(address || '').trim();
+  if (!SOLANA_ADDRESS.test(wallet)) throw new Error('SOLANA_WALLET_ADDRESS is not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key.');
+  if (!/^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(rpcUrl)) throw new Error('SOLANA_RPC_URL must be an https URL');
+  let id = 0;
+  async function rpc(method, params) {
+    id += 1;
+    const response = await fetchImpl(rpcUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }), signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`Solana RPC ${method}: HTTP ${response.status}`);
+    const data = await response.json();
+    if (data.error) throw new Error(`Solana RPC ${method}: ${data.error.message || 'error'}`);
+    return data.result;
+  }
+  return {
+    name: 'solana',
+    // An address cannot sign anything: view-only by construction.
+    async permissions() { return { canView: true, canTrade: false, canWithdraw: false, canTransfer: false, raw: { type: 'public address', network: 'solana', canSign: false } }; },
+    async balances() {
+      const lamports = Number((await rpc('getBalance', [wallet, { commitment: 'confirmed' }])).value) || 0;
+      const byMint = new Map();
+      for (const programId of SOLANA_TOKEN_PROGRAMS) {
+        const result = await rpc('getTokenAccountsByOwner', [wallet, { programId }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
+        for (const entry of (result && result.value) || []) {
+          const info = entry && entry.account && entry.account.data && entry.account.data.parsed && entry.account.data.parsed.info;
+          // Only well-formed mint addresses go on (they end up in a price request URL).
+          if (!info || !SOLANA_ADDRESS.test(String(info.mint)) || !info.tokenAmount) continue;
+          const amount = Number(info.tokenAmount.uiAmountString ?? info.tokenAmount.uiAmount) || 0;
+          if (amount > 0) byMint.set(info.mint, (byMint.get(info.mint) || 0) + amount);
+        }
+      }
+      // USD prices for tokens Coinbase does not list (meme coins and the like), from Jupiter.
+      const unknown = [...byMint.keys()].filter(mint => !SOLANA_MINTS[mint] || SOLANA_MINTS[mint] === 'wSOL');
+      const prices = {};
+      for (let i = 0; i < unknown.length; i += 50) {
+        try {
+          const query = new URLSearchParams({ ids: unknown.slice(i, i + 50).join(',') });
+          const response = await fetchImpl(`${priceUrl}?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+          if (response.ok) Object.assign(prices, await response.json());
+        } catch (error) { /* unpriced: shown without a USD value */ }
+      }
+      const out = lamports > 0 ? [{ asset: 'SOL', free: lamports / 1e9, locked: 0 }] : [];
+      for (const [mint, amount] of byMint) {
+        const known = SOLANA_MINTS[mint];
+        const price = prices[mint] && Number(prices[mint].usdPrice ?? prices[mint].price);
+        out.push({ asset: known || `${mint.slice(0, 4)}…${mint.slice(-4)}`, mint, free: amount, locked: 0, ...(Number.isFinite(price) && price > 0 ? { price } : {}) });
+      }
+      return out;
+    }
+  };
+}
+
 /** The one rule that matters: a key that can move money is refused before anything else happens. */
 function assertViewOnly(permissions) {
   const problems = [];
@@ -142,6 +205,7 @@ async function priceBalances(balances, getJson) {
     const total = b.free + b.locked;
     let usd = null;
     if (STABLE.has(b.asset)) usd = total;
+    else if (Number.isFinite(b.price)) usd = total * b.price;           // priced by the provider (Jupiter)
     else {
       try {
         const ticker = await getJson(`https://api.exchange.coinbase.com/products/${encodeURIComponent(b.asset)}-USD/ticker`);
@@ -149,7 +213,7 @@ async function priceBalances(balances, getJson) {
         if (price > 0) usd = total * price;
       } catch (error) { /* unpriced: shown without a USD value */ }
     }
-    priced.push({ asset: b.asset, free: b.free, locked: b.locked, total, usd });
+    priced.push({ asset: b.asset, ...(b.mint ? { mint: b.mint } : {}), free: b.free, locked: b.locked, total, usd });
   }
   priced.sort((a, b) => (b.usd || 0) - (a.usd || 0));
   return priced;
@@ -158,6 +222,7 @@ async function priceBalances(balances, getJson) {
 function providerFromEnv(env = process.env, { fetchImpl = fetch } = {}) {
   if (env.COINBASE_API_KEY_NAME && env.COINBASE_API_PRIVATE_KEY) return coinbaseProvider({ keyName: env.COINBASE_API_KEY_NAME, privateKey: env.COINBASE_API_PRIVATE_KEY, fetchImpl });
   if (env.BINANCE_API_KEY && env.BINANCE_API_SECRET) return binanceProvider({ apiKey: env.BINANCE_API_KEY, apiSecret: env.BINANCE_API_SECRET, baseUrl: env.BINANCE_BASE_URL || undefined, fetchImpl });
+  if (env.SOLANA_WALLET_ADDRESS) return solanaProvider({ address: env.SOLANA_WALLET_ADDRESS, rpcUrl: env.SOLANA_RPC_URL || undefined, fetchImpl });
   return null;
 }
 
@@ -181,8 +246,10 @@ async function syncAccount({ provider, passphrase, getJson, now = () => Date.now
 
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
-  fs.writeFileSync(`${file}.tmp`, JSON.stringify(value));
-  fs.renameSync(`${file}.tmp`, file);
+  // Owner-only, and a fresh temporary file each time (never an existing one): atomic and private.
+  const temp = `${file}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(value), { mode: 0o600, flag: 'wx' });
+  fs.renameSync(temp, file);
 }
 
 function parseArgs(argv) {
@@ -196,7 +263,8 @@ function parseArgs(argv) {
 
 async function main(env = process.env, argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  const provider = providerFromEnv(env);
+  let provider;
+  try { provider = providerFromEnv(env); } catch (error) { console.error(`account sync: ${redact(error.message, env)}`); return 2; }
   if (!provider) {
     // The owner removed the key (or never set one): unpublish any earlier snapshot too.
     for (const file of [args.out, args['public-out']].filter(Boolean)) fs.rmSync(file, { force: true });
@@ -225,4 +293,4 @@ async function main(env = process.env, argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { redact, parseCoinbaseKey, coinbaseJwt, coinbaseProvider, binanceSignature, binanceProvider, assertViewOnly, RefusedKeyError, priceBalances, providerFromEnv, syncAccount, parseArgs, main };
+module.exports = { redact, parseCoinbaseKey, coinbaseJwt, coinbaseProvider, binanceSignature, binanceProvider, solanaProvider, SOLANA_MINTS, assertViewOnly, RefusedKeyError, priceBalances, providerFromEnv, syncAccount, parseArgs, main };

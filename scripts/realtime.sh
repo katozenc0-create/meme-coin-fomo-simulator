@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 
 # (Portable to the bash 3.2 that macOS ships: no mapfile, no empty-array expansion under set -u.)
 NO_SECRETS=()
-for name in COINBASE_API_KEY_NAME COINBASE_API_PRIVATE_KEY BINANCE_API_KEY BINANCE_API_SECRET METYU_BOARD_PASSPHRASE GH_TOKEN GITHUB_TOKEN; do NO_SECRETS+=(-u "$name"); done
+for name in COINBASE_API_KEY_NAME COINBASE_API_PRIVATE_KEY BINANCE_API_KEY BINANCE_API_SECRET METYU_BOARD_PASSPHRASE SOLANA_WALLET_ADDRESS GH_TOKEN GITHUB_TOKEN; do NO_SECRETS+=(-u "$name"); done
 NO_GITHUB=(-u GH_TOKEN -u GITHUB_TOKEN)
 PAUSE=(--learn)
 case "${METYU_PAUSE:-}" in 1|true|TRUE|yes|on) PAUSE=(--learn --pause) ;; esac

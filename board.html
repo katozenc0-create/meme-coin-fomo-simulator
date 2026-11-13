@@ -299,7 +299,7 @@
     </section>
 
     <section class="panel" id="accountPanel" style="margin-bottom:12px" hidden>
-      <h2>My exchange account · verified · read-only</h2>
+      <h2>My account · verified · read-only</h2>
       <p class="note" id="acStatus">Your real balances are published encrypted. Enter your board passphrase to open them on this device.</p>
       <form class="ac-form" id="acForm" autocomplete="on">
         <input type="text" name="username" value="metyu-board" autocomplete="username" hidden aria-hidden="true">
@@ -1027,10 +1027,11 @@
         $('#acForm').hidden = true;
         $('#acBody').hidden = false;
         const age = (Date.now() - Date.parse(snapshot.verifiedAt)) / 60000;
-        $('#acStatus').textContent = `Opened on this device only. ${snapshot.viewOnly ? 'The API key is verified view-only: Metyu can read balances, it cannot trade or withdraw.' : ''}`;
+        const addressOnly = snapshot.permissions && snapshot.permissions.type === 'public address';
+        $('#acStatus').textContent = `Opened on this device only. ${addressOnly ? 'Linked by its public address only: Metyu reads the on-chain balances and can never sign or move funds.' : snapshot.viewOnly ? 'The API key is verified view-only: Metyu can read balances, it cannot trade or withdraw.' : ''}`;
         $('#acTotal').textContent = formatMoney(snapshot.totalUsd);
-        $('#acProvider').textContent = snapshot.provider;
-        $('#acKey').textContent = snapshot.viewOnly ? 'view-only ✓' : 'NOT view-only';
+        $('#acProvider').textContent = snapshot.provider === 'solana' ? 'Solana wallet' : snapshot.provider;
+        $('#acKey').textContent = addressOnly ? 'address only ✓' : snapshot.viewOnly ? 'view-only ✓' : 'NOT view-only';
         $('#acKey').className = snapshot.viewOnly ? 'positive' : 'negative';
         $('#acVerified').textContent = age < 60 ? `${Math.max(0, Math.round(age))} min ago` : new Date(snapshot.verifiedAt).toLocaleString();
         $('#acBalances').replaceChildren(...snapshot.balances.map(balance => {

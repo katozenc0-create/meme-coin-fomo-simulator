@@ -32,6 +32,22 @@ Metyu trades with **virtual money**. It reads real balances only through a **vie
 
 **If a key with trading or withdrawal rights is ever added by mistake:** the sync refuses it, publishes `linked: false`, and the run log says why. Delete that key at the exchange.
 
+## Linking a Solana wallet (for example the Fomo app)
+
+A Solana wallet needs **no key at all**. Its balances are public on-chain data, and Metyu reads them from the wallet's **public address** over Solana's JSON-RPC (`getBalance`, `getTokenAccountsByOwner`). An address cannot sign a transaction, so the link is view-only by construction.
+
+1. **Copy the public address.** In the Fomo app it is behind **Deposit** (or Receive), under the Solana address: a base58 text of 32–44 characters.
+2. **Add GitHub secrets.** Go to Settings → Secrets and variables → Actions → **Secrets** → New repository secret, and add:
+   - `SOLANA_WALLET_ADDRESS` (the address)
+   - `METYU_BOARD_PASSPHRASE` (12+ characters)
+
+   An address is not a secret, but it links this public repository to your funds, so it stays private and is never published. The balances are published sealed.
+3. Optional: `SOLANA_RPC_URL`, if you have your own RPC provider (https only).
+
+The board's **My account** panel then shows SOL and every token with a USD value. USD prices come from Coinbase for SOL and the stablecoins, and from Jupiter for other tokens. Positions inside the app itself, such as perps, are not on-chain wallet balances and are not shown.
+
+**Never give anyone a seed phrase (recovery phrase) or a private key.** Not Metyu, not a website, not "support". `account-sync.js` refuses anything that is not a public address.
+
 ## The real-money lock
 
 Real orders are locked. The board lists six conditions, and all of them must hold before the owner may even decide to unlock:

@@ -51,7 +51,7 @@ async function start() {
       page.on('pageerror', error => page.errors.push(error.message));
       page.on('console', message => { if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) page.errors.push(message.text()); });
       // Never reach the real Polymarket from tests: anything not mocked fails fast.
-      await page.route(/https:\/\/(gamma-api|clob)\.polymarket\.com\//, route => route.abort());
+      await page.route(/^https:\/\/(gamma-api|clob)\.polymarket\.com\//, route => route.abort());
       // Tests never see local autopilot output left in data/ (each test publishes what it needs).
       await page.route('**/api/exchange/status', route => route.fulfill({ status: 200, json: { available: false, reason: 'test' } }));
       await page.route('**/api/account', route => route.fulfill({ status: 404, json: { error: 'no linked account' } }));
