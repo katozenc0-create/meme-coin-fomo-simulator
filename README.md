@@ -211,7 +211,7 @@ Stopping it (Ctrl-C, `systemctl stop`, SIGTERM) saves the state first.
 
 ## Metyu on a crypto exchange (virtual money, 24/7)
 
-`exchange-autopilot.js` brings the same discipline to a real market. It trades BTC, ETH, SOL, XRP, DOGE, ADA, AVAX and LINK against USD on **live public prices from Coinbase**, with Kraken as a fallback. There is no exchange account, no API key and no order: every trade is booked in a virtual account. The logic lives in `metyu-exchange.js`, which is pure and deterministic and shared by the autopilot, the tests and the board.
+`exchange-autopilot.js` brings the same discipline to a real market. It trades 16 coins (BTC, ETH, SOL, XRP, DOGE, ADA, AVAX, LINK, LTC, BCH, DOT, NEAR, SUI, AAVE, XLM, HBAR) against USD on **live public prices from Coinbase**, with Kraken as a fallback. There is no exchange account, no API key and no order: every trade is booked in a virtual account. The logic lives in `metyu-exchange.js`, which is pure and deterministic and shared by the autopilot, the tests and the board.
 
 **Reading the chart:** every closed hourly bar, `readChart` reads the chart:
 - **Trend:** EMA20 / EMA50 / EMA200 alignment and the EMA50 slope.
@@ -229,6 +229,7 @@ Each reading comes with plain-language notes you can check against the chart on 
 | Trend pullback | uptrend, ADX ≥ 20, MACD > 0, RSI back to 40–60, above EMA50 (mirror for short) | 2–3 ATR stop, 3–4.5 ATR target |
 | Range breakout | close beyond the 20-bar range on high volume, ADX rising, on the right side of EMA200 | 1.5–2.5 ATR stop, 3–5 ATR target |
 | Range reversion | only in a range (ADX < 20): below the lower Bollinger band and oversold | 1.5–2.5 ATR stop, target the middle band |
+| Trend pullback (4h) | the trend pullback rules on 4-hour bars built from the hourly ones | as trend pullback, in 4-hour ATR |
 
 **Positions, leverage and costs:**
 - **Sizing:** each trade is sized so that a stop-out loses a fixed share of equity, with fees and slippage included. That share is 1%, or 0.25% in the learning book.
@@ -243,7 +244,7 @@ Each reading comes with plain-language notes you can check against the chart on 
   - 72-hour time stop.
 
 **Portfolio rules:**
-- at most 4 positions, and one per coin;
+- at most 4 positions in the normal book (8 in the learning book, whose trades risk 0.25% each), and one per coin;
 - open risk in one direction is capped at 3% of equity, because crypto moves together;
 - all margin together is capped at 60% of equity;
 - no new positions after a 4% loss in a UTC day;
