@@ -267,3 +267,15 @@ test('pause: the owner can stop new positions remotely; open ones are still mana
   assert.equal(state.log.filter(entry => entry.kind === 'RESUME').length, 1);
   assert.equal(parseArgs(['--pause']).pause, true);
 });
+
+test('the Polymarket autopilot restarts after a kill-switch halt only on a new METYU_RESET_HALT value', async () => {
+  const state = freshState();
+  state.account.halted = true;
+  const fetchJson = async () => { throw new Error('offline'); };
+  await createAutopilot({ fetchJson, state, now: () => 1000, options: { resetHalt: 'r1' } }).tick();
+  assert.equal(state.account.halted, false);
+  assert.ok(state.log.some(entry => entry.kind === 'RESET'));
+  state.account.halted = true;
+  await createAutopilot({ fetchJson, state, now: () => 2000, options: { resetHalt: 'r1' } }).tick();
+  assert.equal(state.account.halted, true, 'the same value does not clear a later halt');
+});
