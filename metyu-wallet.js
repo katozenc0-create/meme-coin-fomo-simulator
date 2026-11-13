@@ -22,6 +22,8 @@
     So11111111111111111111111111111111111111112: 'wSOL'
   });
   const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
+  // A second public endpoint, tried when the first refuses (rate limits, a browser it does not serve).
+  const FALLBACK_RPCS = Object.freeze(['https://solana-rpc.publicnode.com']);
   const DEFAULT_PRICES = 'https://lite-api.jup.ag/price/v3';
 
   /**
@@ -39,10 +41,21 @@
    * (accounts of one mint added up; empty ones skipped). `price` (USD) is set for tokens priced on
    * Jupiter; SOL and stablecoins are priced by the caller (Coinbase, $1).
    */
-  async function solanaBalances({ address, rpcUrl = DEFAULT_RPC, priceUrl = DEFAULT_PRICES, fetchImpl = fetch }) {
+  async function solanaBalances({ address, rpcUrl, rpcUrls, priceUrl = DEFAULT_PRICES, fetchImpl = fetch }) {
     const wallet = normaliseAddress(address);
     if (!wallet) throw new Error('not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key.');
-    if (!/^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(rpcUrl)) throw new Error('the Solana RPC URL must be an https URL');
+    const endpoints = rpcUrls || (rpcUrl ? [rpcUrl] : [DEFAULT_RPC, ...FALLBACK_RPCS]);
+    if (!endpoints.length || !endpoints.every(url => /^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(url))) throw new Error('the Solana RPC URL must be an https URL');
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        return await readWallet({ wallet, rpcUrl: endpoint, priceUrl, fetchImpl });
+      } catch (error) { lastError = error; }               // try the next endpoint
+    }
+    throw lastError;
+  }
+
+  async function readWallet({ wallet, rpcUrl, priceUrl, fetchImpl }) {
     let id = 0;
     async function rpc(method, params) {
       id += 1;
@@ -83,5 +96,5 @@
     return out;
   }
 
-  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_RPC, DEFAULT_PRICES, normaliseAddress, shortAddress, solanaBalances };
+  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_RPC, FALLBACK_RPCS, DEFAULT_PRICES, normaliseAddress, shortAddress, solanaBalances };
 }));
