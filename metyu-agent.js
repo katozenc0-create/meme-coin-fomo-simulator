@@ -1427,7 +1427,9 @@
         if (viaProxy && proxy === false) continue;
         let response;
         try {
-          response = await doFetch(url, { headers: { Accept: 'application/json' } });
+          // A hung request must not freeze the agent: give up after 15 s and try the next source.
+          const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(15000) : undefined;
+          response = await doFetch(url, { headers: { Accept: 'application/json' }, signal });
         } catch (error) {
           if (viaProxy && proxy === null) proxy = false;
           lastError = error.message;

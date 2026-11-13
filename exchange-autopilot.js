@@ -291,6 +291,17 @@ function forwardEvidence(history, { learning, now = Date.now() } = {}) {
   };
 }
 
+/**
+ * Self-check for the board and the watchdog: coins whose price has not refreshed for 30 minutes
+ * (their feed failed; no signal is taken on them), errors in the last hour, and the model's age.
+ */
+function healthOf(state, now = Date.now()) {
+  const staleMarks = Object.entries(state.marks || {}).filter(([, mark]) => !(now - Date.parse(mark.at) < 30 * 60000)).map(([symbol]) => symbol);
+  const errorsLastHour = (state.log || []).filter(entry => entry.kind === 'ERROR' && now - Date.parse(entry.at) < X.HOUR).length;
+  const modelAgeHours = state.model && Number.isFinite(state.model.trainedAt) ? (now - state.model.trainedAt) / X.HOUR : null;
+  return { staleMarks, errorsLastHour, modelAgeHours, ok: !staleMarks.length && errorsLastHour < 30 && modelAgeHours !== null && modelAgeHours < 48 };
+}
+
 /** What the Live Board shows: account, model gates, positions, trades, log, forward test, charts. */
 function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.chartBars, costs = X.COSTS, accountLink = null } = {}) {
   const positions = Object.values(state.positions).map(held => {
@@ -321,6 +332,7 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
         return [name, { ...s, live, demoted: s.gate.open && live.demoted, learnable: (!s.gate.open || live.demoted) && learnable(s) }];
       }))
     } : null,
+    health: healthOf(state, now),
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) },
     // Real money stays locked; this is how far away the conditions are (all trades, both books).
@@ -392,4 +404,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error.message); process.exit(1); });
 
-module.exports = { createExchangeAutopilot, learnable, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };
+module.exports = { createExchangeAutopilot, learnable, healthOf, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };

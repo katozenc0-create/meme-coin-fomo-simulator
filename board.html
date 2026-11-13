@@ -745,7 +745,7 @@
       // ticks every minute and publishes every 5; GitHub Actions ticks on a best-effort schedule.
       function liveness(lastTick, paused) {
         const age = lastTick ? (Date.now() - Date.parse(lastTick)) / 60000 : Infinity;
-        const state = age < 7 ? 'Live · real time' : age < 40 ? 'Running 24/7 · scheduled' : `Last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'}`;
+        const state = age < 7 ? 'Live · real time' : age < 40 ? 'Running 24/7 · scheduled' : `⚠ SILENT · last seen ${Number.isFinite(age) ? `${Math.round(age)} min ago` : 'never'} (the scheduler may have stopped; the watchdog opens an issue)`;
         return paused ? `${state} · PAUSED by the owner (no new positions)` : state;
       }
       const trainingDay = createdAt => (createdAt ? Math.floor((Date.now() - Date.parse(createdAt)) / 86400000) + 1 : 1);
@@ -934,7 +934,9 @@
         const openGates = strategies.filter(([, s]) => s.gate.open).length;
         const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
         const learningEver = status.positions.some(p => p.book === 'learning') || (status.history || []).some(t => t.learning);
-        $('#exStatus').textContent = `${liveness(status.lastTick, status.paused)} · ${Object.keys(status.marks || {}).length} coins, live Coinbase prices · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
+        const health = status.health || {};
+        const healthText = health.staleMarks && health.staleMarks.length ? ` · ⚠ stale prices: ${health.staleMarks.join(', ')} (not traded)` : '';
+        $('#exStatus').textContent = `${liveness(status.lastTick, status.paused)}${healthText} · ${Object.keys(status.marks || {}).length} coins, live Coinbase prices · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
         const forward = status.forward && status.forward.learning;
         $('#exForward').hidden = !forward;
         if (forward) {

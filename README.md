@@ -294,6 +294,17 @@ GitHub runs scheduled workflows on a best-effort basis. Under load it delays the
 
 The token can only start this repository's workflows. It cannot read secrets, push code or touch the exchange. If it leaks, revoke it.
 
+**The watchdog.** `.github/workflows/watchdog.yml` runs once an hour, independently of the cron job. It reads the published state (`scripts/watchdog.js`) and opens a single issue labelled `metyu-watchdog` when:
+- an agent has been silent for 60+ minutes (for example the cron token expired);
+- the kill-switch halted an agent;
+- 3 or more coins have stale prices;
+- there were 30+ errors in an hour;
+- the model is 48+ hours old.
+
+GitHub notifies you on the phone, and the issue closes itself when everything is healthy again. Turn on the cron service's own failure e-mails as a second alarm.
+
+**Stale data is never traded.** A price feed whose newest bar is older than 3 bar intervals (at least 30 minutes) is refused: Coinbase falls back to Kraken, and if both are stale the coin is skipped. The board shows `⚠ stale prices: …`. Every network request has a 15-second time-out, so a hung request cannot freeze a tick.
+
 ## Metyu 2.0: real time (virtual money)
 
 GitHub Actions runs a tick every 15 minutes. For **real time**, run `scripts/realtime.sh` on any always-on machine: a home server, a Raspberry Pi or a small VPS.

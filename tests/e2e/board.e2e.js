@@ -628,7 +628,10 @@ test('v2 status line: real time vs every 15 minutes, and the owner pause', async
   await page.waitForFunction(() => /Running 24\/7 · scheduled · PAUSED by the owner/.test(document.querySelector('#exStatus').textContent));
   status = make(300, false);
   await page.reload();
-  await page.waitForFunction(() => /Last seen 300 min ago/.test(document.querySelector('#exStatus').textContent));
+  await page.waitForFunction(() => /⚠ SILENT · last seen 300 min ago/.test(document.querySelector('#exStatus').textContent));
+  status = { ...make(2, false), health: { staleMarks: ['SUI-USD'], errorsLastHour: 1, modelAgeHours: 3, ok: false } };
+  await page.reload();
+  await page.waitForFunction(() => /Live · real time · ⚠ stale prices: SUI-USD \(not traded\)/.test(document.querySelector('#exStatus').textContent));
   assert.match(await text(page, '.term-title'), /v2 · virtual/);
   assert.deepEqual(page.errors, []);
 });

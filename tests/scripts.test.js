@@ -85,3 +85,38 @@ test('publish without a token or repository explains what is missing (and never 
     assert.ok(!/x-access-token:\$\{?(GH_TOKEN|GITHUB_TOKEN|token)\}?@/.test(text), `${script}: the token never goes into a URL`);
   }
 });
+
+// ---------- the watchdog ----------
+const watchdog = require('../scripts/watchdog.js');
+test('watchdog: healthy agents pass; silence, a halt, a dead price feed and an old model are reported', () => {
+  const now = Date.parse('2026-11-13T14:00:00Z');
+  const ago = min => new Date(now - min * 60000).toISOString();
+  const exchange = { lastTick: ago(10), account: { halted: false }, health: { staleMarks: ['SUI-USD'], errorsLastHour: 2 }, model: { trainedAt: now - 3 * 3600000 } };
+  const polymarket = { lastTick: ago(12), account: { halted: false } };
+  assert.deepEqual(watchdog.assess({ exchange, polymarket, now }), [], 'one stale coin is routine');
+  const sick = watchdog.assess({
+    exchange: { ...exchange, lastTick: ago(95), account: { halted: true }, health: { staleMarks: ['A', 'B', 'C'], errorsLastHour: 40 }, model: { trainedAt: now - 50 * 3600000 } },
+    polymarket: null, now
+  });
+  assert.equal(sick.length, 6);
+  assert.match(sick.join('\n'), /crypto agent: silent for 95 min .*cron-job\.org/);
+  assert.match(sick.join('\n'), /HALTED/);
+  assert.match(sick.join('\n'), /stale prices for A, B, C/);
+  assert.match(sick.join('\n'), /40 errors/);
+  assert.match(sick.join('\n'), /model is 50 h old/);
+  assert.match(sick.join('\n'), /Polymarket agent: no published status/);
+  assert.match(watchdog.report(sick, now), /found 6 problem/);
+  assert.match(watchdog.report([], now), /healthy/);
+  // The CLI: exit code 1 and a report file when something is wrong, 0 when healthy.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metyu-watchdog-'));
+  fs.writeFileSync(path.join(dir, 'exchange-status.json'), JSON.stringify(exchange));
+  const out = path.join(dir, 'report.md');
+  const quiet = process.stdout.write;
+  process.stdout.write = () => true;
+  try {
+    assert.equal(watchdog.main([dir, '--report', out], now), 1);
+    assert.match(fs.readFileSync(out, 'utf8'), /Polymarket agent: no published status/);
+    fs.writeFileSync(path.join(dir, 'status.json'), JSON.stringify(polymarket));
+    assert.equal(watchdog.main([dir, '--report', out], now), 0);
+  } finally { process.stdout.write = quiet; }
+});

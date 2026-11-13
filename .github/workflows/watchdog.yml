@@ -1,0 +1,60 @@
+name: watchdog
+
+# Metyu's watchdog, independent of the scheduler that runs the agents (cron-job.org): once an hour
+# (best-effort on GitHub) it reads the published state from the autopilot-data branch and checks
+# that both agents are alive, not halted, on fresh prices and on a recent model
+# (scripts/watchdog.js). While anything is wrong it keeps ONE issue labelled `metyu-watchdog`
+# open (GitHub notifies the owner's phone) and closes it when everything is healthy again.
+#
+# Security: actions pinned to commit SHAs; read-only contents; the token may only manage issues.
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read                 # read the code and the autopilot-data branch
+      issues: write                  # open, update or close the watchdog issue
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0 (Node 24)
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0 (Node 24)
+        with:
+          ref: autopilot-data
+          path: state
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0 (Node 24)
+        with:
+          node-version: "22"
+      - name: Check the agents
+        id: check
+        run: |
+          set +e
+          node scripts/watchdog.js state --report report.md
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+      - name: Open, update or close the watchdog issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          STATUS: ${{ steps.check.outputs.status }}
+        run: |
+          gh label create metyu-watchdog --color B60205 --description "Opened and closed by the Metyu watchdog" --force > /dev/null
+          open=$(gh issue list --label metyu-watchdog --state open --json number --jq '.[0].number // empty')
+          if [ "$STATUS" != "0" ]; then
+            if [ -n "$open" ]; then gh issue edit "$open" --body-file report.md
+            else gh issue create --title "Metyu watchdog: something needs attention" --label metyu-watchdog --body-file report.md
+            fi
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "$(cat report.md)"
+          fi
