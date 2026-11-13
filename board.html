@@ -1135,7 +1135,12 @@
           $('#wTotal').textContent = formatMoney(total);
           $('#wUpdated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
           $('#wStatus').textContent = 'Linked on this device by its public address: Metyu reads the on-chain balances and can never sign or move funds. Positions inside the app itself (e.g. perps) are not wallet balances.';
-          $('#wBalances').replaceChildren(...(rows.length ? rows.map(row => {
+          // Priced holdings are listed; tokens without a USD price (NFTs, spam airdrops, unlisted
+          // coins) are summed up in one line so they do not bury the real balances.
+          const unpriced = rows.filter(row => row.usd === null && row.asset !== 'SOL');
+          const listed = rows.filter(row => !unpriced.includes(row));
+          const summary = unpriced.length ? [Object.assign(document.createElement('li'), { className: 'detail', textContent: `+ ${unpriced.length} token${unpriced.length === 1 ? '' : 's'} without a USD price (NFTs, airdrops or unlisted coins)` })] : [];
+          $('#wBalances').replaceChildren(...(rows.length ? [...listed.map(row => {
             const item = document.createElement('li');
             const name = document.createElement('span');
             name.className = 'market';
@@ -1149,7 +1154,7 @@
             detail.textContent = `${row.free.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${row.asset}`;
             item.append(name, value, detail);
             return item;
-          }) : [Object.assign(document.createElement('li'), { textContent: 'This wallet is empty.' })]));
+          }), ...summary] : [Object.assign(document.createElement('li'), { textContent: 'This wallet is empty.' })]));
         } catch (error) {
           $('#wStatus').textContent = `Could not read the wallet right now (${error.message}). It stays linked; try Refresh.`;
         }
