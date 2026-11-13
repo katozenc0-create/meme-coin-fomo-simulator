@@ -87,7 +87,12 @@
     .agent .row1 { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
     .agent .name { color: var(--text); font: 900 13px system-ui, sans-serif; text-transform: uppercase; }
     .agent .what { color: var(--muted); font-size: 10px; } .agent .rule { margin-top: 4px; color: #b98cff; font-size: 11px; } .agent .last { margin-top: 3px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .term-main { padding: 10px; display: grid; gap: 10px; min-width: 0; }
+    .term-main { padding: 10px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+    .term-source { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; text-transform: uppercase; }
+    .term-source select { padding: 2px 4px; border: 1px solid var(--line); background: #0a140e; color: var(--text); font: 700 11px Consolas, monospace; max-width: 150px; }
+    .term-result .bar i.down { background: var(--red); }
+    .term-bar { flex-wrap: wrap; row-gap: 4px; }
+    @media (max-width: 560px) { .term-bar-title { display: none; } .term-source select { max-width: 130px; } }
     .flow-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
     .flow-chip { padding: 6px 8px; border: 1px solid #2b3f6b; background: #0b1424; overflow: hidden; } .flow-chip b { display: block; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .flow-chip small { color: var(--muted); }
     .flow-chip.pos { border-color: var(--green); } .flow-chip.neg { border-color: var(--red); }
@@ -198,7 +203,7 @@
     </section>
 
     <section class="term" id="terminal" aria-label="Metyu terminal">
-      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span>Metyu terminal · six agents · log first</span><span class="term-chip on" id="tMode">paper · demo</span></div>
+      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span class="term-bar-title">Metyu terminal · six agents · log first</span><label class="term-source">source <select id="tSource" aria-label="Terminal source"><option value="auto">auto</option></select></label><span class="term-chip on" id="tMode">paper · demo</span></div>
       <div class="term-head">
         <img class="term-logo" src="icons/icon.svg" alt="" />
         <div>
@@ -232,7 +237,7 @@
             <div class="stage filter"><span>▲ Filtered</span><strong id="tFiltered">0</strong><small id="tFilteredSub">blocked by a rule</small></div>
             <div class="stage sizer"><span>◆ Sizer</span><strong id="tSizer">—</strong><small id="tSizerSub">of equity</small></div>
             <div class="stage logger"><span>● Logger</span><strong id="tLine">line #0</strong><small>each with a reason</small></div>
-            <div class="stage equity"><span>◆ Equity</span><strong id="tEquityPnl">$0</strong><small>session P&amp;L</small></div>
+            <div class="stage equity"><span>◆ Equity</span><strong id="tEquityPnl">$0</strong><small id="tEquityLabel">session P&amp;L</small></div>
           </div>
           <div class="term-split">
             <div class="term-box term-trade">
@@ -714,6 +719,7 @@
       // The owner chose a 3-day training period (metyu-exchange.js TRAINING_DAYS); the evidence bar
       // (30+ trades, interval above 0) still decides, however long that takes.
       const TRAINING_DAYS = 3;
+      let autopilotStatus = null;                              // the 24/7 Polymarket autopilot, for the terminal
       // How alive an autopilot is, from its last tick: the real-time runner (scripts/realtime.sh)
       // ticks every minute and publishes every 5; GitHub Actions ticks every 15 minutes.
       function liveness(lastTick, paused) {
@@ -753,9 +759,13 @@
         }
         if (!status) {
           $('#autopilotPanel').hidden = true;            // no autopilot anywhere: nothing to show
+          autopilotStatus = null;
+          renderTerminal();
           return false;
         }
         $('#autopilotPanel').hidden = false;
+        autopilotStatus = status.available ? status : null;
+        renderTerminal();
         if (!status.available) { $('#apStatus').textContent = `${status.reason}.`; $('#apStats').hidden = true; return true; }
         const account = status.account;
         // Open positions are marked at their last price with Metyu's own accounting.
@@ -894,9 +904,10 @@
           } catch (error) { /* try the next source */ }
         }
         // Nothing published anywhere: the panel would only take space on a phone, so it stays hidden.
-        if (!status) { $('#exchangePanel').hidden = true; return false; }
+        if (!status) { $('#exchangePanel').hidden = true; exchangeStatus = null; renderTerminal(); return false; }
         $('#exchangePanel').hidden = false;
         exchangeStatus = status;
+        renderTerminal();
         const account = status.account;
         const strategies = status.model ? Object.entries(status.model.strategies) : [];
         const openGates = strategies.filter(([, s]) => s.gate.open).length;
@@ -1168,99 +1179,270 @@
       }
 
       const shortName = text => String(text).replace(/^Will (the )?/i, '').replace(/\?$/, '');
-      function renderTerminal() {
-        if ($('#terminal').hidden) return;
+      // ---------- the terminal ----------
+      // One view, three sources: the 24/7 crypto autopilot, the 24/7 Polymarket autopilot (both
+      // read from their published status) and this device's own board session. Each source is turned
+      // into the same model (termModel*), and paintTerminal draws it.
+      const TERM_SOURCE_KEY = 'metyuBoard.termSource';
+      let termSource = 'auto';
+      try { termSource = localStorage.getItem(TERM_SOURCE_KEY) || 'auto'; } catch (error) { /* ignore */ }
+      const termTime = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });   // 24 h: fits the log column
+      const usdTerm = value => (!Number.isFinite(value) ? '—' : value >= 1000 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : value >= 1 ? `$${value.toFixed(value >= 100 ? 2 : 3)}` : `$${value.toPrecision(4)}`);
+      function termSources() {
+        const list = [];
+        if (exchangeStatus) list.push(['exchange', '24/7 · crypto']);
+        if (autopilotStatus) list.push(['polymarket', '24/7 · Polymarket']);
+        list.push(['device', 'this device']);
+        return list;
+      }
+      function activeTermSource() {
+        const available = termSources().map(([id]) => id);
+        if (termSource !== 'auto' && available.includes(termSource)) return termSource;
+        return available[0];                                  // auto: the 24/7 crypto autopilot first
+      }
+      // Autopilot log kinds -> the terminal's pipeline stages.
+      const TERM_KIND = { OPEN: 'ENTER', LEARN: 'ENTER', CLOSE: 'EXIT', 'LEARN-CLOSE': 'EXIT', SETTLE: 'EXIT', SKIP: 'FILTER', WATCH: 'FILTER', HALT: 'HALT', TRAIN: 'TRAIN', TRAIL: 'TRAIL', PAUSE: 'PAUSE', RESUME: 'RESUME', ERROR: 'ERROR', INFO: 'INFO' };
+      function termEventFromLog(entry) {
+        const kind = TERM_KIND[entry.kind] || entry.kind;
+        const text = String(entry.text || '');
+        // "Question — rest" (Polymarket) or "BTC-USD LONG 1.5x … · reason" (crypto)
+        let market = 'Metyu';
+        let reason = text;
+        const dash = text.indexOf(' — ');
+        const symbol = text.match(/^([A-Z0-9]+-USD)\b\s*(.*)$/);
+        if (dash > 0) { market = text.slice(0, dash); reason = text.slice(dash + 3); } else if (symbol) { market = symbol[1]; reason = symbol[2]; }
+        const money = text.match(/([+-])\$([\d,]+(?:\.\d+)?)/);
+        const margin = text.match(/margin \$?([\d,]+(?:\.\d+)?)/);
+        const value = kind === 'EXIT' && money ? `${money[1]}$${money[2]}` : kind === 'ENTER' && margin ? `margin $${margin[1]}` : kind === 'FILTER' ? 'not traded' : '';
+        return { at: Date.parse(entry.at), kind, market, reason, value };
+      }
+
+      function termModelFromDevice() {
         const eq = equity();
-        const pnl = eq - account.bankroll;
         const losses = account.trades - account.wins;
         const open = slots.filter(slot => slot.position);
-        $('#tMode').textContent = `paper · ${mode()}`;
-        $('#tBalance').textContent = formatMoney(eq);
-        $('#tTrades').textContent = String(account.trades);
-        $('#tWins').textContent = String(account.wins);
-        $('#tLosses').textContent = String(losses);
-        $('#tRun').className = `term-run${running ? '' : ' paused'}`;
-        $('#tRun').firstChild.textContent = account.halted ? 'halted' : running ? 'running' : 'paused';
-        const lastFilter = term.events.find(event => event.kind === 'FILTER');
-        $('#tTag').textContent = lastFilter ? `risk check · filtered ${shortName(lastFilter.market).slice(0, 28)}` : 'every trade gets a reason';
-        // Agents
         const ranked = slots.filter(slot => !slot.done && Number.isFinite(slot.edge)).sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge));
-        $('#agScannerChip').textContent = running ? 'scan' : 'idle';
-        $('#agScannerChip').className = `term-chip${running ? ' on' : ''}`;
-        $('#agScannerLast').textContent = ranked[0] ? `next ${shortName(ranked[0].question).slice(0, 22)} · edge ${(ranked[0].edge * 100).toFixed(1)}` : `${slots.length} markets`;
+        const lastFilter = term.events.find(event => event.kind === 'FILTER');
         const recentFilter = Date.now() - term.lastFilterAt < 12000;
-        $('#agRisk').classList.toggle('alert', recentFilter);
-        $('#agRiskChip').textContent = recentFilter ? 'filter' : running ? 'pass' : 'idle';
-        $('#agRiskChip').className = `term-chip${recentFilter ? ' warn' : running ? ' on' : ''}`;
-        $('#agRiskLast').textContent = lastFilter ? `${shortName(lastFilter.market).slice(0, 14)}: ${lastFilter.reason}` : 'no candidate blocked yet';
         const lastSize = term.events.find(event => event.kind === 'SIZE');
-        $('#agSizerChip').textContent = lastSize && Date.now() - lastSize.at < 12000 ? 'size' : 'idle';
-        $('#agSizerChip').className = `term-chip${lastSize && Date.now() - lastSize.at < 12000 ? ' on' : ''}`;
-        $('#agSizerLast').textContent = term.sizePct === null ? 'waiting for a passed candidate' : `${(term.sizePct * 100).toFixed(0)}% of ${formatMoney(eq)}`;
+        const sizing = lastSize && Date.now() - lastSize.at < 12000;
         const lastExec = term.events.find(event => event.kind === 'ENTER' || event.kind === 'EXIT');
-        $('#agExecChip').textContent = open.length ? 'live' : 'idle';
-        $('#agExecChip').className = `term-chip${open.length ? ' blue' : ''}`;
-        $('#agExecLast').textContent = lastExec ? `${lastExec.kind.toLowerCase()} ${shortName(lastExec.market).slice(0, 20)} · ${lastExec.value}` : `${open.length} open`;
-        $('#agLoggerLast').textContent = `line #${term.line}`;
-        $('#agEquityLast').textContent = `${formatMoney(eq)} · ${account.trades} closes`;
-        $('#tOnline').textContent = `${running ? 6 : 0} online`;
-        // Flow
-        $('#tChecked').textContent = `checked ${term.scanned}`;
-        $('#tFlow').replaceChildren(...ranked.slice(0, 4).map(slot => {
-          const chip = document.createElement('div');
-          chip.className = `flow-chip${slot.position ? ' pos' : ''}`;
-          const name = document.createElement('b');
-          name.textContent = shortName(slot.question);
-          const sub = document.createElement('small');
-          sub.textContent = `${cents(slot.prices[slot.prices.length - 1])} · edge ${(slot.edge * 100).toFixed(1)}${slot.position ? ` · ${slot.position.side}` : ''}`;
-          chip.append(name, sub);
-          return chip;
-        }));
-        $('#tFiltered').textContent = String(term.filtered);
-        $('#tFilteredSub').textContent = `of ${term.candidates} candidates`;
-        $('#tSizer').textContent = term.sizePct === null ? '—' : `${(term.sizePct * 100).toFixed(0)}% eq`;
-        $('#tSizerSub').textContent = term.sizePct === null ? 'of equity' : formatMoney(term.sizePct * eq);
-        $('#tLine').textContent = `line #${term.line}`;
-        $('#tEquityPnl').textContent = `${pnl >= 0 ? '+' : ''}${formatMoney(pnl)}`;
-        $('#tEquityPnl').className = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : '';
-        // Current trade: the newest open position
         const held = open.sort((a, b) => String(b.position.openedAt).localeCompare(String(a.position.openedAt)))[0];
-        const kv = $('#tTradeKv');
+        let trade = null;
         if (held) {
           const yes = held.prices[held.prices.length - 1];
           const marked = M.markPosition(held.position, yes, { spread: held.spread });
-          $('#tTradeMarket').textContent = shortName(held.question);
-          $('#tTradeChip').textContent = `${held.position.side} ${held.position.leverage}x · ${marked.returnOnMargin >= 0 ? '+' : ''}${(marked.returnOnMargin * 100).toFixed(1)}%`;
-          $('#tTradeChip').className = `term-chip ${marked.returnOnMargin >= 0 ? 'on' : 'warn'}`;
-          const rows = [['entry', cents(held.position.entry)], ['now', cents(M.sidePriceOf(held.position, yes))], ['size', `${(held.position.notional / Math.max(1, eq) * 100).toFixed(0)}% of equity`], ['P&L', `${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)}`], ['reason', held.position.reason || '—']];
-          kv.replaceChildren(...rows.flatMap(([label, value]) => { const a = document.createElement('span'); a.textContent = label; const b = document.createElement('b'); b.textContent = value; b.title = value; return [a, b]; }));
+          trade = {
+            market: shortName(held.question), up: marked.returnOnMargin >= 0,
+            chip: `${held.position.side} ${held.position.leverage}x · ${marked.returnOnMargin >= 0 ? '+' : ''}${(marked.returnOnMargin * 100).toFixed(1)}%`,
+            rows: [['entry', cents(held.position.entry)], ['now', cents(M.sidePriceOf(held.position, yes))], ['size', `${(held.position.notional / Math.max(1, eq) * 100).toFixed(0)}% of equity`], ['P&L', `${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)}`], ['reason', held.position.reason || '—']]
+          };
+        }
+        return {
+          mode: `paper · ${mode()}`, running, runText: account.halted ? 'halted' : running ? 'running' : 'paused', clock: null,
+          tag: lastFilter ? `risk check · filtered ${shortName(lastFilter.market).slice(0, 28)}` : 'every trade gets a reason',
+          balance: eq, trades: account.trades, wins: account.wins, losses, online: running ? 6 : 0,
+          agents: {
+            Scanner: [running ? 'scan' : 'idle', running ? 'on' : '', ranked[0] ? `next ${shortName(ranked[0].question).slice(0, 22)} · edge ${(ranked[0].edge * 100).toFixed(1)}` : `${slots.length} markets`],
+            Risk: [recentFilter ? 'filter' : running ? 'pass' : 'idle', recentFilter ? 'warn' : running ? 'on' : '', lastFilter ? `${shortName(lastFilter.market).slice(0, 14)}: ${lastFilter.reason}` : 'no candidate blocked yet', recentFilter],
+            Sizer: [sizing ? 'size' : 'idle', sizing ? 'on' : '', term.sizePct === null ? 'waiting for a passed candidate' : `${(term.sizePct * 100).toFixed(0)}% of ${formatMoney(eq)}`],
+            Exec: [open.length ? 'live' : 'idle', open.length ? 'blue' : '', lastExec ? `${lastExec.kind.toLowerCase()} ${shortName(lastExec.market).slice(0, 20)} · ${lastExec.value}` : `${open.length} open`],
+            Logger: ['write', 'amber', `line #${term.line}`],
+            Equity: [account.halted ? 'halted' : 'update', account.halted ? 'warn' : 'blue', `${formatMoney(eq)} · ${account.trades} closes`]
+          },
+          checked: `checked ${term.scanned}`,
+          flow: ranked.slice(0, 4).map(slot => ({ name: shortName(slot.question), sub: `${cents(slot.prices[slot.prices.length - 1])} · edge ${(slot.edge * 100).toFixed(1)}${slot.position ? ` · ${slot.position.side}` : ''}`, pos: !!slot.position })),
+          filtered: term.filtered, filteredSub: `of ${term.candidates} candidates`,
+          sizer: term.sizePct === null ? '—' : `${(term.sizePct * 100).toFixed(0)}% eq`, sizerSub: term.sizePct === null ? 'of equity' : formatMoney(term.sizePct * eq),
+          line: term.line, pnl: eq - account.bankroll, pnlLabel: 'session P&L', trade,
+          events: term.events, start: account.bankroll, since: 'this session',
+          wl: `${account.wins} W / ${losses} L · ${term.filtered} filtered · ${term.line} log lines`
+        };
+      }
+
+      function termModelFromExchange(status) {
+        const acct = status.account;
+        const eq = acct.equity;
+        const losses = acct.trades - acct.wins;
+        const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
+        const alive = age < 40;
+        const events = (status.log || []).map(termEventFromLog);
+        const lastFilter = events.find(event => event.kind === 'FILTER');
+        const recentFilter = lastFilter && Date.now() - lastFilter.at < 3600000;
+        const lastExec = events.find(event => event.kind === 'ENTER' || event.kind === 'EXIT');
+        const strategies = status.model ? Object.values(status.model.strategies) : [];
+        const openGates = strategies.filter(s => s.gate.open).length;
+        const learnable = strategies.filter(s => s.learnable).length;
+        const charts = status.charts || {};
+        const trends = Object.values(charts).map(chart => chart.trend).filter(Boolean);
+        const count = name => trends.filter(trend => trend === name).length;
+        const riskPct = openGates ? (status.rules ? status.rules.riskPct : .01) : (status.rules ? status.rules.learnRiskPct : .0025);
+        const newest = status.positions.slice().sort((a, b) => String(b.openedAt).localeCompare(String(a.openedAt)))[0];
+        let trade = null;
+        if (newest) {
+          const ret = newest.margin > 0 ? newest.pnl / newest.margin : 0;
+          trade = {
+            market: `${newest.symbol} · ${newest.strategy}`, up: newest.pnl >= 0,
+            chip: `${newest.side} ${(+newest.leverage).toFixed(1)}x · ${ret >= 0 ? '+' : ''}${(ret * 100).toFixed(1)}%`,
+            rows: [['entry', usdTerm(newest.entry)], ['now', usdTerm(newest.mark)], ['stop', usdTerm(newest.stop)], ['target', usdTerm(newest.target)], ['liq.', usdTerm(newest.liquidation)], ['P&L', `${newest.pnl >= 0 ? '+' : ''}${formatMoney(newest.pnl)}${newest.book === 'learning' ? ' · learning' : ''}`], ['reason', newest.reason || '—']]
+          };
+        }
+        const drawdown = acct.peak > 0 ? 1 - eq / acct.peak : 0;
+        return {
+          mode: `paper · 24/7 crypto${status.paused ? ' · paused' : ''}`, running: alive && !acct.halted && !status.paused,
+          runText: acct.halted ? 'halted' : status.paused ? 'paused by owner' : liveness(status.lastTick, false).toLowerCase(),
+          clock: status.lastTick ? `last tick ${termTime(status.lastTick)}` : 'no tick yet',
+          tag: `${trainingText(status.createdAt, status.trainingDays || TRAINING_DAYS)} · real money ${status.live ? `locked (${status.live.met}/${status.live.total})` : 'locked'}`,
+          balance: eq, trades: acct.trades, wins: acct.wins, losses, online: alive ? 6 : 0,
+          agents: {
+            Scanner: [alive ? 'scan' : 'idle', alive ? 'on' : '', trends.length ? `${trends.length} coins · ${count('up')} up · ${count('down')} down · ${count('range')} range` : `${Object.keys(status.marks || {}).length} coins`],
+            Risk: [recentFilter ? 'filter' : alive ? 'pass' : 'idle', recentFilter ? 'warn' : alive ? 'on' : '', lastFilter ? `${lastFilter.market}: ${lastFilter.reason}` : `${openGates}/${strategies.length} gates open · ${learnable} learning`, !!recentFilter],
+            Sizer: [newest ? 'size' : 'idle', newest ? 'on' : '', `${(riskPct * 100).toFixed(2)}% risk per trade${openGates ? '' : ' (learning)'}`],
+            Exec: [status.positions.length ? 'live' : 'idle', status.positions.length ? 'blue' : '', lastExec ? `${lastExec.kind.toLowerCase()} ${lastExec.market} · ${lastExec.value}` : `${status.positions.length} open`],
+            Logger: ['write', 'amber', `line #${events.length}`],
+            Equity: [acct.halted ? 'halted' : 'update', acct.halted ? 'warn' : 'blue', `${formatMoney(eq)} · drawdown ${(drawdown * 100).toFixed(1)}% · kill at 15%`]
+          },
+          checked: `${Object.keys(charts).length} coins · hourly`,
+          flow: Object.entries(charts).slice(0, 8).map(([symbol, chart]) => {
+            const mark = status.marks && status.marks[symbol];
+            const held = status.positions.find(position => position.symbol === symbol);
+            return { name: symbol, sub: `${mark ? usdTerm(mark.price) : '—'} · ${chart.trend || '…'}${Number.isFinite(chart.rsi) ? ` · RSI ${chart.rsi.toFixed(0)}` : ''}${held ? ` · ${held.side}` : ''}`, pos: !!held };
+          }),
+          filtered: events.filter(event => event.kind === 'FILTER').length, filteredSub: `of ${events.filter(event => event.kind === 'FILTER' || event.kind === 'ENTER').length} signals (recent log)`,
+          sizer: newest ? `${(newest.margin / Math.max(1, eq) * 100).toFixed(1)}% eq` : `${(riskPct * 100).toFixed(2)}%`, sizerSub: newest ? `margin ${formatMoney(newest.margin)}` : 'risk per trade',
+          line: events.length, pnl: eq - acct.bankroll, pnlLabel: 'since start', trade,
+          events, start: acct.bankroll, since: status.createdAt ? `since ${new Date(status.createdAt).toLocaleDateString()}` : 'since start',
+          wl: `${acct.wins} W / ${losses} L · realized ${acct.realized >= 0 ? '+' : ''}${formatMoney(acct.realized)} · ${status.positions.length} open`
+        };
+      }
+
+      function termModelFromPolymarket(status) {
+        const acct = status.account;
+        const marks = status.positions.map(held => ({ held, marked: M.markPosition(held.position, held.lastYes, { spread: held.spread || 0 }) }));
+        const eq = acct.cash + marks.reduce((sum, item) => sum + Math.max(0, item.marked.equity), 0);
+        const losses = acct.trades - acct.wins;
+        const age = status.lastTick ? (Date.now() - Date.parse(status.lastTick)) / 60000 : Infinity;
+        const alive = age < 40;
+        const events = (status.log || []).map(termEventFromLog);
+        const lastFilter = events.find(event => event.kind === 'FILTER');
+        const lastExec = events.find(event => event.kind === 'ENTER' || event.kind === 'EXIT');
+        const gate = status.model && status.model.gate;
+        const newest = marks.slice().sort((a, b) => String(b.held.openedAt).localeCompare(String(a.held.openedAt)))[0];
+        let trade = null;
+        if (newest) {
+          const { held, marked } = newest;
+          trade = {
+            market: shortName(held.question), up: marked.returnOnMargin >= 0,
+            chip: `${held.position.side} ${held.position.leverage}x · ${marked.returnOnMargin >= 0 ? '+' : ''}${(marked.returnOnMargin * 100).toFixed(1)}%`,
+            rows: [['entry', cents(held.position.entry)], ['now', cents(M.sidePriceOf(held.position, held.lastYes))], ['size', `${formatMoney(held.position.margin)} margin`], ['P&L', `${marked.pnl >= 0 ? '+' : ''}${formatMoney(marked.pnl)}${held.learning ? ' · learning' : ''}`], ['opened', held.openedAt ? new Date(held.openedAt).toLocaleString() : '—']]
+          };
+        }
+        return {
+          mode: `paper · 24/7 Polymarket${status.paused ? ' · paused' : ''}`, running: alive && !acct.halted && !status.paused,
+          runText: acct.halted ? 'halted' : status.paused ? 'paused by owner' : liveness(status.lastTick, false).toLowerCase(),
+          clock: status.lastTick ? `last tick ${termTime(status.lastTick)}` : 'no tick yet',
+          tag: `${trainingText(status.createdAt, TRAINING_DAYS)} · evidence gate ${gate && gate.open ? 'open' : 'closed'}`,
+          balance: eq, trades: acct.trades, wins: acct.wins, losses, online: alive ? 6 : 0,
+          agents: {
+            Scanner: [alive ? 'scan' : 'idle', alive ? 'on' : '', `watching ${status.watching} markets`],
+            Risk: [gate && gate.open ? 'pass' : 'learn', gate && gate.open ? 'on' : 'amber', lastFilter ? `${shortName(lastFilter.market).slice(0, 18)}: ${lastFilter.reason}` : `evidence gate ${gate && gate.open ? 'open' : 'closed: learning book only'}`],
+            Sizer: [newest ? 'size' : 'idle', newest ? 'on' : '', gate && gate.open ? 'fractional Kelly' : '1% of equity per learning trade, 1x'],
+            Exec: [status.positions.length ? 'live' : 'idle', status.positions.length ? 'blue' : '', lastExec ? `${lastExec.kind.toLowerCase()} ${shortName(lastExec.market).slice(0, 20)}` : `${status.positions.length} open`],
+            Logger: ['write', 'amber', `line #${events.length}`],
+            Equity: [acct.halted ? 'halted' : 'update', acct.halted ? 'warn' : 'blue', `${formatMoney(eq)} · ${acct.trades} closes`]
+          },
+          checked: `watching ${status.watching}`,
+          flow: marks.slice(0, 4).map(({ held }) => ({ name: shortName(held.question), sub: `YES ${cents(held.lastYes)} · ${held.position.side}${held.learning ? ' · learning' : ''}`, pos: true })),
+          filtered: events.filter(event => event.kind === 'FILTER').length, filteredSub: 'in the recent log',
+          sizer: newest ? `${(newest.held.position.margin / Math.max(1, eq) * 100).toFixed(1)}% eq` : '—', sizerSub: newest ? `margin ${formatMoney(newest.held.position.margin)}` : 'of equity',
+          line: events.length, pnl: eq - acct.bankroll, pnlLabel: 'since start', trade,
+          events, start: acct.bankroll, since: status.createdAt ? `since ${new Date(status.createdAt).toLocaleDateString()}` : 'since start',
+          wl: `${acct.wins} W / ${losses} L · realized ${acct.realized >= 0 ? '+' : ''}${formatMoney(acct.realized)} · ${status.positions.length} open`
+        };
+      }
+
+      let termClock = null;                                    // a fixed text (autopilot) or null (live clock)
+      function paintTerminal(model, source) {
+        const select = $('#tSource');
+        const sources = termSources();
+        if ([...select.options].map(option => option.value).join() !== ['auto', ...sources.map(([id]) => id)].join()) {
+          select.replaceChildren(...[['auto', 'auto'], ...sources].map(([id, label]) => { const option = document.createElement('option'); option.value = id; option.textContent = label; return option; }));
+        }
+        select.value = termSource === 'auto' || !sources.some(([id]) => id === termSource) ? 'auto' : termSource;
+        select.title = `showing: ${sources.find(([id]) => id === source)[1]}`;
+        $('#tMode').textContent = model.mode;
+        $('#tBalance').textContent = formatMoney(model.balance);
+        $('#tTrades').textContent = String(model.trades);
+        $('#tWins').textContent = String(model.wins);
+        $('#tLosses').textContent = String(model.losses);
+        $('#tRun').className = `term-run${model.running ? '' : ' paused'}`;
+        $('#tRun').firstChild.textContent = model.runText;
+        termClock = model.clock;
+        $('#tClock').textContent = termClock || new Date().toLocaleTimeString();
+        $('#tTag').textContent = model.tag;
+        for (const [name, [chip, cls, last, alert]] of Object.entries(model.agents)) {
+          const id = name === 'Exec' ? 'agExec' : `ag${name}`;
+          $(`#${id}Chip`).textContent = chip;
+          $(`#${id}Chip`).className = `term-chip${cls ? ` ${cls}` : ''}`;
+          $(`#${id}Last`).textContent = last;
+          $(`#${id}Last`).title = last;
+          $(`#${id}`).classList.toggle('alert', !!alert);
+        }
+        $('#tOnline').textContent = `${model.online} online`;
+        $('#tChecked').textContent = model.checked;
+        $('#tFlow').replaceChildren(...model.flow.map(item => {
+          const chip = document.createElement('div');
+          chip.className = `flow-chip${item.pos ? ' pos' : ''}`;
+          const name = document.createElement('b');
+          name.textContent = item.name;
+          name.title = item.name;
+          const sub = document.createElement('small');
+          sub.textContent = item.sub;
+          chip.append(name, sub);
+          return chip;
+        }));
+        $('#tFiltered').textContent = String(model.filtered);
+        $('#tFilteredSub').textContent = model.filteredSub;
+        $('#tSizer').textContent = model.sizer;
+        $('#tSizerSub').textContent = model.sizerSub;
+        $('#tLine').textContent = `line #${model.line}`;
+        $('#tEquityPnl').textContent = `${model.pnl >= 0 ? '+' : ''}${formatMoney(model.pnl)}`;
+        $('#tEquityPnl').className = model.pnl > 0 ? 'positive' : model.pnl < 0 ? 'negative' : '';
+        $('#tEquityLabel').textContent = model.pnlLabel;
+        const kv = $('#tTradeKv');
+        if (model.trade) {
+          $('#tTradeMarket').textContent = model.trade.market;
+          $('#tTradeChip').textContent = model.trade.chip;
+          $('#tTradeChip').className = `term-chip ${model.trade.up ? 'on' : 'warn'}`;
+          kv.replaceChildren(...model.trade.rows.flatMap(([label, value]) => { const a = document.createElement('span'); a.textContent = label; const b = document.createElement('b'); b.textContent = value; b.title = value; return [a, b]; }));
         } else {
           $('#tTradeMarket').textContent = 'no open position';
           $('#tTradeChip').textContent = 'flat';
           $('#tTradeChip').className = 'term-chip';
           kv.replaceChildren();
         }
-        // tail -f
-        const time = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        $('#tTailCount').textContent = `${term.line} lines`;
-        $('#tTail').replaceChildren(...term.events.slice(0, 7).map(event => {
+        $('#tTailCount').textContent = `${model.line} lines`;
+        $('#tTail').replaceChildren(...model.events.slice(0, 7).map(event => {
           const li = document.createElement('li');
           li.className = event.kind;
-          li.textContent = `${time(event.at)} ${event.kind.padEnd(6)} ${shortName(event.market).slice(0, 18)} ${event.value}`;
+          li.textContent = `${termTime(event.at)} ${event.kind.padEnd(6)} ${shortName(event.market).slice(0, 18)} ${event.value}`;
+          li.title = `${event.market}: ${event.reason}`;
           return li;
         }));
-        // Result
-        $('#tStart').textContent = formatMoney(account.bankroll);
-        $('#tNow').textContent = formatMoney(eq);
-        $('#tNow').className = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : '';
-        $('#tBar').style.width = `${Math.max(2, Math.min(100, eq / (account.bankroll * 2) * 100)).toFixed(1)}%`;
-        $('#tWL').textContent = `${account.wins} W / ${losses} L · ${term.filtered} filtered · ${term.line} log lines`;
-        // Log
-        $('#tLog').replaceChildren(...term.events.slice(0, 12).map(event => {
+        if (!model.events.length) $('#tTail').replaceChildren(Object.assign(document.createElement('li'), { textContent: model.running ? 'waiting for the first decision…' : 'press Start (or pick a 24/7 source above)' }));
+        $('#tStart').textContent = formatMoney(model.start);
+        $('#tNow').textContent = formatMoney(model.balance);
+        $('#tNow').className = model.pnl > 0 ? 'positive' : model.pnl < 0 ? 'negative' : '';
+        // The bar: P&L against ±10% of the starting balance, centred at 50% (flat).
+        $('#tBar').style.width = `${Math.max(2, Math.min(100, 50 + model.pnl / Math.max(1, model.start) * 500)).toFixed(1)}%`;
+        $('#tBar').className = model.pnl < 0 ? 'down' : '';
+        $('#tSince').textContent = model.since;
+        $('#tWL').textContent = model.wl;
+        $('#tLog').replaceChildren(...model.events.slice(0, 12).map(event => {
           const li = document.createElement('li');
           li.className = event.kind;
-          const t = document.createElement('span'); t.className = 't'; t.textContent = time(event.at);
-          const chip = document.createElement('span'); chip.className = `term-chip ${event.kind === 'FILTER' || event.kind === 'HALT' ? 'warn' : event.kind === 'ENTER' ? 'on' : event.kind === 'EXIT' ? 'amber' : 'blue'}`; chip.textContent = event.kind === 'FILTER' ? 'filtered' : event.kind.toLowerCase();
+          const t = document.createElement('span'); t.className = 't'; t.textContent = termTime(event.at);
+          const chip = document.createElement('span'); chip.className = `term-chip ${event.kind === 'FILTER' || event.kind === 'HALT' || event.kind === 'ERROR' ? 'warn' : event.kind === 'ENTER' ? 'on' : event.kind === 'EXIT' || event.kind === 'PAUSE' ? 'amber' : 'blue'}`; chip.textContent = event.kind === 'FILTER' ? 'filtered' : event.kind.toLowerCase();
           const m = document.createElement('span'); m.className = 'm';
           const name = document.createElement('b'); name.textContent = event.market;
           const why = document.createElement('small'); why.textContent = `reason: ${event.reason}`;
@@ -1270,8 +1452,22 @@
           li.append(t, chip, m, v);
           return li;
         }));
+        $('#terminal').dataset.source = source;
       }
-      setInterval(() => { $('#tClock').textContent = new Date().toLocaleTimeString(); }, 1000);
+
+      function renderTerminal() {
+        if ($('#terminal').hidden) return;
+        const source = activeTermSource();
+        const model = source === 'exchange' ? termModelFromExchange(exchangeStatus) : source === 'polymarket' ? termModelFromPolymarket(autopilotStatus) : termModelFromDevice();
+        paintTerminal(model, source);
+      }
+      $('#tSource').addEventListener('change', () => {
+        termSource = $('#tSource').value;
+        try { localStorage.setItem(TERM_SOURCE_KEY, termSource); } catch (error) { /* ignore */ }
+        renderTerminal();
+      });
+      setInterval(() => { if (!termClock) $('#tClock').textContent = new Date().toLocaleTimeString(); }, 1000);
+      setInterval(renderTerminal, 30000);                      // the autopilot's age ("live", "last seen") moves on
 
       function afterTick() {
         account.curve.push(equity());
