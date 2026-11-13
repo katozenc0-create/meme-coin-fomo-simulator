@@ -216,6 +216,8 @@ function fakeSolana({ lamports = 2_500_000_000, prices = { [MEME]: { usdPrice: 0
     const reply = body => ({ ok: true, status: 200, json: async () => body });
     const target = new URL(url);
     if (target.host === 'lite-api.jup.ag' && target.pathname === '/price/v3') return reply(prices);
+    // These tests exercise the RPC path: Jupiter's balances API is 'down' here.
+    if (target.host === 'lite-api.jup.ag') return { ok: false, status: 404, json: async () => ({}) };
     const { method, params, id } = JSON.parse(init.body);
     if (rpcError) return reply({ jsonrpc: '2.0', id, error: { message: rpcError } });
     if (method === 'getBalance') return reply({ jsonrpc: '2.0', id, result: { value: lamports } });
@@ -239,7 +241,7 @@ test('Solana wallet: SOL and tokens read from the public address, priced, and vi
   assert.equal(balances[2].price, .002);
   const rpcCalls = fake.calls.filter(c => new URL(c.url).host === 'api.mainnet-beta.solana.com');
   assert.ok(rpcCalls.every(c => c.init.method === 'POST' && ['getBalance', 'getTokenAccountsByOwner'].includes(JSON.parse(c.init.body).method)), 'read-only RPC methods only');
-  const priceCall = fake.calls.find(c => new URL(c.url).host === 'lite-api.jup.ag');
+  const priceCall = fake.calls.find(c => new URL(c.url).host === 'lite-api.jup.ag' && new URL(c.url).pathname === '/price/v3');
   assert.equal(new URL(priceCall.url).searchParams.get('ids'), MEME, 'only unlisted tokens are priced on Jupiter');
 
   const getJson = async url => { if (url.includes('SOL-USD')) return { price: '150' }; throw new Error('HTTP 404'); };
@@ -255,7 +257,7 @@ test('Solana wallet: bad addresses (or a seed phrase) are refused, RPC errors re
     assert.throws(() => A.solanaProvider({ address: bad, fetchImpl: async () => { throw new Error('never called'); } }), /not a Solana address.*never a seed phrase/);
   }
   assert.throws(() => A.solanaProvider({ address: WALLET, rpcUrl: 'http://evil.example' }), /https URL/);
-  await assert.rejects(A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana({ rpcError: 'rate limited' }).fetchImpl }).balances(), /Solana RPC getBalance: rate limited/);
+  await assert.rejects(A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana({ rpcError: 'rate limited' }).fetchImpl }).balances(), /Jupiter: HTTP 404; api\.mainnet-beta\.solana\.com: getBalance rate limited/);
   const unpriced = await A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana({ prices: {} }).fetchImpl }).balances();
   assert.equal(unpriced[2].price, undefined, 'no Jupiter price: shown without a USD value');
   assert.equal(A.providerFromEnv({ SOLANA_WALLET_ADDRESS: WALLET }).name, 'solana');
@@ -279,21 +281,32 @@ test('wallet address input: payment links and stray spaces are accepted, anythin
   assert.equal(A.providerFromEnv({ SOLANA_WALLET_ADDRESS: ` solana:${WALLET} ` }).name, 'solana', 'the GitHub secret is forgiving too');
 });
 
-test('wallet reader falls back to the second public RPC when the first refuses', async () => {
+test('wallet reader: Jupiter balances first (one request), Solana RPC as the fallback, every failure named', async () => {
   const W = require('../metyu-wallet.js');
-  const hosts = [];
-  const fetchImpl = async (url, init = {}) => {
-    const host = new URL(url).host;
-    hosts.push(host);
-    if (host === 'api.mainnet-beta.solana.com') return { ok: false, status: 403, json: async () => ({}) };
-    if (host === 'lite-api.jup.ag') return { ok: true, status: 200, json: async () => ({}) };
-    const { method, id } = JSON.parse(init.body);
-    return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id, result: method === 'getBalance' ? { value: 1e9 } : { value: [] } }) };
+  const MEME2 = 'KMnDBXcPXoz6oMJW5XG4tXdwSWpmWEP2RQM1Uujpump';
+  const make = ({ jupiter = 'ok', rpc = 'ok' } = {}) => {
+    const urls = [];
+    const fetchImpl = async (url, init = {}) => {
+      urls.push(url);
+      const target = new URL(url);
+      const reply = body => ({ ok: true, status: 200, json: async () => body });
+      if (target.host === 'lite-api.jup.ag' && target.pathname === '/price/v3') return reply({ [MEME2]: { usdPrice: .5 } });
+      if (target.host === 'lite-api.jup.ag') {
+        if (jupiter !== 'ok') return { ok: false, status: 503, json: async () => ({}) };
+        assert.equal(target.pathname, `/ultra/v1/balances/${WALLET}`);
+        return reply({ SOL: { amount: '2000000000', uiAmount: 2 }, [MEME2]: { uiAmount: 10 }, 'not a mint': { uiAmount: 5 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 0 } });
+      }
+      if (rpc !== 'ok') return { ok: false, status: 403, json: async () => ({}) };
+      const { method, id } = JSON.parse(init.body);
+      return reply({ jsonrpc: '2.0', id, result: method === 'getBalance' ? { value: 1e9 } : { value: [] } });
+    };
+    return { urls, fetchImpl };
   };
-  const balances = await W.solanaBalances({ address: WALLET, fetchImpl });
-  assert.deepEqual(balances, [{ asset: 'SOL', free: 1, locked: 0 }]);
-  assert.equal(hosts[0], 'api.mainnet-beta.solana.com');
-  assert.ok(hosts.some(host => host === 'solana-rpc.publicnode.com'), 'the fallback answered');
-  await assert.rejects(W.solanaBalances({ address: WALLET, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }) }), /HTTP 503/, 'all endpoints down: the last error');
+  const first = make();
+  assert.deepEqual(await W.solanaBalances({ address: WALLET, fetchImpl: first.fetchImpl }), [{ asset: 'SOL', free: 2, locked: 0 }, { asset: 'KMnD…pump', mint: MEME2, free: 10, locked: 0, price: .5 }], 'malformed keys and empty tokens are skipped');
+  assert.ok(!first.urls.some(url => new URL(url).host === 'api.mainnet-beta.solana.com'), 'no RPC call when Jupiter answers');
+  const fallback = make({ jupiter: 'down' });
+  assert.deepEqual(await W.solanaBalances({ address: WALLET, fetchImpl: fallback.fetchImpl }), [{ asset: 'SOL', free: 1, locked: 0 }]);
+  await assert.rejects(W.solanaBalances({ address: WALLET, fetchImpl: make({ jupiter: 'down', rpc: 'down' }).fetchImpl }), /^Error: Jupiter: HTTP 503; api\.mainnet-beta\.solana\.com: getBalance HTTP 403$/);
   assert.throws(() => A.solanaProvider({ address: 'METYU_BOARD_PASSPHRASE' }), /link the wallet on the Live Board instead/);
 });

@@ -1,7 +1,7 @@
 // Metyu service worker: makes the pages installable on the iPhone / iPad home screen and openable
 // offline. Only the app shell is cached. Live data (/api/..., Polymarket) always goes to the network
 // and is never cached, so prices are never stale.
-const CACHE = 'metyu-shell-v3';
+const CACHE = 'metyu-shell-v4';
 const SHELL = [
   './', 'board.html', 'polymarket.html', 'index.html', 'metyu-agent.js', 'metyu-vault.js', 'metyu-wallet.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'
@@ -22,7 +22,8 @@ self.addEventListener('fetch', event => {
   // Live data and other sites: straight to the network, never from or into the cache.
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.includes('/api/')) return;
   // App shell: network first (so updates arrive), the cached copy when offline.
-  event.respondWith(fetch(event.request)
+  // Bypass the HTTP cache (GitHub Pages serves max-age=600) so a new version reaches the phone at once.
+  event.respondWith(fetch(event.request.url, { cache: 'no-cache', credentials: 'same-origin' })
     .then(response => {
       if (response.ok) {
         const copy = response.clone();

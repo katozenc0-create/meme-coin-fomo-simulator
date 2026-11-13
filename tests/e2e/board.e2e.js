@@ -553,6 +553,11 @@ test('Solana wallet linked on this device: balances read from the network, addre
     return route.fulfill({ json: { jsonrpc: '2.0', id, result: { value: legacy ? [account('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 20), account(meme, 1000)] : [] } } });
   });
   await page.route('https://lite-api.jup.ag/price/v3?**', route => route.fulfill({ json: { [meme]: { usdPrice: .01 } } }));
+  // Jupiter's balances API is the primary source in the browser; fail it once to exercise the RPC fallback.
+  let jupiterUp = false;
+  await page.route(`https://lite-api.jup.ag/ultra/v1/balances/${wallet}`, route => (jupiterUp
+    ? route.fulfill({ json: { SOL: { uiAmount: 1.5 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 20 }, [meme]: { uiAmount: 1000 } } })
+    : route.fulfill({ status: 503, json: {} })));
   await page.route('https://api.exchange.coinbase.com/products/SOL-USD/ticker', route => route.fulfill({ json: { price: '150' } }));
   await page.goto(`${env.base}/board.html`);
   assert.ok(await page.locator('#walletPanel').isVisible());
@@ -567,8 +572,9 @@ test('Solana wallet linked on this device: balances read from the network, addre
   assert.equal(await text(page, '#wShort'), '7xKX…gAsU');
   assert.match(await text(page, '#wBalances'), /SOL\$225.*USDC\$20.*Dz9m…bonk\$10/);
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), wallet);
-  const leaks = seen.filter(r => (r.url.includes(wallet) || r.body.includes(wallet)) && !r.url.startsWith('https://api.mainnet-beta.solana.com/'));
-  assert.deepEqual(leaks, [], 'the address only ever goes to the Solana network');
+  const leaks = seen.filter(r => (r.url.includes(wallet) || r.body.includes(wallet)) && !['api.mainnet-beta.solana.com', 'lite-api.jup.ag'].includes(new URL(r.url).host));
+  assert.deepEqual(leaks, [], 'the address only ever goes to the balance sources (Jupiter, Solana RPC)');
+  jupiterUp = true;
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#wTotal').textContent === '$255');
   await page.click('#wUnlink');

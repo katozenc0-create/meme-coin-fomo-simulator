@@ -31,7 +31,7 @@ EXCHANGE_STATUS = Path(os.environ.get("EXCHANGE_STATUS", str(ROOT / "data" / "ex
 ACCOUNT_BOX = Path(os.environ.get("ACCOUNT_BOX", str(ROOT / "data" / "account.enc.json")))
 # The same policy is in each page's <meta http-equiv="Content-Security-Policy"> (GitHub Pages cannot
 # send headers); tests keep the two identical. frame-ancestors only works as a header.
-CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com https://lite-api.jup.ag; object-src 'none'; base-uri 'none'; form-action 'none'"
+CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag; object-src 'none'; base-uri 'none'; form-action 'none'"
 
 mimetypes.add_type("application/manifest+json", ".webmanifest")   # PWA manifest (home-screen install)
 SERVED_EXTENSIONS = {".webmanifest", ".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
