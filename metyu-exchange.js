@@ -29,8 +29,10 @@
   const DAY = 24 * HOUR;
 
   // Coins with deep USD markets on both Coinbase and Kraken.
-  const SYMBOLS = Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD', 'XRP-USD', 'DOGE-USD', 'ADA-USD', 'AVAX-USD', 'LINK-USD']);
-  const KRAKEN_PAIRS = Object.freeze({ 'BTC-USD': 'XBTUSD', 'ETH-USD': 'ETHUSD', 'SOL-USD': 'SOLUSD', 'XRP-USD': 'XRPUSD', 'DOGE-USD': 'XDGUSD', 'ADA-USD': 'ADAUSD', 'AVAX-USD': 'AVAXUSD', 'LINK-USD': 'LINKUSD' });
+  const SYMBOLS = Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD', 'XRP-USD', 'DOGE-USD', 'ADA-USD', 'AVAX-USD', 'LINK-USD',
+    'LTC-USD', 'BCH-USD', 'DOT-USD', 'NEAR-USD', 'SUI-USD', 'AAVE-USD', 'XLM-USD', 'HBAR-USD']);
+  const KRAKEN_PAIRS = Object.freeze({ 'BTC-USD': 'XBTUSD', 'ETH-USD': 'ETHUSD', 'SOL-USD': 'SOLUSD', 'XRP-USD': 'XRPUSD', 'DOGE-USD': 'XDGUSD', 'ADA-USD': 'ADAUSD', 'AVAX-USD': 'AVAXUSD', 'LINK-USD': 'LINKUSD',
+    'LTC-USD': 'LTCUSD', 'BCH-USD': 'BCHUSD', 'DOT-USD': 'DOTUSD', 'NEAR-USD': 'NEARUSD', 'SUI-USD': 'SUIUSD', 'AAVE-USD': 'AAVEUSD', 'XLM-USD': 'XLMUSD', 'HBAR-USD': 'HBARUSD' });
 
   // Costs are deliberately on the expensive side of a retail perpetual-futures account.
   const COSTS = Object.freeze({
@@ -319,7 +321,7 @@
   // ---------- strategies ----------
   // Each looks only at bars up to i and returns null or { side, stop, target, reason } priced off the
   // close of bar i. Parameters are a small grid; train() picks them on the first part of the history.
-  const STRATEGIES = Object.freeze({
+  const BASE_STRATEGIES = {
     trend: {
       label: 'Trend pullback',
       grid: [{ stopAtr: 2, targetAtr: 3 }, { stopAtr: 2, targetAtr: 4 }, { stopAtr: 3, targetAtr: 4.5 }],
@@ -365,7 +367,27 @@
         return null;
       }
     }
-  });
+  };
+  // The same trend pullback on 4-hour bars (built from the hourly ones). Tested on 8 coins the
+  // hypothesis was not chosen on, it held out of sample (63 trades, +0.23R, 95% [+0.04, +0.43]);
+  // over the whole history it is undecided. The evidence gate decides, as for every strategy.
+  const TIMEFRAMES = Object.freeze({ trend: 1, breakout: 1, reversion: 1, trend4h: 4 });
+  const STRATEGIES = Object.freeze({ ...BASE_STRATEGIES, trend4h: { label: 'Trend pullback (4h)', timeframe: 4, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal } });
+  const timeframeOf = (name, strategies = STRATEGIES) => (strategies[name] && strategies[name].timeframe) || TIMEFRAMES[name] || 1;
+
+  /** Hourly bars -> N-hour bars aligned to UTC (only complete buckets when `now` is given). */
+  function aggregateCandles(candles, hours, now = Infinity) {
+    if (hours <= 1) return candles;
+    const size = hours * HOUR;
+    const out = [];
+    for (const bar of candles) {
+      const t = Math.floor(bar.t / size) * size;
+      const last = out[out.length - 1];
+      if (last && last.t === t) { last.h = Math.max(last.h, bar.h); last.l = Math.min(last.l, bar.l); last.c = bar.c; last.v += bar.v; last.n += 1; }
+      else out.push({ t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v, n: 1 });
+    }
+    return out.filter(bar => bar.n === hours && bar.t + size <= now).map(({ n, ...bar }) => bar);
+  }
 
   // ---------- positions ----------
   /** Fill price after slippage: buying costs more, selling gets less. */
@@ -516,10 +538,20 @@
    * judged ONLY on the trades in the remaining, unseen part.
    */
   function train(candlesBySymbol, { split = .6, costs = COSTS, now = Date.now() } = {}) {
-    const series = Object.entries(candlesBySymbol).filter(([, candles]) => candles.length > WARMUP + 50)
-      .map(([symbol, candles]) => ({ symbol, candles, ind: computeIndicators(candles), cut: Math.floor(WARMUP + (candles.length - WARMUP) * split) }));
+    const seriesByTf = {};
+    const seriesFor = tf => {
+      if (!seriesByTf[tf]) {
+        seriesByTf[tf] = Object.entries(candlesBySymbol).map(([symbol, candles]) => [symbol, aggregateCandles(candles, tf)])
+          .filter(([, candles]) => candles.length > WARMUP + 50)
+          .map(([symbol, candles]) => ({ symbol, candles, ind: computeIndicators(candles), cut: Math.floor(WARMUP + (candles.length - WARMUP) * split) }));
+      }
+      return seriesByTf[tf];
+    };
+    const series = seriesFor(1);
     const strategies = {};
     for (const name of Object.keys(STRATEGIES)) {
+      const series = seriesFor(timeframeOf(name));
+      if (!series.length) continue;
       let chosen = null;
       for (const params of STRATEGIES[name].grid) {
         const rs = series.flatMap(s => backtest(s.candles, name, params, { from: WARMUP, to: s.cut, costs, ind: s.ind, symbol: s.symbol })).map(trade => trade.r);
@@ -528,7 +560,7 @@
       }
       const outTrades = series.flatMap(s => backtest(s.candles, name, chosen.params, { from: s.cut, to: s.candles.length, costs, ind: s.ind, symbol: s.symbol }));
       const gate = evidence(outTrades.map(trade => trade.r));
-      strategies[name] = { label: STRATEGIES[name].label, params: chosen.params, inSampleTrades: chosen.inSample, inSampleMeanR: finite(chosen.score) ? chosen.score : null, gate };
+      strategies[name] = { label: STRATEGIES[name].label, timeframe: timeframeOf(name), params: chosen.params, inSampleTrades: chosen.inSample, inSampleMeanR: finite(chosen.score) ? chosen.score : null, gate };
     }
     const bars = series.reduce((sum, s) => sum + s.candles.length, 0);
     return { trainedAt: now, symbols: series.map(s => s.symbol), bars, split, strategies };
@@ -588,6 +620,7 @@
 
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
+    TIMEFRAMES, timeframeOf, aggregateCandles,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

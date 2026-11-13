@@ -189,7 +189,9 @@ test('backtest walks the same rules over history and train judges the gate only 
   }
   const model = X.train(series, { now: 5 });
   assert.equal(model.trainedAt, 5);
-  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakout', 'reversion']);
+  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakout', 'reversion', 'trend4h']);
+  assert.equal(model.strategies.trend4h.timeframe, 4, 'the 4-hour trend is trained on 4-hour bars');
+  assert.equal(model.strategies.trend.timeframe, 1);
   for (const s of Object.values(model.strategies)) {
     assert.ok(X.STRATEGIES.trend.grid.concat(X.STRATEGIES.breakout.grid, X.STRATEGIES.reversion.grid).includes(s.params));
     assert.equal(s.gate.open, s.gate.trades >= 30 && s.gate.ci[0] > 0);
@@ -432,4 +434,29 @@ test('pause: no new positions while paused, exits still managed; logged once eac
   await fakeA.pilot.tick();                                         // the same state, not paused
   assert.equal(fakeA.state.log.filter(l => l.kind === 'RESUME').length, 1);
   assert.equal(parseArgs(['--pause']).pause, true);
+});
+
+test('aggregateCandles builds complete UTC-aligned N-hour bars and drops unfinished ones', () => {
+  const hourly = Array.from({ length: 10 }, (_, i) => bar((i + 2) * H, 100 + i, 101 + i, 99 + i, 100.5 + i, 1));
+  const four = X.aggregateCandles(hourly, 4);
+  // hours 2..11: bucket 0-4 has only hours 2,3 (incomplete), 4-8 complete, 8-12 complete
+  assert.deepEqual(four.map(b => b.t), [4 * H, 8 * H]);
+  assert.deepEqual(four[0], { t: 4 * H, o: 102, h: 106, l: 101, c: 105.5, v: 4 });
+  assert.deepEqual(X.aggregateCandles(hourly, 4, 11 * H).map(b => b.t), [4 * H], 'a bucket still forming at `now` is left out');
+  assert.equal(X.aggregateCandles(hourly, 1), hourly);
+  assert.equal(X.timeframeOf('trend4h'), 4);
+  assert.equal(X.timeframeOf('trend'), 1);
+});
+
+test('a release that adds strategies or coins retrains at once instead of waiting a day', async () => {
+  // A model trained yesterday, before the 4-hour strategy existed (and on fewer coins).
+  const old = { trainedAt: 600 * H - 3 * H, symbols: ['AAA-USD'], strategies: { trend: UNDECIDED.strategies.test } };
+  const { pilot, state, fake } = setup({ priceOf: (s, t) => 100 + 2 * Math.sin(t / H / 3), model: old });
+  pilot.state.model = old;
+  const fresh = createExchangeAutopilot({ getJson: fake.getJson, now: () => 600 * H + 7 * 60000, state, options: { symbols: ['AAA-USD', 'BBB-USD'], learn: true, trainBars: 1200 } });
+  await fresh.tick();
+  assert.ok(state.model.trainedAt > old.trainedAt, 'retrained at once, not 21 hours later');
+  assert.ok(state.model.strategies.trend4h, 'the new strategy is in the model');
+  assert.match(state.log.find(l => l.kind === 'TRAIN').text, /walk-forward/);
+  assert.ok(fake.calls.some(url => /granularity=3600/.test(url)));
 });

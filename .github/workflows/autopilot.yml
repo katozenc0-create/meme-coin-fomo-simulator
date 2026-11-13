@@ -68,7 +68,7 @@ jobs:
         run: node autopilot.js --once --train 1500 --retrain 24 --learn --state data/autopilot.json --status-out data/status.json
       - name: Crypto exchange tick (virtual money; live Coinbase prices; trains itself every 24 h; learning book on)
         continue-on-error: true
-        run: node exchange-autopilot.js --once --learn --train-bars 3000 --retrain 24 --state data/exchange.json --status-out data/exchange-status.json --account-public data/account-public.json
+        run: node exchange-autopilot.js --once --learn --train-bars 6000 --retrain 24 --state data/exchange.json --status-out data/exchange-status.json --account-public data/account-public.json
       - name: Publish the state to the autopilot-data branch
         if: always()
         run: scripts/publish-state.sh data

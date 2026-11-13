@@ -21,7 +21,7 @@ const X = require('./metyu-exchange.js');
 const HOUR = X.HOUR;
 const DEFAULTS = Object.freeze({
   bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR,
-  learn: false, pause: false, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
+  learn: false, pause: false, liveBars: 900, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
 });
 const MINUTE = 60000;
 const QUARTER = 15 * MINUTE;
@@ -108,7 +108,9 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
 
   async function retrainIfDue() {
     const model = state.model;
-    const due = !model || now() - model.trainedAt >= opts.retrainHours * HOUR;
+    // Also due when the strategies or coins changed since the last training (a new release).
+    const stale = !!model && (Object.keys(strategies).some(name => !model.strategies[name]) || (Array.isArray(model.symbols) && opts.symbols.some(symbol => !model.symbols.includes(symbol))));
+    const due = !model || stale || now() - model.trainedAt >= opts.retrainHours * HOUR;
     if (!due || now() - state.lastTrainAttempt < opts.trainRetryMs) return false;
     state.lastTrainAttempt = now();
     try {
@@ -204,7 +206,8 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     const series = {};
     for (const symbol of opts.symbols) {
       try {
-        const { source, candles } = await X.fetchCandles(getJson, symbol, { granularity: 3600, bars: 300, now: t });
+        // 900 hourly bars: enough history for the 4-hour strategy's indicators (225 four-hour bars).
+        const { source, candles } = await X.fetchCandles(getJson, symbol, { granularity: 3600, bars: opts.liveBars, now: t });
         const last = candles[candles.length - 1];
         state.marks[symbol] = { price: last.c, at: new Date(t).toISOString(), source };
         series[symbol] = X.closedCandles(candles, HOUR, t);
@@ -233,14 +236,21 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       say(state.paused ? 'PAUSE' : 'RESUME', state.paused ? 'paused by the owner: no new positions; open ones are still managed to their exits' : 'resumed by the owner: new positions allowed again');
     }
     let signals = 0;
-    for (const [symbol, candles] of Object.entries(series)) {
-      if (state.account.halted || state.paused || candles.length < X.WARMUP) continue;
+    // Strategies grouped by timeframe: each group acts once per closed bar of its own timeframe.
+    const groups = {};
+    for (const name of Object.keys(strategies)) (groups[X.timeframeOf(name, strategies)] = groups[X.timeframeOf(name, strategies)] || []).push(name);
+    for (const [symbol, hourly] of Object.entries(series)) {
+     for (const [tf, names] of Object.entries(groups).sort(([a], [b]) => a - b)) {
+      if (state.account.halted || state.paused || Object.values(state.positions).some(held => held.symbol === symbol)) break;
+      const candles = Number(tf) === 1 ? hourly : X.aggregateCandles(hourly, Number(tf), t);
+      if (candles.length < X.WARMUP) continue;
       const bar = candles[candles.length - 1];
-      if (state.lastSignalBar[symbol] === bar.t) continue;
-      state.lastSignalBar[symbol] = bar.t;
+      const key = Number(tf) === 1 ? symbol : `${symbol}@${tf}h`;
+      if (state.lastSignalBar[key] === bar.t) continue;
+      state.lastSignalBar[key] = bar.t;
       const ind = X.computeIndicators(candles);
       const reading = X.readChart(candles, ind);
-      for (const name of Object.keys(strategies)) {
+      for (const name of names) {
         const trained = state.model && state.model.strategies[name];
         const params = trained ? trained.params : strategies[name].grid[0];
         const signal = strategies[name].signal(candles, ind, candles.length - 1, params);
@@ -255,6 +265,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
         const opened = admitAndOpen({ symbol, strategy: name, label: strategies[name].label, signal, bar, atrValue: ind.atr[candles.length - 1], price: priceOf(symbol), book, reading });
         if (opened) break;                                              // one position per coin
       }
+     }
     }
 
     state.lastTick = new Date(t).toISOString();
