@@ -396,7 +396,7 @@ test('terminal shows the 24/7 autopilots: crypto by default, Polymarket and this
 
   await page.selectOption('#tSource', 'polymarket');
   assert.equal(await text(page, '#tMode'), 'paper · 24/7 Polymarket');
-  assert.match(await text(page, '#tRun'), /running 24\/7 · every 15 min/);
+  assert.match(await text(page, '#tRun'), /running 24\/7 · scheduled/);
   assert.match(await text(page, '#tTradeMarket'), /it snow in Paris/);
   assert.match(await text(page, '#tLog'), /enter.*it snow in Paris\?.*margin \$100\.00/);
   assert.match(await text(page, '#agRiskLast'), /evidence gate closed: learning book only/);
@@ -576,7 +576,7 @@ test('v2 status line: real time vs every 15 minutes, and the owner pause', async
   assert.match(await text(page, '#exForward'), /^Training · day 1\/3 · forward test: no closed learning trades yet/);
   status = make(20, true);
   await page.reload();
-  await page.waitForFunction(() => /Running 24\/7 · every 15 min · PAUSED by the owner/.test(document.querySelector('#exStatus').textContent));
+  await page.waitForFunction(() => /Running 24\/7 · scheduled · PAUSED by the owner/.test(document.querySelector('#exStatus').textContent));
   status = make(300, false);
   await page.reload();
   await page.waitForFunction(() => /Last seen 300 min ago/.test(document.querySelector('#exStatus').textContent));
