@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.0: Metyu learns from its own live results
+
+- **Separate budgets for the two books.** The learning book's small research trades no longer count toward the normal book's 4 positions or its 3% side-risk cap. They have their own limits: 8 positions and 2% side risk. A strategy that passed the evidence gate is never blocked by research trades. Margin stays shared.
+- **Live watchdog.** `liveReview()` looks at each strategy's last 20 closed trades (both books, in R). If they average below −0.25R, an open-gate strategy is demoted to the learning book and the log shows `DEMOTE`. It is promoted again as soon as the window recovers.
+- **Board.** Each strategy shows its live record next to its out-of-sample evidence, and is marked when it has been demoted.
+
 ## 2.0.0: real time, real data, virtual money
 
 Metyu now runs on live Coinbase and Polymarket data. It can link your real exchange account read-only, and it trades in real time on an always-on machine. **All trading uses virtual money.** Real orders stay locked behind a 3-day training period and the evidence bar.

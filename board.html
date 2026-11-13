@@ -992,8 +992,9 @@
         $('#exStrategies').replaceChildren(...strategies.map(([, s]) => {
           const item = document.createElement('li');
           const head = document.createElement('b');
-          head.textContent = `${s.label}: ${s.gate.open ? 'GATE OPEN · normal book' : s.learnable ? 'gate closed · learning book' : 'gate closed · not traded (loses after costs)'}`;
-          item.append(head, document.createElement('br'), `${s.gate.trades} out-of-sample trades · ${s.gate.wins} won · mean ${rText(s.gate.meanR)} · 95% [${rText(s.gate.ci[0])}, ${rText(s.gate.ci[1])}]`);
+          head.textContent = `${s.label}: ${s.demoted ? 'GATE OPEN but DEMOTED by live results · learning book' : s.gate.open ? 'GATE OPEN · normal book' : s.learnable ? 'gate closed · learning book' : 'gate closed · not traded (loses after costs)'}`;
+          const live = s.live && s.live.trades ? `live: ${s.live.trades}/${s.live.window} recent trades · ${s.live.wins} won · mean ${rText(s.live.meanR)}` : 'live: no closed trades yet';
+          item.append(head, document.createElement('br'), `${s.gate.trades} out-of-sample trades · ${s.gate.wins} won · mean ${rText(s.gate.meanR)} · 95% [${rText(s.gate.ci[0])}, ${rText(s.gate.ci[1])}]`, document.createElement('br'), live);
           return item;
         }));
         renderTrades($('#exTradeList'), $('#exTradeSummary'), (status.history || []).map(trade => ({

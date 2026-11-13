@@ -256,8 +256,10 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
         const signal = strategies[name].signal(candles, ind, candles.length - 1, params);
         if (!signal) continue;
         signals += 1;
-        const gateOpen = !!(trained && trained.gate.open);
+        const review = X.liveReview(state.history, name, rules);
+        const gateOpen = !!(trained && trained.gate.open) && !review.demoted;
         const book = gateOpen ? 'gated' : opts.learn && learnable(trained) ? 'learning' : null;
+        if (review.demoted && trained && trained.gate.open) say('DEMOTE', `${name}: last ${review.trades} live trades average ${review.meanR >= 0 ? '+' : ''}${review.meanR.toFixed(2)}R (below ${rules.liveDemoteR}R) · ${book ? 'learning book only' : 'not traded'} until they recover`);
         if (!book) {
           say('WATCH', `${symbol} ${signal.side} (${name}): ${signal.reason} · ${!opts.learn ? 'evidence gate closed' : 'out-of-sample evidence says this strategy loses after costs'}, not traded`);
           continue;
@@ -314,7 +316,10 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     account: { ...state.account, equity }, paused: !!state.paused, trainingDays: X.TRAINING_DAYS, costs, rules: X.RULES,
     model: state.model ? {
       trainedAt: state.model.trainedAt, bars: state.model.bars, symbols: state.model.symbols,
-      strategies: Object.fromEntries(Object.entries(state.model.strategies).map(([name, s]) => [name, { ...s, learnable: !s.gate.open && learnable(s) }]))
+      strategies: Object.fromEntries(Object.entries(state.model.strategies).map(([name, s]) => {
+        const live = X.liveReview(state.history, name);
+        return [name, { ...s, live, demoted: s.gate.open && live.demoted, learnable: (!s.gate.open || live.demoted) && learnable(s) }];
+      }))
     } : null,
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) },

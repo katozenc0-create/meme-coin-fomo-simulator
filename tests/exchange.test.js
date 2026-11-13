@@ -215,12 +215,22 @@ test('admit enforces the kill-switch, position count, one per coin, cool-down, s
   const held = (symbol, side = 'LONG', risk = 100, margin = 1000) => ({ symbol, side, risk, margin });
   assert.match(X.admit({ ...base, account: { ...account, halted: true } }).reasons.join(), /kill-switch/);
   assert.match(X.admit({ ...base, positions: { a: held('BTC-USD') } }).reasons.join(), /already a position on this coin/);
-  assert.match(X.admit({ ...base, positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1) } }).reasons.join(), /4 open positions/);
+  assert.match(X.admit({ ...base, positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1) } }).reasons.join(), /4 open normal-book positions/);
   // The learning book's tiny trades may fill all 8 coins; the normal book keeps its limit of 4.
-  const four = { a: held('A', 'SHORT', 1, 100), b: held('B', 'SHORT', 1, 100), c: held('C', 'SHORT', 1, 100), d: held('D', 'SHORT', 1, 100) };
+  const learn = (symbol, side = 'SHORT', risk = 1, margin = 100) => ({ ...held(symbol, side, risk, margin), book: 'learning' });
+  const four = { a: learn('A'), b: learn('B'), c: learn('C'), d: learn('D') };
   assert.equal(X.admit({ ...base, book: 'learning', positions: four }).ok, true, 'a 5th learning position is allowed');
-  const eight = { ...four, e: held('E', 'SHORT', 1, 100), f: held('F', 'SHORT', 1, 100), g: held('G', 'SHORT', 1, 100), h: held('H', 'SHORT', 1, 100) };
-  assert.match(X.admit({ ...base, book: 'learning', positions: eight }).reasons.join(), /8 open positions \(max 8\)/);
+  const eight = { ...four, e: learn('E'), f: learn('F'), g: learn('G'), h: learn('H') };
+  assert.match(X.admit({ ...base, book: 'learning', positions: eight }).reasons.join(), /8 open learning positions \(max 8\)/);
+  // Separate budgets: research trades never take a proven strategy's place (count or side risk).
+  assert.equal(X.admit({ ...base, side: 'SHORT', positions: eight }).ok, true, 'learning positions do not fill the normal book');
+  const normalShorts = { a: held('A', 'SHORT', 100), b: held('B', 'SHORT', 100) };
+  const research = { c: learn('C', 'SHORT', 25), d: learn('D', 'SHORT', 25) };
+  assert.equal(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, ...research } }).ok, true, 'learning risk is not counted against the normal side cap');
+  assert.match(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, e: held('E', 'SHORT', 100) } }).reasons.join(), /too much short risk/);
+  const researchFull = Object.fromEntries('CDEFGHIJ'.split('').map(c => [c, learn(c, 'SHORT', 25)]));
+  assert.match(X.admit({ ...base, book: 'learning', side: 'SHORT', positions: researchFull }).reasons.join(), /too much short risk/, 'the learning book has its own 2% cap');
+  assert.equal(X.admit({ ...base, side: 'SHORT', positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1) } }).reasons.some(r => /4 open normal-book positions/.test(r)), true);
   assert.equal(X.RULES.learnMaxOpen, 8);
   assert.match(X.admit({ ...base, positions: { a: held('ETH-USD', 'LONG', 150), b: held('SOL-USD', 'LONG', 100) } }).reasons.join(), /too much long risk/);
   assert.equal(X.admit({ ...base, positions: { a: held('ETH-USD', 'SHORT', 150), b: held('SOL-USD', 'SHORT', 100) } }).ok, true, 'opposite side: hedges');
@@ -459,4 +469,33 @@ test('a release that adds strategies or coins retrains at once instead of waitin
   assert.ok(state.model.strategies.trend4h, 'the new strategy is in the model');
   assert.match(state.log.find(l => l.kind === 'TRAIN').text, /walk-forward/);
   assert.ok(fake.calls.some(url => /granularity=3600/.test(url)));
+});
+
+test('liveReview demotes a strategy whose last 20 live trades average below -0.25R and promotes it when they recover', () => {
+  const trades = (strategy, rs) => rs.map(r => ({ strategy, r }));
+  assert.deepEqual(X.liveReview([], 'trend4h'), { trades: 0, window: 20, meanR: 0, wins: 0, demoted: false });
+  const losing = trades('trend4h', Array(20).fill(-.5));
+  assert.equal(X.liveReview(losing, 'trend4h').demoted, true);
+  assert.equal(X.liveReview(losing.slice(0, 19), 'trend4h').demoted, false, 'a full window is required');
+  assert.equal(X.liveReview(losing, 'breakout').trades, 0, 'per strategy');
+  const recovered = trades('trend4h', Array(12).fill(1)).concat(losing);  // newest first
+  const review = X.liveReview(recovered, 'trend4h');
+  assert.equal(review.trades, 20);
+  assert.equal(review.wins, 12);
+  assert.equal(review.demoted, false);
+  assert.ok(Math.abs(review.meanR - (12 - 4) / 20) < 1e-9);
+});
+
+test('the live watchdog demotes an open-gate strategy that keeps losing live: learning book, not the normal one', async () => {
+  const open = { ...UNDECIDED, strategies: { test: { params: {}, gate: { open: true, trades: 60, meanR: .3, ci: [.1, .5] } } } };
+  const d = setup({ priceOf: (s, t) => 100 + Math.sin(t / H), model: open });
+  d.state.history = Array.from({ length: 20 }, () => ({ strategy: 'test', r: -1, risk: 25, pnl: -25, learning: false, openedAt: new Date(0).toISOString() }));
+  await d.pilot.tick();
+  const held = Object.values(d.state.positions)[0];
+  assert.equal(held.book, 'learning');
+  assert.match(d.state.log.find(l => l.kind === 'DEMOTE').text, /last 20 live trades average -1\.00R/);
+  const status = statusOf(d.state, { now: 600 * H });
+  assert.equal(status.model.strategies.test.demoted, true);
+  assert.equal(status.model.strategies.test.learnable, true);
+  assert.equal(status.model.strategies.test.live.trades, 20);
 });
