@@ -8,6 +8,7 @@
 - **Stale data guard.** `fetchCandles` refuses a feed whose newest bar is older than 3 intervals (at least 30 minutes). Coinbase falls back to Kraken; if both are stale, the coin is not traded.
 - **No hung ticks.** Polymarket requests now time out after 15 seconds like every other request.
 - **Health in the status.** `health` lists stale prices, errors in the last hour and the model's age. The board shows `⚠ stale prices` and `⚠ SILENT` when the agent stops reporting.
+- **Restart after a kill-switch halt.** Until now a halted agent stayed stopped for good. A new value of the repository variable `METYU_RESET_HALT` now clears the halt once, in both agents, and the drawdown is counted again from the current equity. Every value is remembered, so a variable left in place never clears a later halt.
 - **Watchdog.** `.github/workflows/watchdog.yml` and `scripts/watchdog.js` check the published state hourly and keep one `metyu-watchdog` issue open while something is wrong. That issue is a phone notification, and it closes itself when everything is healthy again.
 
 ## 2.0.0: real time, real data, virtual money

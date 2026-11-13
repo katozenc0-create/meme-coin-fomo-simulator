@@ -21,7 +21,7 @@ const X = require('./metyu-exchange.js');
 const HOUR = X.HOUR;
 const DEFAULTS = Object.freeze({
   bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR,
-  learn: false, pause: false, liveBars: 900, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
+  learn: false, pause: false, resetHalt: '', liveBars: 900, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
 });
 const MINUTE = 60000;
 const QUARTER = 15 * MINUTE;
@@ -63,6 +63,22 @@ function learnable(trained) {
   if (!trained) return true;
   const gate = trained.gate;
   return gate.trades < X.RULES.minTrades || gate.ci[1] > 0;
+}
+
+/**
+ * The owner's deliberate restart after the kill-switch: a NEW value of METYU_RESET_HALT (any text,
+ * for example today's date) clears the halt ONCE and restarts the drawdown from the current equity.
+ * Every value is remembered, so a variable left in place never clears a later halt by itself.
+ */
+function applyHaltReset(state, token, equityNow, say) {
+  const value = typeof token === 'string' ? token.trim().slice(0, 64) : '';
+  if (!value || state.lastHaltReset === value) return false;
+  state.lastHaltReset = value;
+  if (!state.account.halted) return false;
+  state.account.halted = false;
+  state.account.peak = equityNow;
+  say('RESET', `kill-switch cleared by the owner (METYU_RESET_HALT=${value}); the drawdown counts again from ${equityNow.toFixed(2)}`);
+  return true;
 }
 
 function createExchangeAutopilot({ getJson, now = () => Date.now(), state = freshState(), options = {} }) {
@@ -219,6 +235,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
 
     // 3. Account guards: the day's starting equity, the peak and the drawdown kill-switch.
     let eq = equity();
+    if (applyHaltReset(state, opts.resetHalt, eq, say)) state.account.dayStartEquity = eq;
     const day = new Date(t).toISOString().slice(0, 10);
     if (state.account.day !== day) { state.account.day = day; state.account.dayStartEquity = eq; }
     if (!state.account.halted && eq <= state.account.peak * (1 - rules.killDrawdown)) {
@@ -384,7 +401,7 @@ async function main() {
   const state = loadState(args.state, { bankroll: args.bankroll });
   const getJson = makeGetJson();
   const pause = args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || '');
-  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, trainBars: args['train-bars'], retrainHours: args.retrain, ...(args.symbols ? { symbols: args.symbols } : {}) } });
+  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, resetHalt: process.env.METYU_RESET_HALT || '', trainBars: args['train-bars'], retrainHours: args.retrain, ...(args.symbols ? { symbols: args.symbols } : {}) } });
   console.log(`Metyu exchange autopilot · virtual money only · ${Object.keys(state.positions).length} open · learning book ${args.learn ? 'on' : 'off'} · state ${args.state}`);
   for (;;) {
     try {
@@ -404,4 +421,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error.message); process.exit(1); });
 
-module.exports = { createExchangeAutopilot, learnable, healthOf, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };
+module.exports = { createExchangeAutopilot, learnable, healthOf, applyHaltReset, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };

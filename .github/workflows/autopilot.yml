@@ -11,6 +11,8 @@ name: autopilot
 #
 # Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
 #   METYU_PAUSE=true       emergency pause from the phone: no new positions, exits still managed
+#   METYU_RESET_HALT=<new> after a kill-switch halt: any NEW value (e.g. today's date) restarts the
+#                          agents once, the drawdown counted from the current equity
 #   METYU_RUNNER=external  an always-on machine runs scripts/realtime.sh (1-minute ticks) and
 #                          publishes; this workflow then stays out of the way (one writer only)
 #
@@ -42,6 +44,7 @@ jobs:
       contents: write                # only to update the autopilot-data branch
     env:
       METYU_PAUSE: ${{ vars.METYU_PAUSE }}
+      METYU_RESET_HALT: ${{ vars.METYU_RESET_HALT }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0 (Node 24)
         with:

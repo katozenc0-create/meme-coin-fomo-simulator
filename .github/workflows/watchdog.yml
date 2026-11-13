@@ -4,7 +4,8 @@ name: watchdog
 # (best-effort on GitHub) it reads the published state from the autopilot-data branch and checks
 # that both agents are alive, not halted, on fresh prices and on a recent model
 # (scripts/watchdog.js). While anything is wrong it keeps ONE issue labelled `metyu-watchdog`
-# open (GitHub notifies the owner's phone) and closes it when everything is healthy again.
+# open (GitHub notifies the owner's phone) and closes it when everything is healthy again. With
+# Issues turned off in the repository, the run fails instead, and GitHub notifies the failure.
 #
 # Security: actions pinned to commit SHAs; read-only contents; the token may only manage issues.
 on:
@@ -49,6 +50,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
           STATUS: ${{ steps.check.outputs.status }}
         run: |
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          # With Issues turned off in the repository settings, the failed run itself is the alarm
+          # (GitHub notifies the owner of a failed scheduled run).
+          if [ "$(gh api "repos/$GH_REPO" --jq .has_issues)" != "true" ]; then
+            if [ "$STATUS" != "0" ]; then
+              echo "::error title=Metyu watchdog::$(grep '^- ' report.md | tr '\n' ' ')"
+              exit 1
+            fi
+            exit 0
+          fi
           gh label create metyu-watchdog --color B60205 --description "Opened and closed by the Metyu watchdog" --force > /dev/null
           open=$(gh issue list --label metyu-watchdog --state open --json number --jq '.[0].number // empty')
           if [ "$STATUS" != "0" ]; then

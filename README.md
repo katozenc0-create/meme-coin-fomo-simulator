@@ -303,6 +303,8 @@ The token can only start this repository's workflows. It cannot read secrets, pu
 
 GitHub notifies you on the phone, and the issue closes itself when everything is healthy again. Turn on the cron service's own failure e-mails as a second alarm.
 
+**After a kill-switch halt.** A halted agent opens nothing until you restart it deliberately. Set the repository variable `METYU_RESET_HALT` (Settings → Secrets and variables → Actions → Variables) to a new value, for example today's date. The next tick clears the halt once and counts the drawdown again from the current equity. A value left in place never clears a later halt.
+
 **Stale data is never traded.** A price feed whose newest bar is older than 3 bar intervals (at least 30 minutes) is refused: Coinbase falls back to Kraken, and if both are stale the coin is skipped. The board shows `⚠ stale prices: …`. Every network request has a 15-second time-out, so a hung request cannot freeze a tick.
 
 ## Metyu 2.0: real time (virtual money)

@@ -25,7 +25,7 @@ const DEFAULTS = Object.freeze({
   bankroll: 10000, slots: 12, maxGross: 1.5, maxOpen: 6, maxPerCluster: 2, maxLeverage: 3,
   maxPositionPct: .1, refreshMarketsMs: 3600000, historyLimit: 1000, logLimit: 300,
   train: 0, retrainHours: 24, trainKind: 'calib', trainSpread: .02, tradeHorizon: 7, trainRetryMs: 3600000,
-  learn: false, learnStake: .01, learnMinEdge: .01, pause: false
+  learn: false, learnStake: .01, learnMinEdge: .01, pause: false, resetHalt: ''
 });
 
 function freshState(options = {}) {
@@ -41,6 +41,22 @@ function freshState(options = {}) {
 function makeFetchJson({ api = null, fetchImpl = (typeof fetch === 'function' ? fetch : null) } = {}) {
   const client = M.createDataClient(fetchImpl);
   return urls => client.fetchJson(urls.map(url => (url.startsWith('/api/') ? (api ? `${api.replace(/\/$/, '')}${url}` : null) : url)).filter(Boolean));
+}
+
+/**
+ * The owner's deliberate restart after the kill-switch: a NEW value of METYU_RESET_HALT (any text,
+ * for example today's date) clears the halt ONCE and restarts the drawdown from the current equity.
+ * Every value is remembered, so a variable left in place never clears a later halt by itself.
+ */
+function applyHaltReset(state, token, equityNow, say) {
+  const value = typeof token === 'string' ? token.trim().slice(0, 64) : '';
+  if (!value || state.lastHaltReset === value) return false;
+  state.lastHaltReset = value;
+  if (!state.account.halted) return false;
+  state.account.halted = false;
+  state.account.peak = equityNow;
+  say('RESET', `kill-switch cleared by the owner (METYU_RESET_HALT=${value}); the drawdown counts again from ${equityNow.toFixed(2)}`);
+  return true;
 }
 
 function createAutopilot({ fetchJson, now = () => Date.now(), state = freshState(), options = {} }) {
@@ -162,6 +178,7 @@ function createAutopilot({ fetchJson, now = () => Date.now(), state = freshState
       if (liq > 0 && M.sidePriceOf(held.position, held.lastYes) <= liq) close(id, 0, `liquidated at ${(M.sidePriceOf(held.position, held.lastYes) * 100).toFixed(1)}c`);
     }
     const eq = equity();
+    applyHaltReset(state, opts.resetHalt, eq, say);
     state.account.peak = Math.max(state.account.peak, eq);
     const maxDd = (options.config && options.config.maxDrawdownPct) || M.DEFAULT_CONFIG.maxDrawdownPct;
     if (!state.account.halted && state.account.peak > 0 && 1 - eq / state.account.peak >= maxDd) {
@@ -303,7 +320,7 @@ async function main() {
     if (!M.isValidSavedModel(model)) throw new Error(`${args.model} is not a valid Metyu model`);
     state.model = model;
   }
-  const pilot = createAutopilot({ fetchJson: makeFetchJson({ api: args.api }), state, options: { bankroll: args.bankroll, train: args.train, retrainHours: args.retrain, learn: args.learn, pause: args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || '') } });
+  const pilot = createAutopilot({ fetchJson: makeFetchJson({ api: args.api }), state, options: { bankroll: args.bankroll, train: args.train, retrainHours: args.retrain, learn: args.learn, pause: args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || ''), resetHalt: process.env.METYU_RESET_HALT || '' } });
   const gate = (M.modelMayTrade(state.model) ? 'evidence gate OPEN: may trade' : state.model ? 'evidence gate CLOSED: watch only' : 'no model: watch only')
     + (args.train ? ` · self-training on ${args.train} resolved markets every ${args.retrain} h` : '')
     + (args.learn ? ' · learning book on (1% unlevered forward test while the gate is closed)' : '');

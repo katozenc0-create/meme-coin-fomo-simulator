@@ -31,7 +31,7 @@ function assess({ exchange, polymarket, now = Date.now(), limits = LIMITS }) {
   };
   if (!silent('crypto agent', exchange)) {
     const account = exchange.account || {};
-    if (account.halted) problems.push('crypto agent: HALTED by the kill-switch (-15% from the peak); it opens nothing until the owner resets it');
+    if (account.halted) problems.push('crypto agent: HALTED by the kill-switch (-15% from the peak); it opens nothing until the owner sets a new value of the repository variable METYU_RESET_HALT (for example today\'s date)');
     const health = exchange.health || {};
     if (health.staleMarks && health.staleMarks.length >= limits.staleCoins) problems.push(`crypto agent: stale prices for ${health.staleMarks.join(', ')} (their feed failed; not traded)`);
     if (health.errorsLastHour >= limits.errorsPerHour) problems.push(`crypto agent: ${health.errorsLastHour} errors in the last hour`);
@@ -40,7 +40,7 @@ function assess({ exchange, polymarket, now = Date.now(), limits = LIMITS }) {
     else if ((now - trainedAt) / HOUR >= limits.modelHours) problems.push(`crypto agent: the model is ${Math.round((now - trainedAt) / HOUR)} h old (daily training keeps failing)`);
   }
   if (!silent('Polymarket agent', polymarket)) {
-    if (polymarket.account && polymarket.account.halted) problems.push('Polymarket agent: HALTED by the kill-switch');
+    if (polymarket.account && polymarket.account.halted) problems.push('Polymarket agent: HALTED by the kill-switch (restart: a new value of METYU_RESET_HALT)');
   }
   return problems;
 }

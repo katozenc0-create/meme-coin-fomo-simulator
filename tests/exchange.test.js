@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const X = require('../metyu-exchange.js');
-const { createExchangeAutopilot, freshState, forwardEvidence, statusOf, loadState, saveState, parseArgs, learnable, healthOf } = require('../exchange-autopilot.js');
+const { createExchangeAutopilot, freshState, forwardEvidence, statusOf, loadState, saveState, parseArgs, learnable, healthOf, applyHaltReset } = require('../exchange-autopilot.js');
 
 const H = X.HOUR;
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≈ ${b}`);
@@ -516,4 +516,43 @@ test('healthOf flags stale prices, a burst of errors and an old model', () => {
   assert.equal(health.errorsLastHour, 30);
   assert.equal(health.ok, false);
   assert.equal(healthOf({ marks: {}, log: [] }, now).ok, false, 'no model yet');
+});
+
+test('applyHaltReset: a NEW METYU_RESET_HALT value clears a kill-switch halt once; a value left in place never clears a later halt', () => {
+  const logs = [];
+  const say = (kind, text) => logs.push([kind, text]);
+  const state = freshState();
+  state.account.halted = true;
+  state.account.peak = 10000;
+  assert.equal(applyHaltReset(state, '', 8400, say), false, 'no value: stays halted');
+  assert.equal(state.account.halted, true);
+  assert.equal(applyHaltReset(state, '2026-11-13', 8400, say), true);
+  assert.equal(state.account.halted, false);
+  assert.equal(state.account.peak, 8400, 'the drawdown counts again from the current equity');
+  assert.match(logs[0][1], /kill-switch cleared by the owner/);
+  state.account.halted = true;                                         // a later halt
+  assert.equal(applyHaltReset(state, '2026-11-13', 7000, say), false, 'the same value never clears it again');
+  assert.equal(state.account.halted, true);
+  const fresh = freshState();
+  assert.equal(applyHaltReset(fresh, 'early', 10000, say), false, 'not halted: the value is only remembered');
+  fresh.account.halted = true;
+  assert.equal(applyHaltReset(fresh, 'early', 9000, say), false, 'a value set before the halt does not clear it');
+});
+
+test('the exchange autopilot restarts after a halt when the owner sets a new reset value', async () => {
+  const fake = fakeExchange((s, t) => 100 + Math.sin(t / H));
+  let clock = 600 * H + 7 * 60000;
+  fake.now = () => clock;
+  const state = freshState();
+  state.model = UNDECIDED;
+  state.account.halted = true;
+  const halted = createExchangeAutopilot({ getJson: fake.getJson, now: () => clock, state, options: { symbols: ['AAA-USD'], learn: true, trainBars: 600, strategies: { test: ALWAYS_LONG } } });
+  await halted.tick();
+  assert.equal(Object.keys(state.positions).length, 0, 'halted: nothing opens');
+  clock += H;
+  const reset = createExchangeAutopilot({ getJson: fake.getJson, now: () => clock, state, options: { symbols: ['AAA-USD'], learn: true, trainBars: 600, strategies: { test: ALWAYS_LONG }, resetHalt: 'restart-1' } });
+  await reset.tick();
+  assert.equal(state.account.halted, false);
+  assert.equal(state.log.some(l => l.kind === 'RESET'), true);
+  assert.equal(Object.keys(state.positions).length, 1, 'trading again');
 });
