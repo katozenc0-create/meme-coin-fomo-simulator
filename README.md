@@ -243,7 +243,7 @@ Each reading comes with plain-language notes you can check against the chart on 
   - 72-hour time stop.
 
 **Portfolio rules:**
-- at most 4 positions, and one per coin;
+- at most 4 positions in the normal book (8 in the learning book, whose trades risk 0.25% each), and one per coin;
 - open risk in one direction is capped at 3% of equity, because crypto moves together;
 - all margin together is capped at 60% of equity;
 - no new positions after a 4% loss in a UTC day;

@@ -47,7 +47,8 @@
     learnMaxLeverage: 2,
     maxPositionPct: .25,      // margin of one position <= 25% of equity
     maxMarginPct: .6,         // all margins together <= 60% of equity
-    maxOpen: 4,
+    maxOpen: 4,               // positions open at once (normal book)
+    learnMaxOpen: 8,          // the learning book's tiny trades may fill all 8 coins (8 x 0.25% = 2% risk; the 3% side cap still holds)
     maxSideRiskPct: .03,      // crypto moves together: open risk in one direction <= 3% of equity
     dailyLossPct: .04,        // after -4% in a UTC day, no new positions that day
     killDrawdown: .15,        // -15% from the peak: close everything and halt
@@ -542,7 +543,8 @@
     const reasons = [];
     const open = Object.values(positions);
     if (account.halted) reasons.push('kill-switch: account halted');
-    if (open.length >= rules.maxOpen) reasons.push(`already ${open.length} open positions (max ${rules.maxOpen})`);
+    const maxOpen = book === 'gated' ? rules.maxOpen : (rules.learnMaxOpen ?? rules.maxOpen);
+    if (open.length >= maxOpen) reasons.push(`already ${open.length} open positions (max ${maxOpen})`);
     if (open.some(held => held.symbol === symbol)) reasons.push('already a position on this coin');
     const lastLoss = lastLossAt[symbol];
     if (lastLoss && now - lastLoss < rules.cooldownHours * HOUR) reasons.push(`cool-down after a loss (${rules.cooldownHours} h)`);

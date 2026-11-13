@@ -214,6 +214,12 @@ test('admit enforces the kill-switch, position count, one per coin, cool-down, s
   assert.match(X.admit({ ...base, account: { ...account, halted: true } }).reasons.join(), /kill-switch/);
   assert.match(X.admit({ ...base, positions: { a: held('BTC-USD') } }).reasons.join(), /already a position on this coin/);
   assert.match(X.admit({ ...base, positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1) } }).reasons.join(), /4 open positions/);
+  // The learning book's tiny trades may fill all 8 coins; the normal book keeps its limit of 4.
+  const four = { a: held('A', 'SHORT', 1, 100), b: held('B', 'SHORT', 1, 100), c: held('C', 'SHORT', 1, 100), d: held('D', 'SHORT', 1, 100) };
+  assert.equal(X.admit({ ...base, book: 'learning', positions: four }).ok, true, 'a 5th learning position is allowed');
+  const eight = { ...four, e: held('E', 'SHORT', 1, 100), f: held('F', 'SHORT', 1, 100), g: held('G', 'SHORT', 1, 100), h: held('H', 'SHORT', 1, 100) };
+  assert.match(X.admit({ ...base, book: 'learning', positions: eight }).reasons.join(), /8 open positions \(max 8\)/);
+  assert.equal(X.RULES.learnMaxOpen, 8);
   assert.match(X.admit({ ...base, positions: { a: held('ETH-USD', 'LONG', 150), b: held('SOL-USD', 'LONG', 100) } }).reasons.join(), /too much long risk/);
   assert.equal(X.admit({ ...base, positions: { a: held('ETH-USD', 'SHORT', 150), b: held('SOL-USD', 'SHORT', 100) } }).ok, true, 'opposite side: hedges');
   assert.match(X.admit({ ...base, lastLossAt: { 'BTC-USD': -H } }).reasons.join(), /cool-down/);
