@@ -131,7 +131,7 @@ function binanceProvider({ apiKey, apiSecret, baseUrl = 'https://api.binance.com
 // ---------- Solana: a public wallet address read over JSON-RPC (no key at all) ----------
 const Wallet = require('./metyu-wallet.js');
 const SOLANA_MINTS = Wallet.MINTS;
-function solanaProvider({ address, rpcUrl, priceUrl = Wallet.DEFAULT_PRICES, fetchImpl = fetch }) {
+function solanaProvider({ address, rpcUrl, balancesUrl, priceUrl = Wallet.DEFAULT_PRICES, fetchImpl = fetch }) {
   const wallet = Wallet.normaliseAddress(address);
   if (!wallet) throw new Error('SOLANA_WALLET_ADDRESS is not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key. Fix or delete the secret, or simply link the wallet on the Live Board instead (no secret needed).');
   if (rpcUrl && !/^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(rpcUrl)) throw new Error('SOLANA_RPC_URL must be an https URL');
@@ -139,7 +139,7 @@ function solanaProvider({ address, rpcUrl, priceUrl = Wallet.DEFAULT_PRICES, fet
     name: 'solana',
     // An address cannot sign anything: view-only by construction.
     async permissions() { return { canView: true, canTrade: false, canWithdraw: false, canTransfer: false, raw: { type: 'public address', network: 'solana', canSign: false } }; },
-    balances: () => Wallet.solanaBalances({ address: wallet, rpcUrl, priceUrl, fetchImpl })
+    balances: () => Wallet.solanaBalances({ address: wallet, rpcUrl, priceUrl, fetchImpl, ...(balancesUrl === undefined ? {} : { balancesUrl }) })
   };
 }
 

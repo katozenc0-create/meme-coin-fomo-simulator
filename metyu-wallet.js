@@ -21,10 +21,14 @@
     Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: 'USDT',
     So11111111111111111111111111111111111111112: 'wSOL'
   });
+  // Where balances come from, in order. Jupiter's balances API answers browsers (CORS) and returns
+  // SOL and every token in one request. Solana's own public RPC refuses browser origins (HTTP 403)
+  // but serves servers, so it is the fallback (the GitHub runner). publicnode was tried and dropped:
+  // it blocks the token-account lookup without a personal token.
+  const DEFAULT_BALANCES = 'https://lite-api.jup.ag/ultra/v1/balances';
   const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
-  // A second public endpoint, tried when the first refuses (rate limits, a browser it does not serve).
-  const FALLBACK_RPCS = Object.freeze(['https://solana-rpc.publicnode.com']);
   const DEFAULT_PRICES = 'https://lite-api.jup.ag/price/v3';
+  const HTTPS_URL = /^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i;
 
   /**
    * The address from whatever was pasted: trims spaces and line breaks, and accepts a payment link
@@ -38,31 +42,55 @@
 
   /**
    * Balances of `address`: [{ asset, mint?, free, locked: 0, price? }]. SOL first, then each token
-   * (accounts of one mint added up; empty ones skipped). `price` (USD) is set for tokens priced on
-   * Jupiter; SOL and stablecoins are priced by the caller (Coinbase, $1).
+   * (empty ones skipped). `price` (USD) is set for tokens priced on Jupiter; SOL and stablecoins are
+   * priced by the caller (Coinbase, $1). Sources are tried in order; if all fail, the error names
+   * each source and why. `balancesUrl: null` skips Jupiter's balances API.
    */
-  async function solanaBalances({ address, rpcUrl, rpcUrls, priceUrl = DEFAULT_PRICES, fetchImpl = fetch }) {
+  async function solanaBalances({ address, rpcUrl, rpcUrls, balancesUrl = DEFAULT_BALANCES, priceUrl = DEFAULT_PRICES, fetchImpl = fetch }) {
     const wallet = normaliseAddress(address);
     if (!wallet) throw new Error('not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key.');
-    const endpoints = rpcUrls || (rpcUrl ? [rpcUrl] : [DEFAULT_RPC, ...FALLBACK_RPCS]);
-    if (!endpoints.length || !endpoints.every(url => /^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(url))) throw new Error('the Solana RPC URL must be an https URL');
-    let lastError = null;
-    for (const endpoint of endpoints) {
+    const endpoints = rpcUrls || (rpcUrl ? [rpcUrl] : [DEFAULT_RPC]);
+    if (!endpoints.every(url => HTTPS_URL.test(url)) || (balancesUrl && !HTTPS_URL.test(balancesUrl))) throw new Error('the Solana RPC URL must be an https URL');
+    const sources = [
+      ...(balancesUrl ? [{ name: 'Jupiter', read: () => readJupiter({ wallet, balancesUrl, fetchImpl }) }] : []),
+      ...endpoints.map(url => ({ name: new URL(url).host, read: () => readRpc({ wallet, rpcUrl: url, fetchImpl }) }))
+    ];
+    const errors = [];
+    for (const source of sources) {
       try {
-        return await readWallet({ wallet, rpcUrl: endpoint, priceUrl, fetchImpl });
-      } catch (error) { lastError = error; }               // try the next endpoint
+        const { lamports, byMint } = await source.read();
+        return assemble({ lamports, byMint, prices: await priceMints({ mints: [...byMint.keys()], priceUrl, fetchImpl }) });
+      } catch (error) { errors.push(`${source.name}: ${error.message}`); }   // try the next source
     }
-    throw lastError;
+    throw new Error(errors.join('; '));
   }
 
-  async function readWallet({ wallet, rpcUrl, priceUrl, fetchImpl }) {
+  /** Jupiter's balances API: { SOL: { uiAmount }, <mint>: { uiAmount }, ... } in one request. */
+  async function readJupiter({ wallet, balancesUrl, fetchImpl }) {
+    const response = await fetchImpl(`${balancesUrl}/${wallet}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!data || typeof data !== 'object' || Array.isArray(data) || data.error) throw new Error((data && data.error) || 'unexpected answer');
+    let lamports = 0;
+    const byMint = new Map();
+    for (const [key, value] of Object.entries(data)) {
+      const amount = Number(value && (value.uiAmount ?? value.uiAmountString)) || 0;
+      if (key === 'SOL') lamports = Math.round(amount * 1e9);
+      // Only well-formed mint addresses go on (they end up in a price request URL).
+      else if (amount > 0 && SOLANA_ADDRESS.test(key)) byMint.set(key, (byMint.get(key) || 0) + amount);
+    }
+    return { lamports, byMint };
+  }
+
+  /** Solana JSON-RPC: getBalance + getTokenAccountsByOwner (SPL Token and Token-2022). */
+  async function readRpc({ wallet, rpcUrl, fetchImpl }) {
     let id = 0;
     async function rpc(method, params) {
       id += 1;
       const response = await fetchImpl(rpcUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }), signal: AbortSignal.timeout(15000) });
-      if (!response.ok) throw new Error(`Solana RPC ${method}: HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`${method} HTTP ${response.status}`);
       const data = await response.json();
-      if (data.error) throw new Error(`Solana RPC ${method}: ${data.error.message || 'error'}`);
+      if (data.error) throw new Error(`${method} ${data.error.message || 'error'}`);
       return data.result;
     }
     const lamports = Number((await rpc('getBalance', [wallet, { commitment: 'confirmed' }])).value) || 0;
@@ -71,14 +99,17 @@
       const result = await rpc('getTokenAccountsByOwner', [wallet, { programId }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
       for (const entry of (result && result.value) || []) {
         const info = entry && entry.account && entry.account.data && entry.account.data.parsed && entry.account.data.parsed.info;
-        // Only well-formed mint addresses go on (they end up in a price request URL).
         if (!info || !SOLANA_ADDRESS.test(String(info.mint)) || !info.tokenAmount) continue;
         const amount = Number(info.tokenAmount.uiAmountString ?? info.tokenAmount.uiAmount) || 0;
         if (amount > 0) byMint.set(info.mint, (byMint.get(info.mint) || 0) + amount);
       }
     }
-    // USD prices for tokens Coinbase does not list (meme coins and the like), from Jupiter.
-    const unknown = [...byMint.keys()].filter(mint => !MINTS[mint] || MINTS[mint] === 'wSOL');
+    return { lamports, byMint };
+  }
+
+  /** USD prices for tokens Coinbase does not list (meme coins and the like), from Jupiter. */
+  async function priceMints({ mints, priceUrl, fetchImpl }) {
+    const unknown = mints.filter(mint => !MINTS[mint] || MINTS[mint] === 'wSOL');
     const prices = {};
     for (let i = 0; i < unknown.length; i += 50) {
       try {
@@ -87,6 +118,10 @@
         if (response.ok) Object.assign(prices, await response.json());
       } catch (error) { /* unpriced: shown without a USD value */ }
     }
+    return prices;
+  }
+
+  function assemble({ lamports, byMint, prices }) {
     const out = lamports > 0 ? [{ asset: 'SOL', free: lamports / 1e9, locked: 0 }] : [];
     for (const [mint, amount] of byMint) {
       const known = MINTS[mint];
@@ -96,5 +131,5 @@
     return out;
   }
 
-  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_RPC, FALLBACK_RPCS, DEFAULT_PRICES, normaliseAddress, shortAddress, solanaBalances };
+  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_BALANCES, DEFAULT_RPC, DEFAULT_PRICES, normaliseAddress, shortAddress, solanaBalances };
 }));
