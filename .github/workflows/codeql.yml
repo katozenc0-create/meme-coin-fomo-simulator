@@ -33,3 +33,13 @@ jobs:
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3 (Node 24)
         with:
           category: /language:${{ matrix.language }}
+          output: sarif-results
+      # Findings in the log too (rule, file:line, message), so they can be read without the
+      # Security tab (e.g. by the agent that maintains this repository).
+      - name: List findings
+        if: always()
+        run: |
+          shopt -s nullglob
+          for f in sarif-results/*.sarif; do
+            jq -r '.runs[].results[]? | "\(.level // "warning") \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine) \(.message.text | gsub("\n"; " "))"' "$f"
+          done
