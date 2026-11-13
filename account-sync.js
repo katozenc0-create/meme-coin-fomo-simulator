@@ -160,7 +160,8 @@ function solanaProvider({ address, rpcUrl = 'https://api.mainnet-beta.solana.com
         const result = await rpc('getTokenAccountsByOwner', [wallet, { programId }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
         for (const entry of (result && result.value) || []) {
           const info = entry && entry.account && entry.account.data && entry.account.data.parsed && entry.account.data.parsed.info;
-          if (!info || !info.mint || !info.tokenAmount) continue;
+          // Only well-formed mint addresses go on (they end up in a price request URL).
+          if (!info || !SOLANA_ADDRESS.test(String(info.mint)) || !info.tokenAmount) continue;
           const amount = Number(info.tokenAmount.uiAmountString ?? info.tokenAmount.uiAmount) || 0;
           if (amount > 0) byMint.set(info.mint, (byMint.get(info.mint) || 0) + amount);
         }
@@ -170,7 +171,8 @@ function solanaProvider({ address, rpcUrl = 'https://api.mainnet-beta.solana.com
       const prices = {};
       for (let i = 0; i < unknown.length; i += 50) {
         try {
-          const response = await fetchImpl(`${priceUrl}?ids=${unknown.slice(i, i + 50).join(',')}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+          const query = new URLSearchParams({ ids: unknown.slice(i, i + 50).join(',') });
+          const response = await fetchImpl(`${priceUrl}?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
           if (response.ok) Object.assign(prices, await response.json());
         } catch (error) { /* unpriced: shown without a USD value */ }
       }

@@ -214,7 +214,8 @@ function fakeSolana({ lamports = 2_500_000_000, prices = { [MEME]: { usdPrice: 0
   const fetchImpl = async (url, init = {}) => {
     calls.push({ url, init });
     const reply = body => ({ ok: true, status: 200, json: async () => body });
-    if (url.startsWith('https://lite-api.jup.ag/price/v3')) return reply(prices);
+    const target = new URL(url);
+    if (target.host === 'lite-api.jup.ag' && target.pathname === '/price/v3') return reply(prices);
     const { method, params, id } = JSON.parse(init.body);
     if (rpcError) return reply({ jsonrpc: '2.0', id, error: { message: rpcError } });
     if (method === 'getBalance') return reply({ jsonrpc: '2.0', id, result: { value: lamports } });
@@ -236,9 +237,10 @@ test('Solana wallet: SOL and tokens read from the public address, priced, and vi
   const balances = await provider.balances();
   assert.deepEqual(balances.map(b => [b.asset, b.free]), [['SOL', 2.5], ['USDC', 12.5], [`${MEME.slice(0, 4)}…${MEME.slice(-4)}`, 1500]], 'accounts of one mint add up; empty ones are skipped');
   assert.equal(balances[2].price, .002);
-  const rpcCalls = fake.calls.filter(c => c.url === 'https://api.mainnet-beta.solana.com');
+  const rpcCalls = fake.calls.filter(c => new URL(c.url).host === 'api.mainnet-beta.solana.com');
   assert.ok(rpcCalls.every(c => c.init.method === 'POST' && ['getBalance', 'getTokenAccountsByOwner'].includes(JSON.parse(c.init.body).method)), 'read-only RPC methods only');
-  assert.match(fake.calls.find(c => c.url.includes('jup.ag')).url, new RegExp(`ids=${MEME}$`), 'only unlisted tokens are priced on Jupiter');
+  const priceCall = fake.calls.find(c => new URL(c.url).host === 'lite-api.jup.ag');
+  assert.equal(new URL(priceCall.url).searchParams.get('ids'), MEME, 'only unlisted tokens are priced on Jupiter');
 
   const getJson = async url => { if (url.includes('SOL-USD')) return { price: '150' }; throw new Error('HTTP 404'); };
   const { box, publicInfo, snapshot } = await A.syncAccount({ provider: A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana().fetchImpl }), passphrase: PASS, getJson, now: () => 0 });
