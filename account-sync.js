@@ -129,61 +129,17 @@ function binanceProvider({ apiKey, apiSecret, baseUrl = 'https://api.binance.com
 }
 
 // ---------- Solana: a public wallet address read over JSON-RPC (no key at all) ----------
-const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;                 // base58 public key
-const SOLANA_TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'];
-const SOLANA_MINTS = Object.freeze({
-  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: 'USDC',
-  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: 'USDT',
-  So11111111111111111111111111111111111111112: 'wSOL'
-});
-function solanaProvider({ address, rpcUrl = 'https://api.mainnet-beta.solana.com', priceUrl = 'https://lite-api.jup.ag/price/v3', fetchImpl = fetch }) {
-  const wallet = String(address || '').trim();
-  if (!SOLANA_ADDRESS.test(wallet)) throw new Error('SOLANA_WALLET_ADDRESS is not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key.');
+const Wallet = require('./metyu-wallet.js');
+const SOLANA_MINTS = Wallet.MINTS;
+function solanaProvider({ address, rpcUrl = Wallet.DEFAULT_RPC, priceUrl = Wallet.DEFAULT_PRICES, fetchImpl = fetch }) {
+  const wallet = Wallet.normaliseAddress(address);
+  if (!wallet) throw new Error('SOLANA_WALLET_ADDRESS is not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key.');
   if (!/^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(rpcUrl)) throw new Error('SOLANA_RPC_URL must be an https URL');
-  let id = 0;
-  async function rpc(method, params) {
-    id += 1;
-    const response = await fetchImpl(rpcUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }), signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`Solana RPC ${method}: HTTP ${response.status}`);
-    const data = await response.json();
-    if (data.error) throw new Error(`Solana RPC ${method}: ${data.error.message || 'error'}`);
-    return data.result;
-  }
   return {
     name: 'solana',
     // An address cannot sign anything: view-only by construction.
     async permissions() { return { canView: true, canTrade: false, canWithdraw: false, canTransfer: false, raw: { type: 'public address', network: 'solana', canSign: false } }; },
-    async balances() {
-      const lamports = Number((await rpc('getBalance', [wallet, { commitment: 'confirmed' }])).value) || 0;
-      const byMint = new Map();
-      for (const programId of SOLANA_TOKEN_PROGRAMS) {
-        const result = await rpc('getTokenAccountsByOwner', [wallet, { programId }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
-        for (const entry of (result && result.value) || []) {
-          const info = entry && entry.account && entry.account.data && entry.account.data.parsed && entry.account.data.parsed.info;
-          // Only well-formed mint addresses go on (they end up in a price request URL).
-          if (!info || !SOLANA_ADDRESS.test(String(info.mint)) || !info.tokenAmount) continue;
-          const amount = Number(info.tokenAmount.uiAmountString ?? info.tokenAmount.uiAmount) || 0;
-          if (amount > 0) byMint.set(info.mint, (byMint.get(info.mint) || 0) + amount);
-        }
-      }
-      // USD prices for tokens Coinbase does not list (meme coins and the like), from Jupiter.
-      const unknown = [...byMint.keys()].filter(mint => !SOLANA_MINTS[mint] || SOLANA_MINTS[mint] === 'wSOL');
-      const prices = {};
-      for (let i = 0; i < unknown.length; i += 50) {
-        try {
-          const query = new URLSearchParams({ ids: unknown.slice(i, i + 50).join(',') });
-          const response = await fetchImpl(`${priceUrl}?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
-          if (response.ok) Object.assign(prices, await response.json());
-        } catch (error) { /* unpriced: shown without a USD value */ }
-      }
-      const out = lamports > 0 ? [{ asset: 'SOL', free: lamports / 1e9, locked: 0 }] : [];
-      for (const [mint, amount] of byMint) {
-        const known = SOLANA_MINTS[mint];
-        const price = prices[mint] && Number(prices[mint].usdPrice ?? prices[mint].price);
-        out.push({ asset: known || `${mint.slice(0, 4)}…${mint.slice(-4)}`, mint, free: amount, locked: 0, ...(Number.isFinite(price) && price > 0 ? { price } : {}) });
-      }
-      return out;
-    }
+    balances: () => Wallet.solanaBalances({ address: wallet, rpcUrl, priceUrl, fetchImpl })
   };
 }
 

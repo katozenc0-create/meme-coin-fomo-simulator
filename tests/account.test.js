@@ -267,3 +267,14 @@ test('Solana wallet: bad addresses (or a seed phrase) are refused, RPC errors re
   assert.match(lines.join('\n'), /not a Solana address/);
   assert.ok(!lines.join('\n').includes('my seed words here'), 'never echoed');
 });
+
+test('wallet address input: payment links and stray spaces are accepted, anything else is not', () => {
+  const W = require('../metyu-wallet.js');
+  assert.equal(W.normaliseAddress(`  ${WALLET}\n`), WALLET);
+  assert.equal(W.normaliseAddress(`solana:${WALLET}?amount=1&label=x`), WALLET);
+  assert.equal(W.normaliseAddress('abandon ability able about above absent absorb abstract absurd abuse access accident'), null, 'a seed phrase is not an address');
+  assert.equal(W.normaliseAddress('0x52908400098527886E0F7030069857D2E4169EE7'), null, 'an Ethereum address is not a Solana one');
+  assert.equal(W.normaliseAddress('METYU_BOARD_PASSPHRASE'), null);
+  assert.equal(W.shortAddress(WALLET), '7xKX…gAsU');
+  assert.equal(A.providerFromEnv({ SOLANA_WALLET_ADDRESS: ` solana:${WALLET} ` }).name, 'solana', 'the GitHub secret is forgiving too');
+});

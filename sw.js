@@ -1,9 +1,9 @@
 // Metyu service worker: makes the pages installable on the iPhone / iPad home screen and openable
 // offline. Only the app shell is cached. Live data (/api/..., Polymarket) always goes to the network
 // and is never cached, so prices are never stale.
-const CACHE = 'metyu-shell-v2';
+const CACHE = 'metyu-shell-v3';
 const SHELL = [
-  './', 'board.html', 'polymarket.html', 'index.html', 'metyu-agent.js', 'metyu-vault.js', 'manifest.webmanifest',
+  './', 'board.html', 'polymarket.html', 'index.html', 'metyu-agent.js', 'metyu-vault.js', 'metyu-wallet.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'
 ];
 
