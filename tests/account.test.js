@@ -278,3 +278,22 @@ test('wallet address input: payment links and stray spaces are accepted, anythin
   assert.equal(W.shortAddress(WALLET), '7xKX…gAsU');
   assert.equal(A.providerFromEnv({ SOLANA_WALLET_ADDRESS: ` solana:${WALLET} ` }).name, 'solana', 'the GitHub secret is forgiving too');
 });
+
+test('wallet reader falls back to the second public RPC when the first refuses', async () => {
+  const W = require('../metyu-wallet.js');
+  const hosts = [];
+  const fetchImpl = async (url, init = {}) => {
+    const host = new URL(url).host;
+    hosts.push(host);
+    if (host === 'api.mainnet-beta.solana.com') return { ok: false, status: 403, json: async () => ({}) };
+    if (host === 'lite-api.jup.ag') return { ok: true, status: 200, json: async () => ({}) };
+    const { method, id } = JSON.parse(init.body);
+    return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id, result: method === 'getBalance' ? { value: 1e9 } : { value: [] } }) };
+  };
+  const balances = await W.solanaBalances({ address: WALLET, fetchImpl });
+  assert.deepEqual(balances, [{ asset: 'SOL', free: 1, locked: 0 }]);
+  assert.equal(hosts[0], 'api.mainnet-beta.solana.com');
+  assert.ok(hosts.some(host => host === 'solana-rpc.publicnode.com'), 'the fallback answered');
+  await assert.rejects(W.solanaBalances({ address: WALLET, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }) }), /HTTP 503/, 'all endpoints down: the last error');
+  assert.throws(() => A.solanaProvider({ address: 'METYU_BOARD_PASSPHRASE' }), /link the wallet on the Live Board instead/);
+});
