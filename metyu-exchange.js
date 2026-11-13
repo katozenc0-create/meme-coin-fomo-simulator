@@ -51,12 +51,15 @@
     maxMarginPct: .6,         // all margins together <= 60% of equity
     maxOpen: 4,               // positions open at once (normal book)
     learnMaxOpen: 8,          // the learning book's tiny trades may fill all 8 coins (8 x 0.25% = 2% risk; the 3% side cap still holds)
-    maxSideRiskPct: .03,      // crypto moves together: open risk in one direction <= 3% of equity
+    maxSideRiskPct: .03,      // crypto moves together: open risk in one direction <= 3% of equity (normal book)
+    learnSideRiskPct: .02,    // the learning book's own budget (8 x 0.25%), so research trades never crowd out proven ones
     dailyLossPct: .04,        // after -4% in a UTC day, no new positions that day
     killDrawdown: .15,        // -15% from the peak: close everything and halt
     cooldownHours: 6,         // no re-entry on a coin for 6 h after a losing trade on it
     timeStopHours: 72,
-    minTrades: 30             // the evidence gate's bar, the same as the Prediction Lab's
+    minTrades: 30,            // the evidence gate's bar, the same as the Prediction Lab's
+    liveReviewTrades: 20,     // live watchdog: the last 20 closed trades of a strategy (both books, in R)...
+    liveDemoteR: -.25         // ...averaging below -0.25R demote it to the learning book until they recover
   });
 
   // ---------- small helpers ----------
@@ -575,8 +578,12 @@
     const reasons = [];
     const open = Object.values(positions);
     if (account.halted) reasons.push('kill-switch: account halted');
-    const maxOpen = book === 'gated' ? rules.maxOpen : (rules.learnMaxOpen ?? rules.maxOpen);
-    if (open.length >= maxOpen) reasons.push(`already ${open.length} open positions (max ${maxOpen})`);
+    // Each book has its own budget: the learning book's small research trades never take the
+    // place (count or side risk) of a strategy that passed the evidence gate. Margin is shared.
+    const learningBook = book === 'learning';
+    const inBook = open.filter(held => (held.book === 'learning') === learningBook);
+    const maxOpen = learningBook ? (rules.learnMaxOpen ?? rules.maxOpen) : rules.maxOpen;
+    if (inBook.length >= maxOpen) reasons.push(`already ${inBook.length} open ${learningBook ? 'learning' : 'normal-book'} positions (max ${maxOpen})`);
     if (open.some(held => held.symbol === symbol)) reasons.push('already a position on this coin');
     const lastLoss = lastLossAt[symbol];
     if (lastLoss && now - lastLoss < rules.cooldownHours * HOUR) reasons.push(`cool-down after a loss (${rules.cooldownHours} h)`);
@@ -584,12 +591,25 @@
     if (account.day === day && account.dayStartEquity > 0 && (equity - account.dayStartEquity) / account.dayStartEquity <= -rules.dailyLossPct) reasons.push(`daily loss limit (-${rules.dailyLossPct * 100}%) reached`);
     const riskPct = book === 'gated' ? rules.riskPct : rules.learnRiskPct;
     const riskAmount = riskPct * equity;
-    const sideRisk = open.filter(held => held.side === side).reduce((sum, held) => sum + (held.risk || 0), 0);
-    if (sideRisk + riskAmount > rules.maxSideRiskPct * equity) reasons.push(`too much ${side.toLowerCase()} risk at once (crypto moves together)`);
+    const sideCap = learningBook ? (rules.learnSideRiskPct ?? rules.maxSideRiskPct) : rules.maxSideRiskPct;
+    const sideRisk = inBook.filter(held => held.side === side).reduce((sum, held) => sum + (held.risk || 0), 0);
+    if (sideRisk + riskAmount > sideCap * equity) reasons.push(`too much ${side.toLowerCase()} risk at once (crypto moves together)`);
     const usedMargin = open.reduce((sum, held) => sum + held.margin, 0);
     const maxMargin = Math.min(rules.maxPositionPct * equity, rules.maxMarginPct * equity - usedMargin, account.cash);
     if (!(maxMargin > 0)) reasons.push('no free margin');
     return { ok: reasons.length === 0, reasons, riskAmount, maxMargin, maxLeverage: book === 'gated' ? rules.maxLeverage : rules.learnMaxLeverage };
+  }
+
+  /**
+   * The live watchdog. The evidence gate judges a strategy on history; this judges it on what it
+   * actually did since: its last `liveReviewTrades` closed trades (either book, in R, newest first in
+   * `history`). A full window averaging below `liveDemoteR` demotes it to the learning book (tiny
+   * risk, still collecting evidence); it is promoted again as soon as the window recovers.
+   */
+  function liveReview(history, strategy, rules = RULES) {
+    const recent = (history || []).filter(trade => trade.strategy === strategy && Number.isFinite(trade.r)).slice(0, rules.liveReviewTrades);
+    const meanR = mean(recent.map(trade => trade.r));
+    return { trades: recent.length, window: rules.liveReviewTrades, meanR, wins: recent.filter(trade => trade.r > 0).length, demoted: recent.length >= rules.liveReviewTrades && meanR < rules.liveDemoteR };
   }
 
   // ---------- the real-money lock ----------
@@ -620,7 +640,7 @@
 
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
-    TIMEFRAMES, timeframeOf, aggregateCandles,
+    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

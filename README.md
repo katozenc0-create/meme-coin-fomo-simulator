@@ -245,7 +245,8 @@ Each reading comes with plain-language notes you can check against the chart on 
 
 **Portfolio rules:**
 - at most 4 positions in the normal book (8 in the learning book, whose trades risk 0.25% each), and one per coin;
-- open risk in one direction is capped at 3% of equity, because crypto moves together;
+- open risk in one direction is capped at 3% of equity in the normal book (2% in the learning book), because crypto moves together. Each book has its own budget, so research trades never take the place of a proven strategy;
+- a live watchdog: when a strategy's last 20 closed trades average below −0.25R, it is demoted to the learning book until they recover, even if its evidence gate is open;
 - all margin together is capped at 60% of equity;
 - no new positions after a 4% loss in a UTC day;
 - a 6-hour cool-down on a coin after a loss on it;
