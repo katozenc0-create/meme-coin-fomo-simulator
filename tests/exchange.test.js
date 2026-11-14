@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const X = require('../metyu-exchange.js');
-const { createExchangeAutopilot, freshState, forwardEvidence, statusOf, loadState, saveState, parseArgs, learnable, healthOf, applyHaltReset } = require('../exchange-autopilot.js');
+const { createExchangeAutopilot, freshState, forwardEvidence, statusOf, loadState, saveState, parseArgs, learnable, healthOf, applyHaltReset, shadowOpen, shadowClose, shadowSummary } = require('../exchange-autopilot.js');
 
 const H = X.HOUR;
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≈ ${b}`);
@@ -619,4 +619,54 @@ test('a model outdated by a release (new coins) retrains at once, even right aft
   const before = state.trainings.length;
   await pilot.tick();
   assert.equal(state.trainings.length, before, 'no retry storm after a failure');
+});
+
+test('shadow orders: each normal-book entry is mirrored under the real-money limits and NEVER sent', () => {
+  const state = freshState();
+  const logs = [];
+  const say = (kind, text) => logs.push([kind, text]);
+  const fmt = v => v.toFixed(2);
+  const at = Date.parse('2026-11-14T10:00:00Z');
+  const pos = (id, side, entry = 100, stop = side === 'LONG' ? 95 : 105) => ({ id, symbol: `${id}-USD`, side, entry, initialStop: stop });
+  const first = shadowOpen(state, pos('A', 'LONG'), at, say, fmt);
+  assert.equal(first.usd, 25, '$25 per order');
+  assert.equal(first.spotOk, true);
+  assert.equal(shadowOpen(state, pos('B', 'SHORT'), at, say, fmt).spotOk, false, 'a short cannot be placed on spot');
+  assert.match(logs[1][1], /spot: NOT executable/);
+  shadowOpen(state, pos('C', 'LONG'), at, say, fmt);
+  shadowOpen(state, pos('D', 'LONG'), at, say, fmt);
+  assert.equal(shadowOpen(state, pos('E', 'LONG'), at, say, fmt), null, '$100 open in total');
+  assert.match(logs.at(-1)[1], /open limit \(\$100\) full/);
+  // Settled at the same exit: long A stopped at 95 loses ~5% of $25 plus fees, about -1R.
+  const trade = shadowClose(state, 'A', 95, at + 3600000, 'stop loss', .001);
+  close(trade.pnl, .25 * (95 - 100) - .001 * .25 * 195, 1e-9);
+  assert.ok(trade.r < -1 && trade.r > -1.1);
+  // The daily loss limit ($50) stops new mirrors for the rest of the UTC day.
+  state.shadow.dayPnl = -50;
+  assert.equal(shadowOpen(state, pos('F', 'LONG'), at + 7200000, say, fmt), null);
+  assert.match(logs.at(-1)[1], /daily loss limit/);
+  assert.notEqual(shadowOpen(state, pos('G', 'LONG'), Date.parse('2026-11-15T01:00:00Z'), say, fmt), null, 'a new day starts fresh');
+  const summary = shadowSummary(state.shadow);
+  assert.equal(summary.sent, 0, 'nothing is ever sent');
+  assert.equal(summary.trades, 1);
+  assert.equal(summary.orders, 5);
+  assert.equal(summary.spotExecutable, 4);
+});
+
+test('the real-money lock counts normal-book trades only, and the autopilot mirrors gated entries as shadow orders', async () => {
+  const learning = Array.from({ length: 40 }, (_, i) => ({ learning: true, strategy: 'x', risk: 25, r: .5, pnl: 12, openedAt: new Date(i * H).toISOString() }));
+  const state = freshState();
+  state.history = learning;
+  state.createdAt = new Date(0).toISOString();
+  const status = statusOf(state, { now: 10 * X.DAY });
+  assert.equal(status.live.conditions.find(c => c.id === 'trades').ok, false, '40 learning trades do not count');
+  assert.match(status.live.conditions.find(c => c.id === 'trades').text, /now 0; learning trades do not count/);
+  assert.equal(status.shadow.sent, 0);
+  const open = { ...UNDECIDED, strategies: { test: { params: {}, gate: { open: true, trades: 60, meanR: .3, ci: [.1, .5] } } } };
+  const b = setup({ priceOf: (s, t) => 100 + Math.sin(t / H), model: open });
+  await b.pilot.tick();
+  const held = Object.values(b.state.positions)[0];
+  assert.equal(held.book, 'gated');
+  assert.equal(b.state.shadow.open[held.id].usd, 25);
+  assert.ok(b.state.log.some(l => l.kind === 'SHADOW' && /\(not sent\) · spot: executable/.test(l.text)));
 });

@@ -656,7 +656,7 @@
     const drawdown = account && account.peak > 0 ? 1 - (account.equity ?? account.cash) / account.peak : 0;
     const conditions = [
       { id: 'days', ok: days >= minDays, text: `forward test ran ${minDays}+ days (now ${Math.floor(days)})` },
-      { id: 'trades', ok: !!forward && forward.trades >= RULES.minTrades, text: `${RULES.minTrades}+ closed forward-test trades (now ${forward ? forward.trades : 0})` },
+      { id: 'trades', ok: !!forward && forward.trades >= RULES.minTrades, text: `${RULES.minTrades}+ closed normal-book forward-test trades (now ${forward ? forward.trades : 0}; learning trades do not count)` },
       { id: 'edge', ok: !!forward && forward.trades >= RULES.minTrades && forward.ci[0] > 0, text: `95% interval of the mean R above zero (now ${forward && forward.trades ? `[${forward.ci[0].toFixed(2)}, ${forward.ci[1].toFixed(2)}]` : 'no trades'})` },
       { id: 'risk', ok: !!account && !account.halted && drawdown < .1, text: `no kill-switch and drawdown under 10% (now ${(drawdown * 100).toFixed(1)}%)` },
       { id: 'account', ok: !!(accountLink && accountLink.linked && accountLink.viewOnly), text: 'a real account or wallet linked read-only (view-only key or public address)' },
