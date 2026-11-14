@@ -32,7 +32,66 @@ function freshState(options = {}) {
     version: 1, kind: 'exchange', createdAt: null, lastTick: null,
     account: { bankroll, cash: bankroll, peak: bankroll, halted: false, realized: 0, trades: 0, wins: 0, day: null, dayStartEquity: bankroll },
     positions: {}, history: [], log: [], model: null, trainings: [], lastTrainAttempt: 0,
-    lastSignalBar: {}, lastLossAt: {}, marks: {}, nextId: 1
+    lastSignalBar: {}, lastLossAt: {}, marks: {}, nextId: 1,
+    shadow: freshShadow()
+  };
+}
+
+/**
+ * The shadow order book: the dress rehearsal for real money. Every NORMAL-book entry is mirrored as
+ * the order the first real-money release would send, under X.LIVE_LIMITS ($25 per order, $100
+ * open, $50 loss per day, no leverage), and settled at the same exit. NOTHING is sent anywhere:
+ * there is no order code in Metyu. It shows what the limits would have done, and whether each
+ * order could even be placed on a spot account (a SHORT needs futures or margin).
+ */
+function freshShadow() { return { open: {}, closed: [], day: null, dayPnl: 0 }; }
+const SHADOW_MIN_ORDER_USD = 10;                                     // below an exchange's minimum order size
+
+function shadowOpen(state, held, at, say, fmt) {
+  const limits = X.LIVE_LIMITS;
+  const shadow = state.shadow || (state.shadow = freshShadow());
+  const day = new Date(at).toISOString().slice(0, 10);
+  if (shadow.day !== day) { shadow.day = day; shadow.dayPnl = 0; }
+  const openUsd = Object.values(shadow.open).reduce((sum, order) => sum + order.usd, 0);
+  const usd = Math.min(limits.maxOrderUsd, limits.maxOpenUsd - openUsd);
+  const spotOk = held.side === 'LONG';
+  let skip = null;
+  if (shadow.dayPnl <= -limits.maxDailyLossUsd) skip = `daily loss limit ($${limits.maxDailyLossUsd}) reached`;
+  else if (usd < SHADOW_MIN_ORDER_USD) skip = `open limit ($${limits.maxOpenUsd}) full`;
+  if (skip) { say('SHADOW', `${held.symbol} ${held.side}: not mirrored · ${skip}`); return null; }
+  const order = { id: held.id, symbol: held.symbol, side: held.side, usd, qty: usd / held.entry, entry: held.entry, stop: held.initialStop, openedAt: new Date(at).toISOString(), spotOk };
+  shadow.open[held.id] = order;
+  say('SHADOW', `${held.symbol} ${held.side} $${usd.toFixed(2)} @ ${fmt(held.entry)} 1x (not sent) · ${spotOk ? 'spot: executable' : 'spot: NOT executable (a short needs futures or margin)'}`);
+  return order;
+}
+
+function shadowClose(state, id, exit, at, reason, feeRate) {
+  const shadow = state.shadow;
+  const order = shadow && shadow.open[id];
+  if (!order) return null;
+  delete shadow.open[id];
+  const direction = order.side === 'LONG' ? 1 : -1;
+  const pnl = order.qty * (exit - order.entry) * direction - feeRate * order.qty * (order.entry + exit);
+  const riskUsd = order.qty * Math.abs(order.entry - order.stop);
+  const day = new Date(at).toISOString().slice(0, 10);
+  if (shadow.day !== day) { shadow.day = day; shadow.dayPnl = 0; }
+  shadow.dayPnl += pnl;
+  const trade = { ...order, exit, pnl, r: riskUsd > 0 ? pnl / riskUsd : 0, reason, closedAt: new Date(at).toISOString() };
+  shadow.closed.unshift(trade);
+  shadow.closed.length = Math.min(shadow.closed.length, 500);
+  return trade;
+}
+
+function shadowSummary(shadow) {
+  const s = shadow || freshShadow();
+  const closed = s.closed || [];
+  const all = closed.concat(Object.values(s.open || {}));
+  return {
+    limits: X.LIVE_LIMITS, sent: 0,
+    open: Object.values(s.open || {}), openUsd: Object.values(s.open || {}).reduce((sum, order) => sum + order.usd, 0),
+    trades: closed.length, wins: closed.filter(trade => trade.pnl > 0).length, pnl: closed.reduce((sum, trade) => sum + trade.pnl, 0),
+    dayPnl: s.dayPnl || 0, orders: all.length, spotExecutable: all.filter(order => order.spotOk).length,
+    recent: closed.slice(0, 20)
   };
 }
 
@@ -104,6 +163,8 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     const held = state.positions[id];
     if (!held) return null;
     const result = X.settle(held, price, at, costs);
+    const shadowTrade = shadowClose(state, id, result.exitFill, at, reason, costs.feeRate);
+    if (shadowTrade) say('SHADOW', `${held.symbol} ${held.side} closed (not sent) · ${reason} · ${shadowTrade.pnl >= 0 ? '+' : '-'}$${Math.abs(shadowTrade.pnl).toFixed(2)}`);
     state.account.cash += held.margin + result.pnl;
     state.account.realized += result.pnl;
     state.account.trades += 1;
@@ -217,6 +278,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     state.nextId += 1;
     const held = { id, symbol, tier, strategy, book, ...sized, stop: sized.initialStop, atr: atrValue, openedAt: now(), reason: signal.reason, chart: reading.notes.slice(0, 3) };
     state.positions[id] = held;
+    if (book === 'gated') shadowOpen(state, held, now(), say, fmt);
     state.account.cash -= held.margin;
     say(book === 'learning' ? 'LEARN' : 'OPEN', `${symbol} ${signal.side} ${held.leverage.toFixed(1)}x @ ${fmt(held.entry)} · ${label}: ${signal.reason} · stop ${fmt(held.stop)} · target ${fmt(held.target)} · liq ${fmt(held.liquidation)} · margin $${held.margin.toFixed(2)} · risk $${held.risk.toFixed(2)}`);
     return held;
@@ -371,7 +433,10 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) },
     // Real money stays locked; this is how far away the conditions are (all trades, both books).
-    live: X.liveReadiness({ forward: forwardEvidence(state.history, { now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now }),
+    // Real money would only ever copy the NORMAL book (strategies past their evidence gate), so the
+    // lock counts those trades only; the learning book's research trades never count toward it.
+    live: X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now }),
+    shadow: shadowSummary(state.shadow),
     charts
   };
 }
@@ -439,4 +504,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error.message); process.exit(1); });
 
-module.exports = { createExchangeAutopilot, learnable, healthOf, applyHaltReset, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };
+module.exports = { shadowOpen, shadowClose, shadowSummary, freshShadow, createExchangeAutopilot, learnable, healthOf, applyHaltReset, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };

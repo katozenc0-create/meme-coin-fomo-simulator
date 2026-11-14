@@ -59,14 +59,35 @@ The board's **My account** panel then shows SOL and every token with a USD value
 ## The real-money lock
 
 Real orders are locked. The board lists six conditions, and all of them must hold before the owner may even decide to unlock:
-1. The forward test has run for 14+ days.
-2. It has 30+ closed trades.
+1. The forward test has run for 3+ days (the owner chose 3; the trade count and the interval still have to be met, however long that takes).
+2. It has 30+ closed **normal-book** trades. Only strategies past their evidence gate would trade real money, so the learning book's research trades do not count.
 3. The 95% interval of the mean R is above zero.
 4. There has been no kill-switch, and drawdown is under 10%.
 5. A real account is linked with a verified view-only key.
 6. The owner gives explicit approval.
 
 Even then, the first orders are capped at **$25 per order, $100 open, $50 maximum daily loss, and no leverage**. Writing the order adapter (a separate trading key, kept apart from the view-only key) is a deliberate, reviewed step at that point, not something that switches on by itself.
+
+### The rehearsal: shadow orders
+
+Every normal-book entry is mirrored as the order the first real-money release would send. It uses the limits above and is settled at the same exit, but **nothing is sent**: there is no order code in Metyu. The board shows the result (`Shadow orders`), including how many orders could be placed on a spot account. A spot account cannot short, and today the proven strategy trades mostly shorts in a downtrend.
+
+### Go-live checklist (all of it, in this order)
+
+1. **6/6 conditions on the board.** Check the shadow orders: they should agree with the forward test.
+2. **Choose the venue.** On spot, only LONG signals can be placed. Shorts need futures or margin, which bring leverage, funding costs and local rules on derivatives. Check what is allowed where you live.
+3. **A separate trading key**, never the view-only key:
+   - trading enabled, **withdrawals and transfers disabled**;
+   - restricted to the IP address of the machine that will trade;
+   - with the exchange's own limits switched on where it offers them.
+4. **Run it on your own always-on machine** (`scripts/realtime.sh` with `deploy/metyu-realtime.service`), never on GitHub Actions. The trading key goes only to the order process, as the view-only key goes only to the account sync today.
+5. **The order adapter** is then written and reviewed as a separate change. It must:
+   - enforce `LIVE_LIMITS` itself;
+   - re-check readiness before every order;
+   - stop on `METYU_PAUSE` and the kill-switch;
+   - reconcile with the exchange's own positions on every tick;
+   - start with one coin.
+6. **Fund the exchange account with an amount you can afford to lose.** The limits cap the loss at $50 a day.
 
 ## Operations and supply chain
 

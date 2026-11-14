@@ -364,6 +364,7 @@
       <h3 id="exLiveHead">Real money: locked</h3>
       <ul class="lock-list" id="exLive"></ul>
       <p class="note" id="exLiveLimits"></p>
+      <p class="note" id="exShadow" hidden></p>
       <h3>Open positions</h3>
       <ul class="trades" id="exPositions"></ul>
       <h3>Strategies · evidence gate (out of sample, after costs)</h3>
@@ -974,6 +975,9 @@
           $('#exLiveHead').textContent = `Real money: LOCKED · ${live.met}/${live.total} conditions met`;
           $('#exLive').replaceChildren(...live.conditions.map(condition => { const li = document.createElement('li'); li.className = condition.ok ? 'ok' : ''; li.textContent = condition.text; return li; }));
           $('#exLiveLimits').textContent = `Even then, the first real orders are capped: $${live.limits.maxOrderUsd} per order, $${live.limits.maxOpenUsd} open in total, $${live.limits.maxDailyLossUsd} maximum loss per day, no leverage.`;
+          const shadow = status.shadow;
+          $('#exShadow').hidden = !shadow;
+          if (shadow) $('#exShadow').textContent = `Shadow orders (rehearsal, nothing sent): ${shadow.orders} mirrored · ${shadow.trades} closed · ${shadow.pnl >= 0 ? '+' : '−'}$${Math.abs(shadow.pnl).toFixed(2)} · $${shadow.openUsd.toFixed(0)} open · ${shadow.spotExecutable}/${shadow.orders} placeable on a spot account (shorts need futures)`;
         }
         // Open positions with live P&L.
         $('#exPositions').replaceChildren(...(status.positions.length ? status.positions.map(position => {
