@@ -13,8 +13,11 @@ test('demo mode trades, replaces resolved markets, persists, exports CSV', async
   await page.goto(`${env.base}/index.html`);
   await page.click('a.nav-link[href="board.html"]');
   await page.waitForSelector('#board', { state: 'attached' });
+  // #board is parsed before the board's script runs: wait for the page to finish loading so the
+  // Export button has its handler (on a slow CI runner the click could come first).
+  await page.waitForLoadState('load');
   await page.click('#exportBtn');
-  assert.match(await text(page, '#feed'), /no closed trades to export/);
+  await page.waitForFunction(() => /no closed trades to export/.test(document.querySelector('#feed').textContent));
 
   await setValues(page, { '#speed': 10, '#skill': 90 });
   await page.click('#startBtn');
