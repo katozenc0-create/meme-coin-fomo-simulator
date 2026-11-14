@@ -211,7 +211,7 @@ Stopping it (Ctrl-C, `systemctl stop`, SIGTERM) saves the state first.
 
 ## Metyu on a crypto exchange (virtual money, 24/7)
 
-`exchange-autopilot.js` brings the same discipline to a real market. It trades 16 coins (BTC, ETH, SOL, XRP, DOGE, ADA, AVAX, LINK, LTC, BCH, DOT, NEAR, SUI, AAVE, XLM, HBAR) against USD on **live public prices from Coinbase**, with Kraken as a fallback. There is no exchange account, no API key and no order: every trade is booked in a virtual account. The logic lives in `metyu-exchange.js`, which is pure and deterministic and shared by the autopilot, the tests and the board.
+`exchange-autopilot.js` brings the same discipline to a real market. It trades 31 coins (BTC, ETH, SOL, XRP, DOGE, ADA, AVAX, LINK, LTC, BCH, DOT, NEAR, SUI, AAVE, XLM, HBAR, ZEC, TAO, QNT, INJ, PEPE, UNI, ENA, ONDO, ZRO, ICP, WLD, FET, TIA, RENDER, ALGO) against USD on **live public prices from Coinbase**, with Kraken as a fallback. The 16 large coins are the **core** tier; the 15 added later are the **satellite** tier, with their own model and evidence gate (learning book only until it opens). There is no exchange account, no API key and no order: every trade is booked in a virtual account. The logic lives in `metyu-exchange.js`, which is pure and deterministic and shared by the autopilot, the tests and the board.
 
 **Reading the chart:** every closed hourly bar, `readChart` reads the chart:
 - **Trend:** EMA20 / EMA50 / EMA200 alignment and the EMA50 slope.
@@ -244,7 +244,7 @@ Each reading comes with plain-language notes you can check against the chart on 
   - 72-hour time stop.
 
 **Portfolio rules:**
-- at most 4 positions in the normal book (8 in the learning book, whose trades risk 0.25% each), and one per coin;
+- at most 6 positions in the normal book (8 in the learning book, whose trades risk 0.25% each), and one per coin. The open-risk cap below usually binds first: 3 fresh positions per side, more once stops have trailed to break-even;
 - open risk in one direction is capped at 3% of equity in the normal book (2% in the learning book), because crypto moves together. Each book has its own budget, so research trades never take the place of a proven strategy;
 - a live watchdog: when a strategy's last 20 closed trades average below −0.25R, it is demoted to the learning book until they recover, even if its evidence gate is open;
 - all margin together is capped at 60% of equity;

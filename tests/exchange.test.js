@@ -220,7 +220,8 @@ test('admit enforces the kill-switch, position count, one per coin, cool-down, s
   const held = (symbol, side = 'LONG', risk = 100, margin = 1000) => ({ symbol, side, risk, margin });
   assert.match(X.admit({ ...base, account: { ...account, halted: true } }).reasons.join(), /kill-switch/);
   assert.match(X.admit({ ...base, positions: { a: held('BTC-USD') } }).reasons.join(), /already a position on this coin/);
-  assert.match(X.admit({ ...base, positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1) } }).reasons.join(), /4 open normal-book positions/);
+  assert.match(X.admit({ ...base, positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1), e: held('E', 'SHORT', 1), f: held('F', 'SHORT', 1) } }).reasons.join(), /6 open normal-book positions \(max 6\)/);
+  assert.equal(X.admit({ ...base, positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1) } }).ok, true, 'a 5th normal-book position is allowed when its risk fits');
   // The learning book's tiny trades may fill all 8 coins; the normal book keeps its limit of 4.
   const learn = (symbol, side = 'SHORT', risk = 1, margin = 100) => ({ ...held(symbol, side, risk, margin), book: 'learning' });
   const four = { a: learn('A'), b: learn('B'), c: learn('C'), d: learn('D') };
@@ -235,7 +236,7 @@ test('admit enforces the kill-switch, position count, one per coin, cool-down, s
   assert.match(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, e: held('E', 'SHORT', 100) } }).reasons.join(), /too much short risk/);
   const researchFull = Object.fromEntries('CDEFGHIJ'.split('').map(c => [c, learn(c, 'SHORT', 25)]));
   assert.match(X.admit({ ...base, book: 'learning', side: 'SHORT', positions: researchFull }).reasons.join(), /too much short risk/, 'the learning book has its own 2% cap');
-  assert.equal(X.admit({ ...base, side: 'SHORT', positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1) } }).reasons.some(r => /4 open normal-book positions/.test(r)), true);
+  assert.equal(X.admit({ ...base, side: 'SHORT', positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1), e: held('E', 'SHORT', 1), f: held('F', 'SHORT', 1) } }).reasons.some(r => /6 open normal-book positions/.test(r)), true);
   assert.equal(X.RULES.learnMaxOpen, 8);
   assert.match(X.admit({ ...base, positions: { a: held('ETH-USD', 'LONG', 150), b: held('SOL-USD', 'LONG', 100) } }).reasons.join(), /too much long risk/);
   assert.equal(X.admit({ ...base, positions: { a: held('ETH-USD', 'SHORT', 150), b: held('SOL-USD', 'SHORT', 100) } }).ok, true, 'opposite side: hedges');
@@ -353,7 +354,7 @@ test('autopilot trains itself when it has no model, and survives a coin whose da
   const result = await pilot.tick();
   assert.ok(state.model, 'trained');
   assert.deepEqual(state.model.symbols, ['AAA-USD', 'CCC-USD']);
-  assert.match(state.log.find(l => l.kind === 'TRAIN').text, /walk-forward on \d+ hourly bars of 2 coins/);
+  assert.match(state.log.find(l => l.kind === 'TRAIN').text, /walk-forward on \d+ hourly bars of 2 core coins/);
   assert.ok(state.log.some(l => l.kind === 'ERROR' && /BBB-USD/.test(l.text)));
   assert.equal(result.prices, 2);
   assert.equal(state.trainings.length, 1);
@@ -569,4 +570,53 @@ test('side risk counts the risk still open: a stop trailed to break-even no long
   close(X.openRisk(short('X', 51.6)), 50, 1e-9);
   assert.equal(X.openRisk(short('X', 60)), 100, 'never more than the risk at entry');
   assert.equal(X.openRisk({ risk: 42 }), 42, 'missing fields: the risk at entry');
+});
+
+test('two tiers: the satellite coins have their own model and gate, and trade the learning book until it opens', async () => {
+  assert.equal(X.SYMBOLS.length, 31);
+  assert.equal(X.SATELLITE.length, 15);
+  assert.equal(X.tierOf('BTC-USD'), 'core');
+  assert.equal(X.tierOf('PEPE-USD'), 'satellite');
+  assert.equal(X.tierOf('AAA-USD'), 'core', 'unknown coins are core');
+  assert.ok(X.SYMBOLS.every(symbol => X.KRAKEN_PAIRS[symbol]), 'every coin has a Kraken fallback');
+  // The live review is per tier: satellite losses never demote the core strategy.
+  const losses = Array.from({ length: 20 }, () => ({ strategy: 'test', tier: 'satellite', r: -1 }));
+  assert.equal(X.liveReview(losses, 'test', X.RULES, 'satellite').demoted, true);
+  assert.equal(X.liveReview(losses, 'test', X.RULES, 'core').trades, 0);
+  // Core gate open, satellite gate undecided: a satellite signal goes to the learning book.
+  const fake = fakeExchange((s, t) => 100 + Math.sin(t / H));
+  const clock = 600 * H + 7 * 60000;
+  fake.now = () => clock;
+  const state = freshState();
+  state.model = { trainedAt: 600 * H, symbols: ['AAA-USD', 'PEPE-USD'], strategies: { test: { params: {}, gate: { open: true, trades: 60, meanR: .3, ci: [.1, .5] } } },
+    satellite: { symbols: ['PEPE-USD'], strategies: { test: { params: {}, gate: { open: false, trades: 40, meanR: .02, ci: [-.1, .15] } } } } };
+  const pilot = createExchangeAutopilot({ getJson: fake.getJson, now: () => clock, state, options: { symbols: ['AAA-USD', 'PEPE-USD'], learn: true, trainBars: 600, strategies: { test: ALWAYS_LONG } } });
+  await pilot.tick();
+  const held = Object.values(state.positions);
+  assert.equal(held.find(p => p.symbol === 'AAA-USD').book, 'gated');
+  const sat = held.find(p => p.symbol === 'PEPE-USD');
+  assert.equal(sat.book, 'learning');
+  assert.equal(sat.tier, 'satellite');
+  const status = statusOf(state, { now: clock });
+  assert.equal(status.model.satellite.strategies.test.learnable, true);
+  assert.equal(status.model.strategies.test.gate.open, true);
+});
+
+test('a model outdated by a release (new coins) retrains at once, even right after a successful training', async () => {
+  const fake = fakeExchange((s, t) => 100 * (1 + .02 * Math.sin(t / H / 6)));
+  const clock = 700 * H;
+  fake.now = () => clock;
+  const state = freshState();
+  state.model = { trainedAt: clock - 10 * 60000, symbols: ['AAA-USD'], strategies: Object.fromEntries(Object.keys(X.STRATEGIES).map(name => [name, { params: X.STRATEGIES[name].grid[0], gate: { open: false, trades: 0, meanR: 0, ci: [0, 0] } }])) };
+  state.lastTrainAttempt = state.model.trainedAt;                       // that training succeeded
+  const pilot = createExchangeAutopilot({ getJson: fake.getJson, now: () => clock, state, options: { symbols: ['AAA-USD', 'CCC-USD'], learn: true, trainBars: 600 } });
+  await pilot.tick();
+  assert.equal(state.model.trainedAt, clock, 'retrained for the new coin');
+  assert.deepEqual(state.model.symbols, ['AAA-USD', 'CCC-USD']);
+  // A failed attempt since the last training still waits the retry interval.
+  state.model.symbols = ['AAA-USD'];
+  state.lastTrainAttempt = clock + 1;
+  const before = state.trainings.length;
+  await pilot.tick();
+  assert.equal(state.trainings.length, before, 'no retry storm after a failure');
 });
