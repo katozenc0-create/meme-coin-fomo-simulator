@@ -583,6 +583,14 @@
    * Whether a new trade may open, and with what limits. `book` is 'gated' (the strategy's evidence
    * gate is open) or 'learning'. Returns { ok, reasons, riskAmount, maxMargin, maxLeverage }.
    */
+  /** What a position can still lose if its current stop is hit (never more than its risk at entry). */
+  function openRisk(held) {
+    const atEntry = held.risk || 0;
+    if (!(held.qty > 0) || !Number.isFinite(held.stop) || !Number.isFinite(held.entry)) return atEntry;
+    const distance = held.side === 'LONG' ? held.entry - held.stop : held.stop - held.entry;
+    return Math.min(atEntry, Math.max(0, distance * held.qty));
+  }
+
   function admit({ account, positions, symbol, side, book, now, lastLossAt = {}, rules = RULES, equity }) {
     const reasons = [];
     const open = Object.values(positions);
@@ -601,7 +609,9 @@
     const riskPct = book === 'gated' ? rules.riskPct : rules.learnRiskPct;
     const riskAmount = riskPct * equity;
     const sideCap = learningBook ? (rules.learnSideRiskPct ?? rules.maxSideRiskPct) : rules.maxSideRiskPct;
-    const sideRisk = inBook.filter(held => held.side === side).reduce((sum, held) => sum + (held.risk || 0), 0);
+    // Risk still open, not risk at entry: once a stop has trailed to break-even (or beyond), that
+    // position can no longer lose its 1R, and it must not keep blocking new trades in its direction.
+    const sideRisk = inBook.filter(held => held.side === side).reduce((sum, held) => sum + openRisk(held), 0);
     if (sideRisk + riskAmount > sideCap * equity) reasons.push(`too much ${side.toLowerCase()} risk at once (crypto moves together)`);
     const usedMargin = open.reduce((sum, held) => sum + held.margin, 0);
     const maxMargin = Math.min(rules.maxPositionPct * equity, rules.maxMarginPct * equity - usedMargin, account.cash);
@@ -649,7 +659,7 @@
 
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
-    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview,
+    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

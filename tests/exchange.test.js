@@ -556,3 +556,17 @@ test('the exchange autopilot restarts after a halt when the owner sets a new res
   assert.equal(state.log.some(l => l.kind === 'RESET'), true);
   assert.equal(Object.keys(state.positions).length, 1, 'trading again');
 });
+
+test('side risk counts the risk still open: a stop trailed to break-even no longer blocks new trades', () => {
+  const account = { cash: 10000, halted: false, day: '1970-01-01', dayStartEquity: 10000 };
+  const base = { account, symbol: 'AVAX-USD', side: 'SHORT', book: 'gated', now: 0, equity: 10000 };
+  const short = (symbol, stop) => ({ symbol, side: 'SHORT', book: 'gated', entry: 50, stop, qty: 100 / 3.2, risk: 100, margin: 500 });
+  const atEntry = { a: short('LTC-USD', 53.2), b: short('NEAR-USD', 53.2), c: short('SUI-USD', 53.2) };
+  assert.match(X.admit({ ...base, positions: atEntry }).reasons.join(), /too much short risk/, '3 x 1R open: the 3% cap is full');
+  const trailed = { a: short('LTC-USD', 50), b: short('NEAR-USD', 50), c: short('SUI-USD', 49) };
+  assert.equal(X.admit({ ...base, positions: trailed }).ok, true, 'stops at or past entry: nothing left to lose, the 4th is allowed');
+  assert.equal(X.openRisk(short('X', 50)), 0);
+  close(X.openRisk(short('X', 51.6)), 50, 1e-9);
+  assert.equal(X.openRisk(short('X', 60)), 100, 'never more than the risk at entry');
+  assert.equal(X.openRisk({ risk: 42 }), 42, 'missing fields: the risk at entry');
+});

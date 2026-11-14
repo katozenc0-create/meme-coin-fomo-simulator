@@ -850,8 +850,32 @@
    * from yesterday, so the data spans months and every market had its whole life before its end
    * date. Whole EVENTS are fetched (5 per window), never a cut-off list of markets: keeping an
    * event's losers but not its winner would bias the sample toward NO.
+   *
+   * A big event (an election with 300 candidates) would eat the whole budget and leave a few dozen
+   * independent events, too few for the walk-forward (which weighs by event) to ever trade. So an
+   * event keeps at most `maxPerEvent` of its markets, drawn at RANDOM (seeded by the event id): every
+   * market has the same chance to stay, the winner included, so the YES rate stays unbiased.
    */
-  async function loadResolvedMarkets(fetchJsonImpl, { count = 300, report = () => {}, now = Date.now(), maxWindows = 400, retries = 2, retryDelayMs = 600 } = {}) {
+  function sampleEventMarkets(markets, maxPerEvent) {
+    const byEvent = new Map();
+    for (const market of markets) {
+      const key = String(market.eventId ?? market.id);
+      if (!byEvent.has(key)) byEvent.set(key, []);
+      byEvent.get(key).push(market);
+    }
+    const out = [];
+    for (const [key, group] of byEvent) {
+      if (!(maxPerEvent > 0) || group.length <= maxPerEvent) { out.push(...group); continue; }
+      let seed = 0;
+      for (const char of key) seed = (Math.imul(seed, 31) + char.charCodeAt(0)) >>> 0;
+      const rng = createRng(seed);
+      const pool = group.slice();
+      for (let i = pool.length - 1; i > 0; i -= 1) { const j = Math.floor(rng() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+      out.push(...pool.slice(0, maxPerEvent));
+    }
+    return out;
+  }
+  async function loadResolvedMarkets(fetchJsonImpl, { count = 300, report = () => {}, now = Date.now(), maxWindows = 400, retries = 2, retryDelayMs = 600, maxPerEvent = 3 } = {}) {
     const resolved = [];
     const seen = new Set();
     const day = 86400000;
@@ -880,7 +904,7 @@
       triedWindows += batch.length;
       if (failedWindows === triedWindows && triedWindows >= 4) throw lastError || new Error('resolved markets unavailable');
       for (const { rows } of batch) {
-        rows.map(parseResolvedForTraining).filter(Boolean).forEach(market => {
+        sampleEventMarkets(rows.map(parseResolvedForTraining).filter(Boolean), maxPerEvent).forEach(market => {
           if (!seen.has(market.id)) { seen.add(market.id); resolved.push(market); }
         });
       }
@@ -1452,6 +1476,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, reviewPosition, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, loadResolvedMarkets, trainModel, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, reviewPosition, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, loadResolvedMarkets, sampleEventMarkets, trainModel, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });
