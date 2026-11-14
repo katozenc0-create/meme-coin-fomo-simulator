@@ -1,0 +1,844 @@
+{
+ "version": 1,
+ "createdAt": "2026-11-12T21:59:56.133Z",
+ "lastTick": "2026-11-14T11:45:39.062Z",
+ "lastMarketsRefresh": 1794655845808,
+ "account": {
+  "bankroll": 10000,
+  "cash": 9272.486173735393,
+  "peak": 10000,
+  "halted": false,
+  "realized": -132.1312131336153,
+  "trades": 2,
+  "wins": 0
+ },
+ "watch": [
+  {
+   "id": "6496387",
+   "question": "UFC 334: Josh Hokit vs. Ciryl Gane (Heavyweight, Main Card)",
+   "slug": "ufc-jos52-cir-2026-11-14",
+   "eventSlug": "",
+   "outcomes": [
+    "Josh Hokit",
+    "Ciryl Gane"
+   ],
+   "yesPrice": 0.335,
+   "spread": 0.010000000000000009,
+   "volume": 2361416.943331,
+   "liquidity": 3137377.6465,
+   "endDate": "2026-11-15T04:59:59.999Z",
+   "negRisk": false,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "sports_fees_v3",
+   "eventId": "6496387",
+   "tokenIds": {
+    "YES": "30289940090088667668050088376461003061362172048916753227271073157706533834577",
+    "NO": "60726126951539130594457745308006473154344457472431098929350080992899330708790"
+   }
+  },
+  {
+   "id": "6884119",
+   "question": "Jensen Huang divorce by December 31, 2026?",
+   "slug": "jensen-huang-divorce-in-2026",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.145,
+   "spread": 0.009999999999999981,
+   "volume": 824632.7328330001,
+   "liquidity": 100643.3511,
+   "endDate": "2027-01-01T04:59:00Z",
+   "negRisk": false,
+   "feeRate": 0.04,
+   "feeExponent": 1,
+   "feeType": "politics_fees",
+   "eventId": "6884119",
+   "tokenIds": {
+    "YES": "112979941438829737800400495517316534522150056152145374913362684879882796860277",
+    "NO": "111879023992805727427888007395202674359981965399934800914169457259690591042100"
+   }
+  },
+  {
+   "id": "6828351",
+   "question": "Louisiana-Lafayette Ragin' Cajuns vs. UNCW Seahawks",
+   "slug": "cbb-loulaf-ncw-2026-11-14",
+   "eventSlug": "",
+   "outcomes": [
+    "Louisiana-Lafayette Ragin' Cajuns",
+    "UNCW Seahawks"
+   ],
+   "yesPrice": 0.495,
+   "spread": 0.010000000000000009,
+   "volume": 1943055.5495600002,
+   "liquidity": 588721.1056,
+   "endDate": "2026-11-15T00:00:00Z",
+   "negRisk": false,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "sports_fees_v3",
+   "eventId": "6828351",
+   "tokenIds": {
+    "YES": "18972576928294474926933600201138647384137258205840985760865562777378592194227",
+    "NO": "84093253891477005697622183644362420696975005493141854167518931661292200832069"
+   }
+  },
+  {
+   "id": "2299955",
+   "question": "Will Anthropic's valuation hit (HIGH) $1.75T by December 31?",
+   "slug": "will-anthropics-valuation-hit-high-1pt75t-by-december-31-328",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.445,
+   "spread": 0.010000000000000009,
+   "volume": 1175480.1993699998,
+   "liquidity": 108387.7475,
+   "endDate": "2027-01-05T04:59:00Z",
+   "negRisk": false,
+   "feeRate": 0.04,
+   "feeExponent": 1,
+   "feeType": "finance_prices_fees",
+   "eventId": "2299955",
+   "tokenIds": {
+    "YES": "15764762514977439830369109742355894144447754077019561451046436564012758072460",
+    "NO": "68824290388674385176467771482523926661374466006709550624998958447771606894467"
+   }
+  },
+  {
+   "id": "679022",
+   "question": "Will David Lisnard win the 2027 French presidential election?",
+   "slug": "will-david-lisnard-win-the-2027-french-presidential-election",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.1745,
+   "spread": 0.0010000000000000009,
+   "volume": 7960145.584283,
+   "liquidity": 600726.67273,
+   "endDate": "2027-04-19T03:59:00Z",
+   "negRisk": true,
+   "feeRate": 0.04,
+   "feeExponent": 1,
+   "feeType": "politics_fees",
+   "eventId": "679022",
+   "tokenIds": {
+    "YES": "55404192439775628931124671719520886657525387168536821457706619003199189099864",
+    "NO": "79358475953126059185096320578578995575874288599466094920037110232928386404141"
+   }
+  },
+  {
+   "id": "3013350",
+   "question": "Will Bitcoin dip to $60,000 by December 31, 2026?",
+   "slug": "will-bitcoin-dip-to-60k-by-december-31-2026-from-july-21",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.465,
+   "spread": 0.009999999999999953,
+   "volume": 2120667.814138,
+   "liquidity": 127279.9081,
+   "endDate": "2027-01-01T05:00:00Z",
+   "negRisk": false,
+   "feeRate": 0.07,
+   "feeExponent": 1,
+   "feeType": "crypto_fees_v2",
+   "eventId": "3013350",
+   "tokenIds": {
+    "YES": "104279604547231872129402198190232956636095665469278761891693384128061158683041",
+    "NO": "71378443524585182161509165206687359935571329472000076556085474136388673584216"
+   }
+  },
+  {
+   "id": "7014755",
+   "question": "Counter-Strike: FURIA vs Team Falcons (BO3) - BLAST Rivals Playoffs",
+   "slug": "cs2-furia-fal2-2026-11-14",
+   "eventSlug": "",
+   "outcomes": [
+    "FURIA",
+    "Team Falcons"
+   ],
+   "yesPrice": 0.605,
+   "spread": 0.010000000000000009,
+   "volume": 1983342.7235549996,
+   "liquidity": 106551.2833,
+   "endDate": "2026-11-14T16:45:00Z",
+   "negRisk": false,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "sports_fees_v3",
+   "eventId": "7014755",
+   "tokenIds": {
+    "YES": "74979179581704693173891779115584035051993241104205845957775234004833817931168",
+    "NO": "32017896468660101089348809996836868536053704676247704599557402601839845523297"
+   }
+  },
+  {
+   "id": "3215009",
+   "question": "Will the Fed increase interest rates by 50+ bps after the December 2026 meeting?",
+   "slug": "will-the-fed-increase-interest-rates-by-50-bps-after-the-december-2026-meeting-20260729232808637",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.0795,
+   "spread": 0.0010000000000000009,
+   "volume": 6389202.091298001,
+   "liquidity": 377594.56457,
+   "endDate": "2026-12-09T23:59:00Z",
+   "negRisk": true,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "economics_fees",
+   "eventId": "3215009",
+   "tokenIds": {
+    "YES": "35090254409399344650860070211816464534198960801264823587796928404808383727584",
+    "NO": "17037715451587457598270390992151934195448806241696976473961259598235638233970"
+   }
+  },
+  {
+   "id": "6889027",
+   "question": "LoL: Bilibili Gaming vs Gen.G (BO5) - Worlds Playoffs",
+   "slug": "lol-blg-gen-2026-11-14",
+   "eventSlug": "",
+   "outcomes": [
+    "Bilibili Gaming",
+    "Gen.G"
+   ],
+   "yesPrice": 0.375,
+   "spread": 0.010000000000000009,
+   "volume": 1279938.6534020002,
+   "liquidity": 3231961.6231,
+   "endDate": "2026-11-15T01:00:00Z",
+   "negRisk": false,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "sports_fees_v3",
+   "eventId": "6889027",
+   "tokenIds": {
+    "YES": "16388722763196015839509607354163150962461372365537908671209962968986315674834",
+    "NO": "48974242814467521111377166073091419940430166730559094118660552642380044929668"
+   }
+  },
+  {
+   "id": "6602030",
+   "question": "Northwestern vs. Ohio State",
+   "slug": "cfb-nw-ohiost-2026-11-14",
+   "eventSlug": "",
+   "outcomes": [
+    "Northwestern",
+    "Ohio State"
+   ],
+   "yesPrice": 0.165,
+   "spread": 0.010000000000000009,
+   "volume": 367142.40836300014,
+   "liquidity": 496999.7047,
+   "endDate": "2026-11-14T17:00:00Z",
+   "negRisk": false,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "sports_fees_v3",
+   "eventId": "6602030",
+   "tokenIds": {
+    "YES": "38652814884067253331247447817374594510900160365196064551990785130149892171257",
+    "NO": "93597451326324712801340021773276862085709413015003989174689219906942388505779"
+   }
+  },
+  {
+   "id": "6919847",
+   "question": "Will there be no new be CEO of NVIDIA by December 31, 2028?",
+   "slug": "will-candidate-a-be-the-next-ceo-of-nvidia",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.0845,
+   "spread": 0.002999999999999989,
+   "volume": 636785.0559019999,
+   "liquidity": 72515.34443,
+   "endDate": "2029-01-01T04:59:00Z",
+   "negRisk": true,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "culture_fees",
+   "eventId": "6919847",
+   "tokenIds": {
+    "YES": "30917853047681848974124763406524368436482316036542704956055886396093348090575",
+    "NO": "1235542575596688477313848611478957797754574132778744552334368030605653599770"
+   }
+  },
+  {
+   "id": "561974",
+   "question": "Will J.D. Vance win the 2028 Republican presidential nomination?",
+   "slug": "will-jd-vance-win-the-2028-republican-presidential-nomination",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.3645,
+   "spread": 0.0010000000000000009,
+   "volume": 17364271.068679,
+   "liquidity": 378016.08259,
+   "endDate": "2028-11-08T04:59:00Z",
+   "negRisk": true,
+   "feeRate": 0.04,
+   "feeExponent": 1,
+   "feeType": "politics_fees",
+   "eventId": "561974",
+   "tokenIds": {
+    "YES": "40081275558852222228080198821361202017557872256707631666334039001378518619916",
+    "NO": "78633590736077251574794513664747155551297291244492840448622550955320930591622"
+   }
+  },
+  {
+   "id": "7000345",
+   "question": "Dota 2: potn9ki vs oveA - Game 2 Winner",
+   "slug": "dota2-p-ovea-2026-11-13-game2",
+   "eventSlug": "",
+   "outcomes": [
+    "potn9ki",
+    "oveA"
+   ],
+   "yesPrice": 0.615,
+   "spread": 0.030000000000000027,
+   "volume": 265143.3005189999,
+   "liquidity": 77520.1395,
+   "endDate": "2026-11-13T18:00:00Z",
+   "negRisk": false,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "sports_fees_v3",
+   "eventId": "7000345",
+   "tokenIds": {
+    "YES": "81016255014628074757154737299971467598914016904043351417408919840160919375497",
+    "NO": "52026114320383171071277718638158791583177420692906495855387057194627191191693"
+   }
+  },
+  {
+   "id": "6967922",
+   "question": "Dota 2: LGD Gaming vs LEGION - Game 2 Winner",
+   "slug": "dota2-lgd-legion1-2026-11-12-game2",
+   "eventSlug": "",
+   "outcomes": [
+    "LGD Gaming",
+    "LEGION"
+   ],
+   "yesPrice": 0.95,
+   "spread": 0.020000000000000018,
+   "volume": 232105.2052259999,
+   "liquidity": 68476.3485,
+   "endDate": "2026-11-14T15:00:00Z",
+   "negRisk": false,
+   "feeRate": 0.05,
+   "feeExponent": 1,
+   "feeType": "sports_fees_v3",
+   "eventId": "6967922",
+   "tokenIds": {
+    "YES": "53344023771898479683543852403584711522312571305858463855823749067570765408765",
+    "NO": "31309834563591316381760750384431512822796100262304982048953744392940399336021"
+   }
+  },
+  {
+   "id": "6998285",
+   "question": "Will Jensen Huang rejoin NVIDIA by December 31, 2026?",
+   "slug": "will-jensen-huang-rejoin-nvidia-by-december-31-2026",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.0995,
+   "spread": 0.0030000000000000027,
+   "volume": 238695.99962299998,
+   "liquidity": 102454.96831,
+   "endDate": "2027-01-01T04:59:00Z",
+   "negRisk": false,
+   "feeRate": 0.04,
+   "feeExponent": 1,
+   "feeType": "tech_fees",
+   "eventId": "6998285",
+   "tokenIds": {
+    "YES": "4872670756822880674944283038882529075210700927252109488954070437890542145542",
+    "NO": "99515425688162145433015537697061766068227910832727697250207811996495663573106"
+   }
+  },
+  {
+   "id": "561229",
+   "question": "Will JD Vance win the 2028 US Presidential Election?",
+   "slug": "will-jd-vance-win-the-2028-us-presidential-election",
+   "eventSlug": "",
+   "outcomes": [
+    "Yes",
+    "No"
+   ],
+   "yesPrice": 0.1535,
+   "spread": 0.0010000000000000009,
+   "volume": 19339961.528925,
+   "liquidity": 578078.6806,
+   "endDate": "2028-11-08T04:59:00Z",
+   "negRisk": true,
+   "feeRate": 0.04,
+   "feeExponent": 1,
+   "feeType": "politics_fees",
+   "eventId": "561229",
+   "tokenIds": {
+    "YES": "16040015440196279900485035793550429453516625694844857319147506590755961451627",
+    "NO": "94476829201604408463453426454480212459887267917122244941405244686637914508323"
+   }
+  }
+ ],
+ "positions": {
+  "679022": {
+   "question": "Will David Lisnard win the 2027 French presidential election?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/will-david-lisnard-win-the-2027-french-presidential-election",
+   "openedAt": "2026-11-13T12:42:59.117Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.83468351,
+    "margin": 98.85169048968613,
+    "leverage": 1,
+    "notional": 98.85169048968613,
+    "borrowed": 0,
+    "shares": 118.43014664287082,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.11656767944861926,
+   "beliefVariance": 0.2395032590433922,
+   "lastYes": 0.1745,
+   "spread": 0.0010000000000000009,
+   "learning": true
+  },
+  "2299955": {
+   "question": "Will Anthropic's valuation hit (HIGH) $1.75T by December 31?",
+   "cluster": "finance",
+   "url": "https://polymarket.com/market/will-anthropics-valuation-hit-high-1pt75t-by-december-31-328",
+   "openedAt": "2026-11-13T10:33:06.770Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.599711,
+    "margin": 98.94661602963447,
+    "leverage": 1,
+    "notional": 98.94661602963447,
+    "borrowed": 0,
+    "shares": 164.990497138846,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.32620379523585463,
+   "beliefVariance": 0.10058808705959163,
+   "lastYes": 0.445,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  "3013350": {
+   "question": "Will Bitcoin dip to $60,000 by December 31, 2026?",
+   "cluster": "crypto",
+   "url": "https://polymarket.com/market/will-bitcoin-dip-to-60k-by-december-31-2026-from-july-21",
+   "openedAt": "2026-11-14T03:31:00.803Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.54745625,
+    "margin": 98.56963034046734,
+    "leverage": 1,
+    "notional": 98.56963034046734,
+    "borrowed": 0,
+    "shares": 180.0502420795586,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.07,
+    "takerExponent": 1
+   },
+   "belief": 0.36650352301727185,
+   "beliefVariance": 0.12065768910933122,
+   "lastYes": 0.465,
+   "spread": 0.009999999999999953,
+   "learning": true
+  },
+  "6496387": {
+   "question": "UFC 334: Josh Hokit vs. Ciryl Gane (Heavyweight, Main Card)",
+   "cluster": "sports",
+   "url": "https://polymarket.com/market/ufc-jos52-cir-2026-11-14",
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.65158875,
+    "margin": 100,
+    "leverage": 1,
+    "notional": 100,
+    "borrowed": 0,
+    "shares": 153.47103521968418,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.05,
+    "takerExponent": 1
+   },
+   "belief": 0.27939679322734945,
+   "beliefVariance": 0.10930390048872526,
+   "lastYes": 0.335,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  "6828351": {
+   "question": "Louisiana-Lafayette Ragin' Cajuns vs. UNCW Seahawks",
+   "cluster": "sports",
+   "url": "https://polymarket.com/market/cbb-loulaf-ncw-2026-11-14",
+   "openedAt": "2026-11-13T08:12:36.625Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.5324887500000001,
+    "margin": 99.01467627120284,
+    "leverage": 1,
+    "notional": 99.01467627120284,
+    "borrowed": 0,
+    "shares": 185.94698248780435,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.05,
+    "takerExponent": 1
+   },
+   "belief": 0.39498769202995343,
+   "beliefVariance": 0.09862434197520355,
+   "lastYes": 0.495,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  "6884119": {
+   "question": "Jensen Huang divorce by December 31, 2026?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/jensen-huang-divorce-in-2026",
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.777191,
+    "margin": 100,
+    "leverage": 1,
+    "notional": 100,
+    "borrowed": 0,
+    "shares": 128.66849976389332,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.16676496264645857,
+   "beliefVariance": 0.17189943396095747,
+   "lastYes": 0.145,
+   "spread": 0.009999999999999981,
+   "learning": true
+  }
+ },
+ "history": [
+  {
+   "openedAt": "2026-11-13T13:46:35.195Z",
+   "closedAt": "2026-11-13T15:31:22.039Z",
+   "market": "Will Bitcoin dip to $67,500 in November?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.40710624999999995,
+   "exitYes": 0.795,
+   "outcome": "CLOSED",
+   "margin": 59.8624699357565,
+   "pnl": -32.131213133615276,
+   "reason": "stop-loss: margin down 53.7% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "closedAt": "2026-11-13T08:12:36.929Z",
+   "market": "Commanders vs. Giants",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.5474632500000001,
+   "exitYes": 0.485,
+   "outcome": "YES",
+   "margin": 100,
+   "pnl": -100,
+   "reason": "market resolved",
+   "learning": true
+  }
+ ],
+ "log": [
+  {
+   "at": "2026-11-14T11:30:45.808Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T10:30:43.062Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T09:24:50.733Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T08:15:39.957Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T07:00:56.010Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T06:00:52.784Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T04:45:41.331Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T03:31:02.646Z",
+   "kind": "LEARN",
+   "text": "Will Bitcoin dip to $60,000 by December 31, 2026? — NO 1x @ 54.7c · margin 98.57 · NO edge 2.2 pts · Kelly 4.8% × 0.25 · 1x (edge/vol 0.43)"
+  },
+  {
+   "at": "2026-11-14T03:31:00.966Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T02:15:48.335Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T01:01:11.336Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-13T23:45:38.292Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T22:35:03.673Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T22:02:01.263Z",
+   "kind": "TRAIN",
+   "text": "retrained on 816 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-13T21:30:57.584Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T20:30:47.391Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T19:30:46.493Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T18:15:47.678Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T17:10:07.056Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T16:02:36.501Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T15:31:22.039Z",
+   "kind": "LEARN-CLOSE",
+   "text": "Will Bitcoin dip to $67,500 in November? — NO closed · -32.13 · stop-loss: margin down 53.7% and thesis weakened"
+  },
+  {
+   "at": "2026-11-13T15:00:58.588Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T13:46:37.806Z",
+   "kind": "LEARN",
+   "text": "Will Bitcoin dip to $67,500 in November? — NO 1x @ 40.7c · margin 59.86 · NO edge 1.3 pts · Kelly 2.4% × 0.25 · 1x (edge/vol 0.27)"
+  },
+  {
+   "at": "2026-11-13T13:46:35.492Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T12:43:01.063Z",
+   "kind": "LEARN",
+   "text": "Will David Lisnard win the 2027 French presidential election? — NO 1x @ 83.5c · margin 98.85 · NO edge 1.1 pts · Kelly 6.9% × 0.25 · 1x (edge/vol 0.23)"
+  },
+  {
+   "at": "2026-11-13T12:42:59.428Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-13T10:33:08.381Z",
+   "kind": "LEARN",
+   "text": "Will Anthropic's valuation hit (HIGH) $1.75T by December 31? — NO 1x @ 60.0c · margin 98.95 · NO edge 2.6 pts · Kelly 6.4% × 0.25 · 1x (edge/vol 0.51)"
+  },
+  {
+   "at": "2026-11-13T10:33:07.106Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-13T09:19:17.053Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-13T08:12:37.593Z",
+   "kind": "LEARN",
+   "text": "Louisiana-Lafayette Ragin' Cajuns vs. UNCW Seahawks — NO 1x @ 53.2c · margin 99.01 · NO edge 2.3 pts · Kelly 5.0% × 0.25 · 1x (edge/vol 0.47)"
+  },
+  {
+   "at": "2026-11-13T08:12:36.929Z",
+   "kind": "SETTLE",
+   "text": "Commanders vs. Giants — NO resolved YES · -100.00 · market resolved"
+  },
+  {
+   "at": "2026-11-13T08:12:36.810Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T02:31:58.902Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-12T23:02:45.764Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-12T22:01:02.822Z",
+   "kind": "LEARN",
+   "text": "Jensen Huang divorce by December 31, 2026? — NO 1x @ 77.7c · margin 100.00 · NO edge 1.1 pts · Kelly 5.1% × 0.25 · 1x (edge/vol 0.23)"
+  },
+  {
+   "at": "2026-11-12T22:01:02.314Z",
+   "kind": "LEARN",
+   "text": "UFC 334: Josh Hokit vs. Ciryl Gane (Heavyweight, Main Card) — NO 1x @ 65.2c · margin 100.00 · NO edge 2.1 pts · Kelly 6.0% × 0.25 · 1x (edge/vol 0.42)"
+  },
+  {
+   "at": "2026-11-12T22:01:01.938Z",
+   "kind": "LEARN",
+   "text": "Commanders vs. Giants — NO 1x @ 54.7c · margin 100.00 · NO edge 2.9 pts · Kelly 6.3% × 0.25 · 1x (edge/vol 0.57)"
+  },
+  {
+   "at": "2026-11-12T22:01:01.371Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-12T22:01:01.342Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1278 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  }
+ ],
+ "model": {
+  "kind": "calib",
+  "a": -0.44783746948192543,
+  "b": 0.9932593919407455,
+  "cov": [
+   [
+    0.12157337532763615,
+    0.007483170642999191
+   ],
+   [
+    0.007483170642999191,
+    0.0581226408352113
+   ]
+  ],
+  "n": 1324,
+  "effectiveN": 69.00000000000085,
+  "source": "autopilot · 816 resolved markets",
+  "trainedAt": 1794607257839,
+  "gate": {
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0,
+   "spread": 0.02,
+   "tradeHorizon": 7
+  }
+ },
+ "trainings": [
+  {
+   "at": "2026-11-13T22:00:57.839Z",
+   "markets": 816,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-12T21:59:56.133Z",
+   "markets": 1278,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  }
+ ],
+ "lastTrainAttempt": 1794607257839
+}

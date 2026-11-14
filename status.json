@@ -1,0 +1,478 @@
+{
+ "available": true,
+ "virtualMoney": true,
+ "generatedAt": "2026-11-14T11:45:39.064Z",
+ "createdAt": "2026-11-12T21:59:56.133Z",
+ "lastTick": "2026-11-14T11:45:39.062Z",
+ "account": {
+  "bankroll": 10000,
+  "cash": 9272.486173735393,
+  "peak": 10000,
+  "halted": false,
+  "realized": -132.1312131336153,
+  "trades": 2,
+  "wins": 0
+ },
+ "paused": false,
+ "model": {
+  "source": "autopilot · 816 resolved markets",
+  "trainedAt": 1794607257839,
+  "kind": "calib",
+  "gate": {
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0,
+   "spread": 0.02,
+   "tradeHorizon": 7
+  }
+ },
+ "positions": [
+  {
+   "id": "679022",
+   "question": "Will David Lisnard win the 2027 French presidential election?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/will-david-lisnard-win-the-2027-french-presidential-election",
+   "openedAt": "2026-11-13T12:42:59.117Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.83468351,
+    "margin": 98.85169048968613,
+    "leverage": 1,
+    "notional": 98.85169048968613,
+    "borrowed": 0,
+    "shares": 118.43014664287082,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.11656767944861926,
+   "beliefVariance": 0.2395032590433922,
+   "lastYes": 0.1745,
+   "spread": 0.0010000000000000009,
+   "learning": true
+  },
+  {
+   "id": "2299955",
+   "question": "Will Anthropic's valuation hit (HIGH) $1.75T by December 31?",
+   "cluster": "finance",
+   "url": "https://polymarket.com/market/will-anthropics-valuation-hit-high-1pt75t-by-december-31-328",
+   "openedAt": "2026-11-13T10:33:06.770Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.599711,
+    "margin": 98.94661602963447,
+    "leverage": 1,
+    "notional": 98.94661602963447,
+    "borrowed": 0,
+    "shares": 164.990497138846,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.32620379523585463,
+   "beliefVariance": 0.10058808705959163,
+   "lastYes": 0.445,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  {
+   "id": "3013350",
+   "question": "Will Bitcoin dip to $60,000 by December 31, 2026?",
+   "cluster": "crypto",
+   "url": "https://polymarket.com/market/will-bitcoin-dip-to-60k-by-december-31-2026-from-july-21",
+   "openedAt": "2026-11-14T03:31:00.803Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.54745625,
+    "margin": 98.56963034046734,
+    "leverage": 1,
+    "notional": 98.56963034046734,
+    "borrowed": 0,
+    "shares": 180.0502420795586,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.07,
+    "takerExponent": 1
+   },
+   "belief": 0.36650352301727185,
+   "beliefVariance": 0.12065768910933122,
+   "lastYes": 0.465,
+   "spread": 0.009999999999999953,
+   "learning": true
+  },
+  {
+   "id": "6496387",
+   "question": "UFC 334: Josh Hokit vs. Ciryl Gane (Heavyweight, Main Card)",
+   "cluster": "sports",
+   "url": "https://polymarket.com/market/ufc-jos52-cir-2026-11-14",
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.65158875,
+    "margin": 100,
+    "leverage": 1,
+    "notional": 100,
+    "borrowed": 0,
+    "shares": 153.47103521968418,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.05,
+    "takerExponent": 1
+   },
+   "belief": 0.27939679322734945,
+   "beliefVariance": 0.10930390048872526,
+   "lastYes": 0.335,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  {
+   "id": "6828351",
+   "question": "Louisiana-Lafayette Ragin' Cajuns vs. UNCW Seahawks",
+   "cluster": "sports",
+   "url": "https://polymarket.com/market/cbb-loulaf-ncw-2026-11-14",
+   "openedAt": "2026-11-13T08:12:36.625Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.5324887500000001,
+    "margin": 99.01467627120284,
+    "leverage": 1,
+    "notional": 99.01467627120284,
+    "borrowed": 0,
+    "shares": 185.94698248780435,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.05,
+    "takerExponent": 1
+   },
+   "belief": 0.39498769202995343,
+   "beliefVariance": 0.09862434197520355,
+   "lastYes": 0.495,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  {
+   "id": "6884119",
+   "question": "Jensen Huang divorce by December 31, 2026?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/jensen-huang-divorce-in-2026",
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "lastAccrual": 1794656733781,
+   "position": {
+    "side": "NO",
+    "entry": 0.777191,
+    "margin": 100,
+    "leverage": 1,
+    "notional": 100,
+    "borrowed": 0,
+    "shares": 128.66849976389332,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.16676496264645857,
+   "beliefVariance": 0.17189943396095747,
+   "lastYes": 0.145,
+   "spread": 0.009999999999999981,
+   "learning": true
+  }
+ ],
+ "watching": 16,
+ "history": [
+  {
+   "openedAt": "2026-11-13T13:46:35.195Z",
+   "closedAt": "2026-11-13T15:31:22.039Z",
+   "market": "Will Bitcoin dip to $67,500 in November?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.40710624999999995,
+   "exitYes": 0.795,
+   "outcome": "CLOSED",
+   "margin": 59.8624699357565,
+   "pnl": -32.131213133615276,
+   "reason": "stop-loss: margin down 53.7% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "closedAt": "2026-11-13T08:12:36.929Z",
+   "market": "Commanders vs. Giants",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.5474632500000001,
+   "exitYes": 0.485,
+   "outcome": "YES",
+   "margin": 100,
+   "pnl": -100,
+   "reason": "market resolved",
+   "learning": true
+  }
+ ],
+ "log": [
+  {
+   "at": "2026-11-14T11:30:45.808Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T10:30:43.062Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T09:24:50.733Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T08:15:39.957Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T07:00:56.010Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T06:00:52.784Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T04:45:41.331Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-14T03:31:02.646Z",
+   "kind": "LEARN",
+   "text": "Will Bitcoin dip to $60,000 by December 31, 2026? — NO 1x @ 54.7c · margin 98.57 · NO edge 2.2 pts · Kelly 4.8% × 0.25 · 1x (edge/vol 0.43)"
+  },
+  {
+   "at": "2026-11-14T03:31:00.966Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T02:15:48.335Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-14T01:01:11.336Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-13T23:45:38.292Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T22:35:03.673Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T22:02:01.263Z",
+   "kind": "TRAIN",
+   "text": "retrained on 816 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-13T21:30:57.584Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T20:30:47.391Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T19:30:46.493Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T18:15:47.678Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-13T17:10:07.056Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T16:02:36.501Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T15:31:22.039Z",
+   "kind": "LEARN-CLOSE",
+   "text": "Will Bitcoin dip to $67,500 in November? — NO closed · -32.13 · stop-loss: margin down 53.7% and thesis weakened"
+  },
+  {
+   "at": "2026-11-13T15:00:58.588Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T13:46:37.806Z",
+   "kind": "LEARN",
+   "text": "Will Bitcoin dip to $67,500 in November? — NO 1x @ 40.7c · margin 59.86 · NO edge 1.3 pts · Kelly 2.4% × 0.25 · 1x (edge/vol 0.27)"
+  },
+  {
+   "at": "2026-11-13T13:46:35.492Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T12:43:01.063Z",
+   "kind": "LEARN",
+   "text": "Will David Lisnard win the 2027 French presidential election? — NO 1x @ 83.5c · margin 98.85 · NO edge 1.1 pts · Kelly 6.9% × 0.25 · 1x (edge/vol 0.23)"
+  },
+  {
+   "at": "2026-11-13T12:42:59.428Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-13T10:33:08.381Z",
+   "kind": "LEARN",
+   "text": "Will Anthropic's valuation hit (HIGH) $1.75T by December 31? — NO 1x @ 60.0c · margin 98.95 · NO edge 2.6 pts · Kelly 6.4% × 0.25 · 1x (edge/vol 0.51)"
+  },
+  {
+   "at": "2026-11-13T10:33:07.106Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-13T09:19:17.053Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-13T08:12:37.593Z",
+   "kind": "LEARN",
+   "text": "Louisiana-Lafayette Ragin' Cajuns vs. UNCW Seahawks — NO 1x @ 53.2c · margin 99.01 · NO edge 2.3 pts · Kelly 5.0% × 0.25 · 1x (edge/vol 0.47)"
+  },
+  {
+   "at": "2026-11-13T08:12:36.929Z",
+   "kind": "SETTLE",
+   "text": "Commanders vs. Giants — NO resolved YES · -100.00 · market resolved"
+  },
+  {
+   "at": "2026-11-13T08:12:36.810Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-13T02:31:58.902Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-12T23:02:45.764Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-12T22:01:02.822Z",
+   "kind": "LEARN",
+   "text": "Jensen Huang divorce by December 31, 2026? — NO 1x @ 77.7c · margin 100.00 · NO edge 1.1 pts · Kelly 5.1% × 0.25 · 1x (edge/vol 0.23)"
+  },
+  {
+   "at": "2026-11-12T22:01:02.314Z",
+   "kind": "LEARN",
+   "text": "UFC 334: Josh Hokit vs. Ciryl Gane (Heavyweight, Main Card) — NO 1x @ 65.2c · margin 100.00 · NO edge 2.1 pts · Kelly 6.0% × 0.25 · 1x (edge/vol 0.42)"
+  },
+  {
+   "at": "2026-11-12T22:01:01.938Z",
+   "kind": "LEARN",
+   "text": "Commanders vs. Giants — NO 1x @ 54.7c · margin 100.00 · NO edge 2.9 pts · Kelly 6.3% × 0.25 · 1x (edge/vol 0.57)"
+  },
+  {
+   "at": "2026-11-12T22:01:01.371Z",
+   "kind": "INFO",
+   "text": "watching 12 markets"
+  },
+  {
+   "at": "2026-11-12T22:01:01.342Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1278 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  }
+ ],
+ "trainings": [
+  {
+   "at": "2026-11-13T22:00:57.839Z",
+   "markets": 816,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-12T21:59:56.133Z",
+   "markets": 1278,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  }
+ ],
+ "forward": {
+  "learning": {
+   "trades": 2,
+   "wins": 0,
+   "pnl": -132.1312131336153,
+   "meanReturn": -0.7683752705835394,
+   "ci": [
+    -1,
+    -0.5367505411670787
+   ],
+   "days": 1.5734135532407407,
+   "convincing": false
+  },
+  "gated": {
+   "trades": 0,
+   "wins": 0,
+   "pnl": 0,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "days": 0,
+   "convincing": false
+  }
+ }
+}
