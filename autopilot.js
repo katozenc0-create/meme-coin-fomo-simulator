@@ -59,6 +59,11 @@ function applyHaltReset(state, token, equityNow, say) {
   return true;
 }
 
+// How the resolved markets are sampled for training. Before 'event-cap-3', a few huge events (an
+// election with 300 candidates, one winner) filled the budget: ~60 independent events, a model
+// that believed nearly everything ends NO, and 0 out-of-sample trades. Now <= 3 random markets per event.
+const TRAINING_SAMPLING = 'event-cap-3';
+
 function createAutopilot({ fetchJson, now = () => Date.now(), state = freshState(), options = {} }) {
   const opts = { ...DEFAULTS, ...options };
   const config = { maxLeverage: opts.maxLeverage, maxPositionPct: opts.maxPositionPct, ...LIVE_RULES, ...(options.config || {}) };
@@ -115,14 +120,16 @@ function createAutopilot({ fetchJson, now = () => Date.now(), state = freshState
     if (!(opts.train > 0)) return;
     const model = state.model;
     const age = model && Number.isFinite(model.trainedAt) ? started - model.trainedAt : Infinity;
-    if (age < opts.retrainHours * 3600000) return;
+    // A model trained with an older sampling of the resolved markets is retrained at once.
+    const outdated = !!model && model.sampling !== TRAINING_SAMPLING;
+    if (age < opts.retrainHours * 3600000 && !outdated) return;
     if (started - (state.lastTrainAttempt || 0) < opts.trainRetryMs) return;   // a failed attempt waits
     state.lastTrainAttempt = started;
     try {
       const markets = await M.loadResolvedMarkets(fetchJson, { count: opts.train, now: started });
       if (markets.length < 20) throw new Error(`only ${markets.length} resolved markets with price history`);
       const { model: trained } = M.trainModel(markets, { kind: opts.trainKind, tradeHorizon: opts.tradeHorizon, spread: opts.trainSpread, config, source: `autopilot · ${markets.length} resolved markets`, now: started });
-      state.model = trained;
+      state.model = { ...trained, sampling: TRAINING_SAMPLING };
       const gate = trained.gate;
       state.trainings.unshift({ at: new Date(started).toISOString(), markets: markets.length, open: gate.open, robust: gate.robust, meanReturn: gate.meanReturn, ci: gate.ci, trades: gate.trades });
       state.trainings.length = Math.min(state.trainings.length, 60);
@@ -343,4 +350,4 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error.message); process.exit(1); });
 
-module.exports = { createAutopilot, freshState, makeFetchJson, loadState, saveState, parseArgs, forwardEvidence, statusOf, LIVE_RULES };
+module.exports = { TRAINING_SAMPLING, createAutopilot, freshState, makeFetchJson, loadState, saveState, parseArgs, forwardEvidence, statusOf, LIVE_RULES };

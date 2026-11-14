@@ -541,3 +541,20 @@ test('training data loader retries a flaky window and only gives up when every w
   assert.ok(markets.length >= 4, `a 502 is retried, not fatal (${markets.length} markets)`);
   await assert.rejects(M.loadResolvedMarkets(async () => { throw new Error('down'); }, { count: 4, retryDelayMs: 1 }), /down/, 'all windows failing is reported');
 });
+
+test('sampleEventMarkets keeps at most N random markets per event, deterministically and without bias toward NO', () => {
+  const big = Array.from({ length: 300 }, (_, i) => ({ id: `m${i}`, eventId: 'election', outcome: i === 0 ? 'YES' : 'NO' }));
+  const small = [{ id: 's1', eventId: 'game', outcome: 'YES' }, { id: 's2', eventId: 'game', outcome: 'NO' }];
+  const out = M.sampleEventMarkets([...big, ...small], 3);
+  assert.equal(out.filter(m => m.eventId === 'election').length, 3);
+  assert.equal(out.filter(m => m.eventId === 'game').length, 2, 'small events are kept whole');
+  assert.deepEqual(M.sampleEventMarkets([...big, ...small], 3).map(m => m.id), out.map(m => m.id), 'seeded by the event id: reproducible');
+  // Unbiased: over many events, the winner stays with probability N / size (here 3 / 10).
+  let kept = 0;
+  for (let e = 0; e < 2000; e += 1) {
+    const event = Array.from({ length: 10 }, (_, i) => ({ id: `${e}-${i}`, eventId: `ev${e}`, outcome: i === 0 ? 'YES' : 'NO' }));
+    kept += M.sampleEventMarkets(event, 3).filter(m => m.outcome === 'YES').length;
+  }
+  assert.ok(Math.abs(kept / 2000 - .3) < .04, `winner kept ${kept / 2000}`);
+  assert.equal(M.sampleEventMarkets(big, 0).length, 300, '0 = keep everything');
+});

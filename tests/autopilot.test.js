@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createAutopilot, freshState, loadState, saveState, parseArgs, makeFetchJson, forwardEvidence, statusOf } = require('../autopilot.js');
+const { TRAINING_SAMPLING, createAutopilot, freshState, loadState, saveState, parseArgs, makeFetchJson, forwardEvidence, statusOf } = require('../autopilot.js');
 
 const DAY = 86400000;
 // A deliberately optimistic calibration model whose evidence gate is open (trades when allowed).
@@ -163,6 +163,12 @@ test('self-training: a calibrated crowd keeps the gate closed; retrains only whe
   clock += 24 * 3600000;
   await pilot.tick();
   assert.equal(state.trainings.length, 2, 'retrained once the model is a day old');
+  assert.equal(state.model.sampling, TRAINING_SAMPLING);
+  // A model from the older sampling (huge events filling the budget) is replaced at once.
+  state.model = { ...state.model, sampling: undefined, trainedAt: clock };
+  clock += 3600000;
+  await pilot.tick();
+  assert.equal(state.trainings.length, 3, 'an outdated model is retrained even when it is fresh');
 });
 
 test('self-training: when the gate opens on real evidence, the autopilot may trade', async () => {
