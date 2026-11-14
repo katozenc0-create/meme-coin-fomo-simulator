@@ -111,7 +111,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     else state.lastLossAt[held.symbol] = now();
     delete state.positions[id];
     const trade = {
-      id, symbol: held.symbol, strategy: held.strategy, side: held.side, book: held.book, learning: held.book === 'learning',
+      id, symbol: held.symbol, tier: held.tier || 'core', strategy: held.strategy, side: held.side, book: held.book, learning: held.book === 'learning',
       leverage: held.leverage, entry: held.entry, exit: result.exitFill, qty: held.qty, notional: held.notional, margin: held.margin,
       risk: held.risk, pnl: result.pnl, r: result.r, fees: result.fees, funding: result.funding, reason,
       openedAt: new Date(held.openedAt).toISOString(), closedAt: new Date(at).toISOString()
@@ -127,7 +127,10 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     // Also due when the strategies or coins changed since the last training (a new release).
     const stale = !!model && (Object.keys(strategies).some(name => !model.strategies[name]) || (Array.isArray(model.symbols) && opts.symbols.some(symbol => !model.symbols.includes(symbol))));
     const due = !model || stale || now() - model.trainedAt >= opts.retrainHours * HOUR;
-    if (!due || now() - state.lastTrainAttempt < opts.trainRetryMs) return false;
+    // The retry wait is for FAILED attempts: a model outdated by a new release (new coins or
+    // strategies) is retrained at once unless an attempt already failed since the last training.
+    const failedSince = state.lastTrainAttempt > (model ? model.trainedAt : 0);
+    if (!due || ((!stale || failedSince) && now() - state.lastTrainAttempt < opts.trainRetryMs)) return false;
     state.lastTrainAttempt = now();
     try {
       const bySymbol = {};
@@ -137,13 +140,20 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
           bySymbol[symbol] = X.closedCandles(candles, HOUR, now());
         } catch (error) { say('ERROR', `training data for ${symbol}: ${error.message}`); }
       }
-      if (Object.keys(bySymbol).length < 2) throw new Error('not enough coins with history');
-      const trained = X.train(bySymbol, { costs, now: now() });
+      const tierBars = tier => Object.fromEntries(Object.entries(bySymbol).filter(([symbol]) => X.tierOf(symbol) === tier));
+      const core = tierBars('core');
+      const satellite = tierBars('satellite');
+      if (Object.keys(core).length < 2) throw new Error('not enough coins with history');
+      const trained = X.train(core, { costs, now: now() });
+      trained.satellite = Object.keys(satellite).length >= 2 ? X.train(satellite, { costs, now: now() }) : null;
+      trained.symbols = Object.keys(bySymbol);
       state.model = trained;
-      const summary = Object.entries(trained.strategies).map(([name, s]) => `${name} ${s.gate.open ? 'OPEN' : 'closed'} (${s.gate.trades} trades, mean ${s.gate.meanR >= 0 ? '+' : ''}${s.gate.meanR.toFixed(2)}R [${s.gate.ci[0].toFixed(2)}, ${s.gate.ci[1].toFixed(2)}])`).join(' · ');
-      state.trainings.unshift({ at: new Date(now()).toISOString(), bars: trained.bars, symbols: trained.symbols.length, strategies: Object.fromEntries(Object.entries(trained.strategies).map(([name, s]) => [name, { open: s.gate.open, trades: s.gate.trades, meanR: s.gate.meanR, ci: s.gate.ci }])) });
+      const summaryOf = model => Object.entries(model.strategies).map(([name, s]) => `${name} ${s.gate.open ? 'OPEN' : 'closed'} (${s.gate.trades} trades, mean ${s.gate.meanR >= 0 ? '+' : ''}${s.gate.meanR.toFixed(2)}R [${s.gate.ci[0].toFixed(2)}, ${s.gate.ci[1].toFixed(2)}])`).join(' · ');
+      const gatesOf = model => Object.fromEntries(Object.entries(model.strategies).map(([name, s]) => [name, { open: s.gate.open, trades: s.gate.trades, meanR: s.gate.meanR, ci: s.gate.ci }]));
+      state.trainings.unshift({ at: new Date(now()).toISOString(), bars: trained.bars, symbols: trained.symbols.length, strategies: gatesOf(trained), satellite: trained.satellite ? gatesOf(trained.satellite) : null });
       state.trainings.length = Math.min(state.trainings.length, 60);
-      say('TRAIN', `walk-forward on ${trained.bars} hourly bars of ${trained.symbols.length} coins · ${summary}`);
+      say('TRAIN', `walk-forward on ${trained.bars} hourly bars of ${Object.keys(core).length} core coins · ${summaryOf(trained)}`);
+      if (trained.satellite) say('TRAIN', `satellite tier (${trained.satellite.symbols.length} newer coins, own gate) · ${summaryOf(trained.satellite)}`);
       return true;
     } catch (error) {
       say('ERROR', `training failed: ${error.message}`);
@@ -194,7 +204,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     if (forming.length) apply(X.replayPosition(held, forming, { now: t, costs, trail: false }), MINUTE);
   }
 
-  function admitAndOpen({ symbol, strategy, label, signal, bar, atrValue, price, book, reading }) {
+  function admitAndOpen({ symbol, tier = 'core', strategy, label, signal, bar, atrValue, price, book, reading }) {
     const eq = equity();
     const verdict = X.admit({ account: state.account, positions: state.positions, symbol, side: signal.side, book, now: now(), lastLossAt: state.lastLossAt, rules, equity: eq });
     if (!verdict.ok) { say('SKIP', `${symbol} ${signal.side} (${strategy}): ${verdict.reasons.join('; ')}`); return null; }
@@ -205,7 +215,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     if (!sized) { say('SKIP', `${symbol} ${signal.side} (${strategy}): cannot size within the margin and liquidation limits`); return null; }
     const id = `x${state.nextId}`;
     state.nextId += 1;
-    const held = { id, symbol, strategy, book, ...sized, stop: sized.initialStop, atr: atrValue, openedAt: now(), reason: signal.reason, chart: reading.notes.slice(0, 3) };
+    const held = { id, symbol, tier, strategy, book, ...sized, stop: sized.initialStop, atr: atrValue, openedAt: now(), reason: signal.reason, chart: reading.notes.slice(0, 3) };
     state.positions[id] = held;
     state.account.cash -= held.margin;
     say(book === 'learning' ? 'LEARN' : 'OPEN', `${symbol} ${signal.side} ${held.leverage.toFixed(1)}x @ ${fmt(held.entry)} · ${label}: ${signal.reason} · stop ${fmt(held.stop)} · target ${fmt(held.target)} · liq ${fmt(held.liquidation)} · margin $${held.margin.toFixed(2)} · risk $${held.risk.toFixed(2)}`);
@@ -267,21 +277,23 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       state.lastSignalBar[key] = bar.t;
       const ind = X.computeIndicators(candles);
       const reading = X.readChart(candles, ind);
+      const tier = X.tierOf(symbol);
+      const tierModel = tier === 'core' ? state.model : state.model && state.model.satellite;
       for (const name of names) {
-        const trained = state.model && state.model.strategies[name];
+        const trained = tierModel && tierModel.strategies[name];
         const params = trained ? trained.params : strategies[name].grid[0];
         const signal = strategies[name].signal(candles, ind, candles.length - 1, params);
         if (!signal) continue;
         signals += 1;
-        const review = X.liveReview(state.history, name, rules);
+        const review = X.liveReview(state.history, name, rules, tier);
         const gateOpen = !!(trained && trained.gate.open) && !review.demoted;
         const book = gateOpen ? 'gated' : opts.learn && learnable(trained) ? 'learning' : null;
         if (review.demoted && trained && trained.gate.open) say('DEMOTE', `${name}: last ${review.trades} live trades average ${review.meanR >= 0 ? '+' : ''}${review.meanR.toFixed(2)}R (below ${rules.liveDemoteR}R) · ${book ? 'learning book only' : 'not traded'} until they recover`);
         if (!book) {
-          say('WATCH', `${symbol} ${signal.side} (${name}): ${signal.reason} · ${!opts.learn ? 'evidence gate closed' : 'out-of-sample evidence says this strategy loses after costs'}, not traded`);
+          say('WATCH', `${symbol} ${signal.side} (${name}${tier === 'core' ? '' : `, ${tier}`}): ${signal.reason} · ${!opts.learn ? 'evidence gate closed' : 'out-of-sample evidence says this strategy loses after costs'}, not traded`);
           continue;
         }
-        const opened = admitAndOpen({ symbol, strategy: name, label: strategies[name].label, signal, bar, atrValue: ind.atr[candles.length - 1], price: priceOf(symbol), book, reading });
+        const opened = admitAndOpen({ symbol, tier, strategy: name, label: `${strategies[name].label}${tier === 'core' ? '' : ` [${tier}]`}`, signal, bar, atrValue: ind.atr[candles.length - 1], price: priceOf(symbol), book, reading });
         if (opened) break;                                              // one position per coin
       }
      }
@@ -306,6 +318,14 @@ function forwardEvidence(history, { learning, now = Date.now() } = {}) {
     trades: ev.trades, wins: ev.wins, pnl: trades.reduce((sum, trade) => sum + trade.pnl, 0), meanR: ev.meanR, ci: ev.ci,
     days: first ? (now - first) / X.DAY : 0, convincing: ev.open
   };
+}
+
+/** Each strategy of one tier's model with its live record, demotion and learning-book status. */
+function strategiesStatus(model, history, tier) {
+  return Object.fromEntries(Object.entries(model.strategies).map(([name, s]) => {
+    const live = X.liveReview(history, name, X.RULES, tier);
+    return [name, { ...s, live, demoted: s.gate.open && live.demoted, learnable: (!s.gate.open || live.demoted) && learnable(s) }];
+  }));
 }
 
 /**
@@ -344,10 +364,8 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     account: { ...state.account, equity }, paused: !!state.paused, trainingDays: X.TRAINING_DAYS, costs, rules: X.RULES,
     model: state.model ? {
       trainedAt: state.model.trainedAt, bars: state.model.bars, symbols: state.model.symbols,
-      strategies: Object.fromEntries(Object.entries(state.model.strategies).map(([name, s]) => {
-        const live = X.liveReview(state.history, name);
-        return [name, { ...s, live, demoted: s.gate.open && live.demoted, learnable: (!s.gate.open || live.demoted) && learnable(s) }];
-      }))
+      strategies: strategiesStatus(state.model, state.history, 'core'),
+      satellite: state.model.satellite ? { symbols: state.model.satellite.symbols, strategies: strategiesStatus(state.model.satellite, state.history, 'satellite') } : null
     } : null,
     health: healthOf(state, now),
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),

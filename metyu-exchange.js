@@ -30,9 +30,18 @@
 
   // Coins with deep USD markets on both Coinbase and Kraken.
   const SYMBOLS = Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD', 'XRP-USD', 'DOGE-USD', 'ADA-USD', 'AVAX-USD', 'LINK-USD',
-    'LTC-USD', 'BCH-USD', 'DOT-USD', 'NEAR-USD', 'SUI-USD', 'AAVE-USD', 'XLM-USD', 'HBAR-USD']);
+    'LTC-USD', 'BCH-USD', 'DOT-USD', 'NEAR-USD', 'SUI-USD', 'AAVE-USD', 'XLM-USD', 'HBAR-USD',
+    // Added 14 Nov 2026: Coinbase USD pairs with 300+ days of history and about $1M+ a day of volume.
+    'ZEC-USD', 'TAO-USD', 'QNT-USD', 'INJ-USD', 'PEPE-USD', 'UNI-USD', 'ENA-USD', 'ONDO-USD', 'ZRO-USD', 'ICP-USD', 'WLD-USD', 'FET-USD', 'TIA-USD', 'RENDER-USD', 'ALGO-USD']);
+  // Two tiers, set by size and liquidity BEFORE looking at any result: the 16 large coins (core) and
+  // the 15 added later (satellite). Each tier has its own model and evidence gate, so a weaker
+  // tier can neither borrow the other's evidence nor shut down a strategy proven on the other.
+  // A satellite strategy trades the learning book until its own gate opens.
+  const SATELLITE = Object.freeze(SYMBOLS.slice(16));
+  const tierOf = symbol => (SATELLITE.includes(symbol) ? 'satellite' : 'core');
   const KRAKEN_PAIRS = Object.freeze({ 'BTC-USD': 'XBTUSD', 'ETH-USD': 'ETHUSD', 'SOL-USD': 'SOLUSD', 'XRP-USD': 'XRPUSD', 'DOGE-USD': 'XDGUSD', 'ADA-USD': 'ADAUSD', 'AVAX-USD': 'AVAXUSD', 'LINK-USD': 'LINKUSD',
-    'LTC-USD': 'LTCUSD', 'BCH-USD': 'BCHUSD', 'DOT-USD': 'DOTUSD', 'NEAR-USD': 'NEARUSD', 'SUI-USD': 'SUIUSD', 'AAVE-USD': 'AAVEUSD', 'XLM-USD': 'XLMUSD', 'HBAR-USD': 'HBARUSD' });
+    'LTC-USD': 'LTCUSD', 'BCH-USD': 'BCHUSD', 'DOT-USD': 'DOTUSD', 'NEAR-USD': 'NEARUSD', 'SUI-USD': 'SUIUSD', 'AAVE-USD': 'AAVEUSD', 'XLM-USD': 'XLMUSD', 'HBAR-USD': 'HBARUSD',
+    'ZEC-USD': 'ZECUSD', 'TAO-USD': 'TAOUSD', 'QNT-USD': 'QNTUSD', 'INJ-USD': 'INJUSD', 'PEPE-USD': 'PEPEUSD', 'UNI-USD': 'UNIUSD', 'ENA-USD': 'ENAUSD', 'ONDO-USD': 'ONDOUSD', 'ZRO-USD': 'ZROUSD', 'ICP-USD': 'ICPUSD', 'WLD-USD': 'WLDUSD', 'FET-USD': 'FETUSD', 'TIA-USD': 'TIAUSD', 'RENDER-USD': 'RENDERUSD', 'ALGO-USD': 'ALGOUSD' });
 
   // Costs are deliberately on the expensive side of a retail perpetual-futures account.
   const COSTS = Object.freeze({
@@ -49,7 +58,7 @@
     learnMaxLeverage: 2,
     maxPositionPct: .25,      // margin of one position <= 25% of equity
     maxMarginPct: .6,         // all margins together <= 60% of equity
-    maxOpen: 4,               // positions open at once (normal book)
+    maxOpen: 6,               // positions open at once (normal book); the 3% open-risk cap per side binds first
     learnMaxOpen: 8,          // the learning book's tiny trades may fill all 8 coins (8 x 0.25% = 2% risk; the 3% side cap still holds)
     maxSideRiskPct: .03,      // crypto moves together: open risk in one direction <= 3% of equity (normal book)
     learnSideRiskPct: .02,    // the learning book's own budget (8 x 0.25%), so research trades never crowd out proven ones
@@ -625,8 +634,8 @@
    * `history`). A full window averaging below `liveDemoteR` demotes it to the learning book (tiny
    * risk, still collecting evidence); it is promoted again as soon as the window recovers.
    */
-  function liveReview(history, strategy, rules = RULES) {
-    const recent = (history || []).filter(trade => trade.strategy === strategy && Number.isFinite(trade.r)).slice(0, rules.liveReviewTrades);
+  function liveReview(history, strategy, rules = RULES, tier = 'core') {
+    const recent = (history || []).filter(trade => trade.strategy === strategy && (trade.tier || 'core') === tier && Number.isFinite(trade.r)).slice(0, rules.liveReviewTrades);
     const meanR = mean(recent.map(trade => trade.r));
     return { trades: recent.length, window: rules.liveReviewTrades, meanR, wins: recent.filter(trade => trade.r > 0).length, demoted: recent.length >= rules.liveReviewTrades && meanR < rules.liveDemoteR };
   }
@@ -659,7 +668,7 @@
 
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
-    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk,
+    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk, SATELLITE, tierOf,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

@@ -991,7 +991,8 @@
           return item;
         }) : [Object.assign(document.createElement('li'), { textContent: 'No open positions.' })]));
         // The strategies and what their out-of-sample evidence says.
-        $('#exStrategies').replaceChildren(...strategies.map(([, s]) => {
+        const satellite = status.model && status.model.satellite ? Object.entries(status.model.satellite.strategies).map(([name, s]) => [name, { ...s, label: `${s.label} · newer coins (own gate)` }]) : [];
+        $('#exStrategies').replaceChildren(...strategies.concat(satellite).map(([, s]) => {
           const item = document.createElement('li');
           const head = document.createElement('b');
           head.textContent = `${s.label}: ${s.demoted ? 'GATE OPEN but DEMOTED by live results · learning book' : s.gate.open ? 'GATE OPEN · normal book' : s.learnable ? 'gate closed · learning book' : 'gate closed · not traded (loses after costs)'}`;
