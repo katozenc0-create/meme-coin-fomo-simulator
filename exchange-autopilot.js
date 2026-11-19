@@ -265,9 +265,10 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     if (forming.length) apply(X.replayPosition(held, forming, { now: t, costs, trail: false }), MINUTE);
   }
 
-  function admitAndOpen({ symbol, tier = 'core', strategy, label, signal, bar, atrValue, price, book, reading }) {
+  function admitAndOpen({ symbol, tier = 'core', strategy, label, signal, bar, atrValue, price, book, reading, leverage = { scale: 1, reason: 'base risk' } }) {
     const eq = equity();
-    const verdict = X.admit({ account: state.account, positions: state.positions, symbol, side: signal.side, book, now: now(), lastLossAt: state.lastLossAt, rules, equity: eq });
+    const riskScale = book === 'gated' ? leverage.scale : 1;
+    const verdict = X.admit({ account: state.account, positions: state.positions, symbol, side: signal.side, book, now: now(), lastLossAt: state.lastLossAt, rules, equity: eq, riskScale });
     if (!verdict.ok) { say('SKIP', `${symbol} ${signal.side} (${strategy}): ${verdict.reasons.join('; ')}`); return null; }
     // The signal was priced off the bar's close; the fill is the live price. Too far away: stale.
     if (Math.abs(price - bar.c) > opts.maxSignalDriftAtr * atrValue) { say('SKIP', `${symbol} ${signal.side} (${strategy}): price moved more than 1 ATR since the signal bar`); return null; }
@@ -280,7 +281,8 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     state.positions[id] = held;
     if (book === 'gated') shadowOpen(state, held, now(), say, fmt);
     state.account.cash -= held.margin;
-    say(book === 'learning' ? 'LEARN' : 'OPEN', `${symbol} ${signal.side} ${held.leverage.toFixed(1)}x @ ${fmt(held.entry)} · ${label}: ${signal.reason} · stop ${fmt(held.stop)} · target ${fmt(held.target)} · liq ${fmt(held.liquidation)} · margin $${held.margin.toFixed(2)} · risk $${held.risk.toFixed(2)}`);
+    held.riskScale = riskScale;
+    say(book === 'learning' ? 'LEARN' : 'OPEN', `${symbol} ${signal.side} ${held.leverage.toFixed(1)}x @ ${fmt(held.entry)} · ${label}: ${signal.reason} · stop ${fmt(held.stop)} · target ${fmt(held.target)} · liq ${fmt(held.liquidation)} · margin $${held.margin.toFixed(2)} · risk $${held.risk.toFixed(2)}${riskScale > 1 ? ` (${riskScale}x risk tier · ${leverage.reason})` : ''}`);
     return held;
   }
 
@@ -355,7 +357,9 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
           say('WATCH', `${symbol} ${signal.side} (${name}${tier === 'core' ? '' : `, ${tier}`}): ${signal.reason} · ${!opts.learn ? 'evidence gate closed' : 'out-of-sample evidence says this strategy loses after costs'}, not traded`);
           continue;
         }
-        const opened = admitAndOpen({ symbol, tier, strategy: name, label: `${strategies[name].label}${tier === 'core' ? '' : ` [${tier}]`}`, signal, bar, atrValue: ind.atr[candles.length - 1], price: priceOf(symbol), book, reading });
+        const drawdown = state.account.peak > 0 ? Math.max(0, 1 - equity() / state.account.peak) : 0;
+        const leverage = book === 'gated' ? X.leverageTier({ gate: trained.gate, live: review, drawdown }) : undefined;
+        const opened = admitAndOpen({ leverage, symbol, tier, strategy: name, label: `${strategies[name].label}${tier === 'core' ? '' : ` [${tier}]`}`, signal, bar, atrValue: ind.atr[candles.length - 1], price: priceOf(symbol), book, reading });
         if (opened) break;                                              // one position per coin
       }
      }
@@ -383,10 +387,10 @@ function forwardEvidence(history, { learning, now = Date.now() } = {}) {
 }
 
 /** Each strategy of one tier's model with its live record, demotion and learning-book status. */
-function strategiesStatus(model, history, tier) {
+function strategiesStatus(model, history, tier, drawdown = 0) {
   return Object.fromEntries(Object.entries(model.strategies).map(([name, s]) => {
     const live = X.liveReview(history, name, X.RULES, tier);
-    return [name, { ...s, live, demoted: s.gate.open && live.demoted, learnable: (!s.gate.open || live.demoted) && learnable(s) }];
+    return [name, { ...s, live, demoted: s.gate.open && live.demoted, learnable: (!s.gate.open || live.demoted) && learnable(s), leverage: X.leverageTier({ gate: s.gate, live, drawdown }) }];
   }));
 }
 
@@ -421,13 +425,14 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     };
   }
   const equity = state.account.cash + positions.reduce((sum, held) => sum + Math.max(0, held.margin + held.pnl), 0);
+  const drawdownNow = state.account.peak > 0 ? Math.max(0, 1 - equity / state.account.peak) : 0;
   return {
     available: true, virtualMoney: true, kind: 'exchange', generatedAt: new Date(now).toISOString(), createdAt: state.createdAt, lastTick: state.lastTick,
     account: { ...state.account, equity }, paused: !!state.paused, trainingDays: X.TRAINING_DAYS, costs, rules: X.RULES,
     model: state.model ? {
       trainedAt: state.model.trainedAt, bars: state.model.bars, symbols: state.model.symbols,
-      strategies: strategiesStatus(state.model, state.history, 'core'),
-      satellite: state.model.satellite ? { symbols: state.model.satellite.symbols, strategies: strategiesStatus(state.model.satellite, state.history, 'satellite') } : null
+      strategies: strategiesStatus(state.model, state.history, 'core', drawdownNow),
+      satellite: state.model.satellite ? { symbols: state.model.satellite.symbols, strategies: strategiesStatus(state.model.satellite, state.history, 'satellite', drawdownNow) } : null
     } : null,
     health: healthOf(state, now),
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),

@@ -214,7 +214,10 @@ test('admit enforces the kill-switch, position count, one per coin, cool-down, s
   const ok = X.admit(base);
   assert.equal(ok.ok, true);
   assert.equal(ok.riskAmount, 100);
-  assert.equal(ok.maxLeverage, 3);
+  assert.equal(ok.maxLeverage, 5);
+  assert.equal(X.admit({ ...base, riskScale: 1.5 }).riskAmount, 150, 'the leverage tier scales the normal-book risk');
+  assert.equal(X.admit({ ...base, riskScale: 9 }).riskAmount, 200, 'never more than 2x');
+  assert.equal(X.admit({ ...base, book: 'learning', riskScale: 2 }).riskAmount, 25, 'the learning book is never scaled');
   assert.equal(X.admit({ ...base, book: 'learning' }).riskAmount, 25);
   assert.equal(X.admit({ ...base, book: 'learning' }).maxLeverage, 2);
   const held = (symbol, side = 'LONG', risk = 100, margin = 1000) => ({ symbol, side, risk, margin });
@@ -233,12 +236,12 @@ test('admit enforces the kill-switch, position count, one per coin, cool-down, s
   const normalShorts = { a: held('A', 'SHORT', 100), b: held('B', 'SHORT', 100) };
   const research = { c: learn('C', 'SHORT', 25), d: learn('D', 'SHORT', 25) };
   assert.equal(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, ...research } }).ok, true, 'learning risk is not counted against the normal side cap');
-  assert.match(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, e: held('E', 'SHORT', 100) } }).reasons.join(), /too much short risk/);
+  assert.match(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, e: held('E', 'SHORT', 100), f: held('F', 'SHORT', 100) } }).reasons.join(), /too much short risk/);
   const researchFull = Object.fromEntries('CDEFGHIJ'.split('').map(c => [c, learn(c, 'SHORT', 25)]));
   assert.match(X.admit({ ...base, book: 'learning', side: 'SHORT', positions: researchFull }).reasons.join(), /too much short risk/, 'the learning book has its own 2% cap');
   assert.equal(X.admit({ ...base, side: 'SHORT', positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1), e: held('E', 'SHORT', 1), f: held('F', 'SHORT', 1) } }).reasons.some(r => /6 open normal-book positions/.test(r)), true);
   assert.equal(X.RULES.learnMaxOpen, 8);
-  assert.match(X.admit({ ...base, positions: { a: held('ETH-USD', 'LONG', 150), b: held('SOL-USD', 'LONG', 100) } }).reasons.join(), /too much long risk/);
+  assert.match(X.admit({ ...base, positions: { a: held('ETH-USD', 'LONG', 200), b: held('SOL-USD', 'LONG', 150) } }).reasons.join(), /too much long risk/);
   assert.equal(X.admit({ ...base, positions: { a: held('ETH-USD', 'SHORT', 150), b: held('SOL-USD', 'SHORT', 100) } }).ok, true, 'opposite side: hedges');
   assert.match(X.admit({ ...base, lastLossAt: { 'BTC-USD': -H } }).reasons.join(), /cool-down/);
   assert.equal(X.admit({ ...base, now: 7 * H, lastLossAt: { 'BTC-USD': 0 } }).ok, true);
@@ -562,8 +565,8 @@ test('side risk counts the risk still open: a stop trailed to break-even no long
   const account = { cash: 10000, halted: false, day: '1970-01-01', dayStartEquity: 10000 };
   const base = { account, symbol: 'AVAX-USD', side: 'SHORT', book: 'gated', now: 0, equity: 10000 };
   const short = (symbol, stop) => ({ symbol, side: 'SHORT', book: 'gated', entry: 50, stop, qty: 100 / 3.2, risk: 100, margin: 500 });
-  const atEntry = { a: short('LTC-USD', 53.2), b: short('NEAR-USD', 53.2), c: short('SUI-USD', 53.2) };
-  assert.match(X.admit({ ...base, positions: atEntry }).reasons.join(), /too much short risk/, '3 x 1R open: the 3% cap is full');
+  const atEntry = { a: short('LTC-USD', 53.2), b: short('NEAR-USD', 53.2), c: short('SUI-USD', 53.2), d: short('DOT-USD', 53.2) };
+  assert.match(X.admit({ ...base, positions: atEntry }).reasons.join(), /too much short risk/, '4 x 1R open: the 4% cap is full');
   const trailed = { a: short('LTC-USD', 50), b: short('NEAR-USD', 50), c: short('SUI-USD', 49) };
   assert.equal(X.admit({ ...base, positions: trailed }).ok, true, 'stops at or past entry: nothing left to lose, the 4th is allowed');
   assert.equal(X.openRisk(short('X', 50)), 0);
@@ -669,4 +672,36 @@ test('the real-money lock counts normal-book trades only, and the autopilot mirr
   assert.equal(held.book, 'gated');
   assert.equal(b.state.shadow.open[held.id].usd, 25);
   assert.ok(b.state.log.some(l => l.kind === 'SHADOW' && /\(not sent\) · spot: executable/.test(l.text)));
+});
+
+test('evidence-based leverage: the risk tier grows only with proof and falls back on its own', () => {
+  const gate = (lower, open = true) => ({ open, trades: 150, meanR: lower + .15, ci: [lower, lower + .3] });
+  const live = (trades, meanR, demoted = false) => ({ trades, meanR, demoted, wins: 0, window: 20 });
+  assert.equal(X.leverageTier({ gate: gate(.2, false), live: live(30, 1) }).scale, 1, 'gate closed: base');
+  assert.equal(X.leverageTier({ gate: gate(.02), live: live(30, 1) }).scale, 1, 'a weak lower bound: base');
+  assert.equal(X.leverageTier({ gate: gate(.09), live: live(6, .68) }).scale, 1.5, 'today trend4h: +0.09R lower bound, 6 live trades at +0.68R');
+  assert.equal(X.leverageTier({ gate: gate(.09), live: live(4, .68) }).scale, 1, 'too few live trades');
+  assert.equal(X.leverageTier({ gate: gate(.09), live: live(6, -.1) }).scale, 1, 'losing live: back to base');
+  const top = X.leverageTier({ gate: gate(.12), live: live(12, .3) });
+  assert.equal(top.scale, 2);
+  assert.match(top.reason, /lower bound \+0\.12R, live \+0\.30R over 12 trades/);
+  assert.equal(X.leverageTier({ gate: gate(.12), live: live(12, .3), drawdown: .06 }).scale, 1, '5%+ below the peak: base');
+  assert.equal(X.leverageTier({ gate: gate(.12), live: live(20, .3, true) }).scale, 1, 'demoted: base');
+});
+
+test('the autopilot opens a proven strategy at the higher risk tier and logs why', async () => {
+  const open = { ...UNDECIDED, strategies: { test: { params: {}, gate: { open: true, trades: 150, meanR: .3, ci: [.12, .5] } } } };
+  const b = setup({ priceOf: (s, t) => 100 + Math.sin(t / H), model: open });
+  b.state.history = Array.from({ length: 12 }, () => ({ strategy: 'test', tier: 'core', r: .4, risk: 100, pnl: 40, learning: false, openedAt: new Date(0).toISOString() }));
+  await b.pilot.tick();
+  const held = Object.values(b.state.positions)[0];
+  assert.equal(held.book, 'gated');
+  assert.equal(held.riskScale, 2);
+  assert.ok(held.risk > 150 && held.risk <= 2 * X.RULES.riskPct * 10000 + 1e-6, `risk ${held.risk}: up to 2%, less if the liquidation guard caps the size`);
+  assert.equal(held.side, 'LONG');
+  assert.ok(held.liquidation < held.stop, 'a long is liquidated only well below its stop');
+  assert.match(b.state.log.find(l => l.kind === 'OPEN').text, /\(2x risk tier · proven: out-of-sample lower bound \+0\.12R/);
+  assert.equal(b.state.shadow.open[held.id].usd, 25, 'real-money rehearsal stays at $25, no leverage');
+  const status = statusOf(b.state, { now: 600 * H });
+  assert.equal(status.model.strategies.test.leverage.scale, 2);
 });
