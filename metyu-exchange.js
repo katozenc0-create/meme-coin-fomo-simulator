@@ -52,15 +52,15 @@
   });
 
   const RULES = Object.freeze({
-    riskPct: .01,             // a stop-out loses ~1% of equity (gated book)
+    riskPct: .01,             // a stop-out loses ~1% of equity (gated book), times the leverage tier below
     learnRiskPct: .0025,      // ~0.25% in the learning book
-    maxLeverage: 3,
+    maxLeverage: 5,           // a ceiling: sizing still keeps the liquidation well beyond the stop
     learnMaxLeverage: 2,
     maxPositionPct: .25,      // margin of one position <= 25% of equity
     maxMarginPct: .6,         // all margins together <= 60% of equity
     maxOpen: 6,               // positions open at once (normal book); the 3% open-risk cap per side binds first
     learnMaxOpen: 8,          // the learning book's tiny trades may fill all 8 coins (8 x 0.25% = 2% risk; the 3% side cap still holds)
-    maxSideRiskPct: .03,      // crypto moves together: open risk in one direction <= 3% of equity (normal book)
+    maxSideRiskPct: .04,      // crypto moves together: open risk in one direction <= 4% of equity (normal book)
     learnSideRiskPct: .02,    // the learning book's own budget (8 x 0.25%), so research trades never crowd out proven ones
     dailyLossPct: .04,        // after -4% in a UTC day, no new positions that day
     killDrawdown: .15,        // -15% from the peak: close everything and halt
@@ -600,7 +600,34 @@
     return Math.min(atEntry, Math.max(0, distance * held.qty));
   }
 
-  function admit({ account, positions, symbol, side, book, now, lastLossAt = {}, rules = RULES, equity }) {
+  /**
+   * Evidence-based leverage: the normal book's risk per trade grows only with proof, and falls
+   * back on its own. `gate` is the strategy's out-of-sample gate (same tier), `live` its liveReview,
+   * `drawdown` the account's fall from its peak (0..1).
+   *   1x  gate open                                                        -> 1% risk
+   *   1.5x lower 95% bound >= +0.05R and >= 5 live trades averaging > 0R  -> 1.5%
+   *   2x  lower 95% bound >= +0.10R and >= 10 live trades averaging >= +0.20R -> 2%
+   * A drawdown of 5%+ from the peak, or a demotion, brings it back to 1x. Real money is not
+   * affected: LIVE_LIMITS stay at $25 per order and no leverage.
+   */
+  const LEVERAGE_TIERS = Object.freeze([
+    { scale: 2, minLower: .10, minLive: 10, minLiveR: .2 },
+    { scale: 1.5, minLower: .05, minLive: 5, minLiveR: 1e-9 }
+  ]);
+  function leverageTier({ gate, live, drawdown = 0 }) {
+    const base = { scale: 1, reason: 'base risk' };
+    if (!gate || !gate.open) return base;
+    if (live && live.demoted) return { scale: 1, reason: 'demoted by live results' };
+    if (drawdown >= .05) return { scale: 1, reason: `account ${(drawdown * 100).toFixed(1)}% below its peak` };
+    for (const tier of LEVERAGE_TIERS) {
+      if (gate.ci[0] >= tier.minLower && live && live.trades >= tier.minLive && live.meanR >= tier.minLiveR) {
+        return { scale: tier.scale, reason: `proven: out-of-sample lower bound ${gate.ci[0] >= 0 ? '+' : ''}${gate.ci[0].toFixed(2)}R, live ${live.meanR >= 0 ? '+' : ''}${live.meanR.toFixed(2)}R over ${live.trades} trades` };
+      }
+    }
+    return { scale: 1, reason: 'not enough evidence for more' };
+  }
+
+  function admit({ account, positions, symbol, side, book, now, lastLossAt = {}, rules = RULES, equity, riskScale = 1 }) {
     const reasons = [];
     const open = Object.values(positions);
     if (account.halted) reasons.push('kill-switch: account halted');
@@ -615,7 +642,7 @@
     if (lastLoss && now - lastLoss < rules.cooldownHours * HOUR) reasons.push(`cool-down after a loss (${rules.cooldownHours} h)`);
     const day = new Date(now).toISOString().slice(0, 10);
     if (account.day === day && account.dayStartEquity > 0 && (equity - account.dayStartEquity) / account.dayStartEquity <= -rules.dailyLossPct) reasons.push(`daily loss limit (-${rules.dailyLossPct * 100}%) reached`);
-    const riskPct = book === 'gated' ? rules.riskPct : rules.learnRiskPct;
+    const riskPct = book === 'gated' ? rules.riskPct * Math.min(2, Math.max(1, riskScale)) : rules.learnRiskPct;
     const riskAmount = riskPct * equity;
     const sideCap = learningBook ? (rules.learnSideRiskPct ?? rules.maxSideRiskPct) : rules.maxSideRiskPct;
     // Risk still open, not risk at entry: once a stop has trailed to break-even (or beyond), that
@@ -668,7 +695,7 @@
 
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
-    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk, SATELLITE, tierOf,
+    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

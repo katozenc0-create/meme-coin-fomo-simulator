@@ -245,7 +245,12 @@ Each reading comes with plain-language notes you can check against the chart on 
 
 **Portfolio rules:**
 - at most 6 positions in the normal book (8 in the learning book, whose trades risk 0.25% each), and one per coin. The open-risk cap below usually binds first: 3 fresh positions per side, more once stops have trailed to break-even;
-- open risk in one direction is capped at 3% of equity in the normal book (2% in the learning book), because crypto moves together. Each book has its own budget, so research trades never take the place of a proven strategy;
+- open risk in one direction is capped at 4% of equity in the normal book (2% in the learning book), because crypto moves together. Each book has its own budget, so research trades never take the place of a proven strategy;
+- **evidence-based leverage**: the normal book's risk per trade is 1% and grows only with proof.
+  - 1.5%: the out-of-sample lower bound is at least +0.05R and 5+ live trades average above 0R.
+  - 2%: the lower bound is at least +0.10R and 10+ live trades average at least +0.20R.
+  - It falls back to 1% on its own after a demotion, a losing live record or a 5% drawdown.
+  - Leverage up to 5x keeps the margin small, and the liquidation price always stays well beyond the stop. Real money stays at 1x;
 - a live watchdog: when a strategy's last 20 closed trades average below −0.25R, it is demoted to the learning book until they recover, even if its evidence gate is open;
 - all margin together is capped at 60% of equity;
 - no new positions after a 4% loss in a UTC day;
