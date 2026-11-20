@@ -124,6 +124,17 @@
     .trades .pnl { font-weight: 800; text-align: right; }
     .trades .detail { color: var(--muted); grid-column: 1 / -1; }
     .trades-summary { margin: 0 0 6px; font: 800 12px Consolas, monospace; }
+    .overview { margin-bottom: 12px; border-color: #2c5a3d; }
+    .ov-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
+    .ov-head h2 { margin: 0; }
+    .ov-fresh.live { color: var(--green); border-color: var(--green); }
+    .ov-fresh.stale { color: var(--red); border-color: var(--red); }
+    .ov-stats { grid-template-columns: repeat(6, 1fr); }
+    .ov-stats small { display: block; margin-top: 2px; color: var(--muted); font: 10px Consolas, monospace; }
+    .ov-list { margin: 0; padding: 0; list-style: none; font: 12px/1.5 Consolas, monospace; }
+    .ov-list li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+    .ov-list li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 1000px) { .ov-stats { grid-template-columns: repeat(3, 1fr); } }
     .controls.primary { margin-bottom: 10px; }
     .settings > summary { cursor: pointer; color: var(--acid); font: 800 11px Consolas, monospace; text-transform: uppercase; letter-spacing: .04em; padding: 4px 0; }
     .settings[open] > summary { margin-bottom: 10px; }
@@ -174,6 +185,21 @@
   <div class="shell">
     <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a></nav></div>
     <h1>Metyu <span>live board</span></h1>
+    <section class="panel overview" id="overview" aria-label="Metyu live overview" hidden>
+      <div class="ov-head"><h2>Metyu · live overview</h2><span class="badge ov-fresh" id="ovFresh">—</span></div>
+      <div class="stats ov-stats">
+        <div class="stat"><span>Crypto equity · live</span><strong id="ovEquity">—</strong><small id="ovEquitySub"></small></div>
+        <div class="stat"><span>Today (UTC)</span><strong id="ovToday">—</strong><small id="ovTodaySub"></small></div>
+        <div class="stat"><span>Open · unrealized</span><strong id="ovOpen">—</strong><small id="ovOpenSub"></small></div>
+        <div class="stat"><span>Evidence gates</span><strong id="ovGates">—</strong><small id="ovGatesSub"></small></div>
+        <div class="stat"><span>Real money</span><strong id="ovLive">—</strong><small id="ovLiveSub"></small></div>
+        <div class="stat"><span>Health</span><strong id="ovHealth">—</strong><small id="ovHealthSub"></small></div>
+      </div>
+      <h3>Open positions · live Coinbase prices</h3>
+      <ul class="ov-list" id="ovPositions"></ul>
+      <h3>Last 24 hours</h3>
+      <ul class="ov-list" id="ovDigest"></ul>
+    </section>
     <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
     <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No orders and no keys that can move money: a wallet or exchange account is only ever read. Live data are public Coinbase and Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Coinbase &amp; Polymarket prices · wallet read-only · no orders · not financial advice</span></p>
 
@@ -264,7 +290,7 @@
       </div>
     </section>
 
-    <div class="stats">
+    <div class="stats" id="demoStats">
       <div class="stat"><span>Equity</span><strong id="sEquity">$10,000</strong></div>
       <div class="stat"><span>Session P&amp;L</span><strong id="sPnl">$0</strong></div>
       <div class="stat"><span>Cash · open</span><strong id="sCash">$10,000 · 0</strong></div>
@@ -1047,8 +1073,8 @@
         return true;
       }
       $('#exSymbol').addEventListener('change', drawExchangeChart);
-      refreshExchange();
-      setInterval(refreshExchange, 60000);                     // keeps looking: the first run may publish later
+      refreshExchange().then(() => refreshLivePrices());   // live prices as soon as the positions are known
+      setInterval(refreshExchange, 30000);                     // keeps looking: the first run may publish later
 
       // ---------- my exchange account (end-to-end encrypted, view-only) ----------
       // account-sync.js seals the balances with the owner's passphrase on the GitHub runner; only
@@ -1602,7 +1628,128 @@
         $('#terminal').dataset.source = source;
       }
 
+      // ---------- live overview: live prices between the agent's runs, and the last 24 hours ----------
+      // The agent publishes every 15 minutes; open positions are re-marked here every 10 seconds from
+      // Coinbase's public ticker (the P&L at the agent's mark, moved by the price change since).
+      const livePrices = {};
+      let livePricesAt = 0;
+      async function refreshLivePrices() {
+        if (!exchangeStatus || document.hidden) return;
+        const symbols = [...new Set(exchangeStatus.positions.map(held => held.symbol))].filter(symbol => /^[A-Z0-9]+-USD$/.test(symbol));
+        const results = await Promise.all(symbols.map(async symbol => {
+          try {
+            const response = await fetch(`https://api.exchange.coinbase.com/products/${symbol}/ticker`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            if (!response.ok) return false;
+            const price = Number((await response.json()).price);
+            if (!(price > 0)) return false;
+            livePrices[symbol] = { price, at: Date.now() };
+            return true;
+          } catch (error) { return false; }
+        }));
+        if (results.some(Boolean)) livePricesAt = Date.now();
+        renderOverview();
+      }
+      const livePnl = held => {
+        const live = livePrices[held.symbol];
+        if (!live || !Number.isFinite(held.mark) || !(held.qty > 0)) return { pnl: held.pnl, price: held.mark, live: false };
+        return { pnl: held.pnl + (live.price - held.mark) * held.qty * (held.side === 'LONG' ? 1 : -1), price: live.price, live: true };
+      };
+      const ago = ms => (ms < 90000 ? `${Math.max(1, Math.round(ms / 1000))} s` : ms < 5400000 ? `${Math.round(ms / 60000)} min` : `${Math.round(ms / 3600000)} h`);
+      const plusMoney = value => `${value >= 0 ? '+' : '−'}${formatMoney(Math.abs(value))}`;
+      function setStat(id, text, sub, tone) {
+        const strong = $(`#${id}`);
+        strong.textContent = text;
+        strong.className = tone > 0 ? 'positive' : tone < 0 ? 'negative' : '';
+        $(`#${id}Sub`).textContent = sub || '';
+      }
+      function renderOverview() {
+        const status = exchangeStatus;
+        $('#overview').hidden = !status;
+        if (!status) return;
+        const now = Date.now();
+        const positions = status.positions || [];
+        const marked = positions.map(held => ({ held, ...livePnl(held) }));
+        const unrealized = marked.reduce((sum, row) => sum + row.pnl, 0);
+        const agentUnrealized = positions.reduce((sum, held) => sum + held.pnl, 0);
+        const account = status.account;
+        const equity = account.equity + (unrealized - agentUnrealized);
+        const tickAge = status.lastTick ? now - Date.parse(status.lastTick) : Infinity;
+        const fresh = $('#ovFresh');
+        fresh.textContent = `agent ${Number.isFinite(tickAge) ? `${ago(tickAge)} ago` : 'never'}${livePricesAt ? ` · prices ${ago(now - livePricesAt)} ago` : ''}`;
+        fresh.className = `badge ov-fresh ${tickAge < 40 * 60000 ? 'live' : 'stale'}`;
+        setStat('ovEquity', formatMoney(equity), `${plusMoney(equity - account.bankroll)} since start (${((equity / account.bankroll - 1) * 100).toFixed(1)}%)`, equity - account.bankroll);
+        const dayStart = account.dayStartEquity > 0 && account.day === new Date().toISOString().slice(0, 10) ? account.dayStartEquity : null;
+        setStat('ovToday', dayStart ? plusMoney(equity - dayStart) : '—', dayStart ? `from ${formatMoney(dayStart)} at 00:00 UTC` : 'new day: waiting for the agent', dayStart ? equity - dayStart : 0);
+        const normal = positions.filter(held => held.book !== 'learning').length;
+        setStat('ovOpen', `${positions.length} · ${plusMoney(unrealized)}`, `${normal} normal · ${positions.length - normal} learning`, unrealized);
+        const core = status.model ? Object.values(status.model.strategies) : [];
+        const satellite = status.model && status.model.satellite ? Object.values(status.model.satellite.strategies) : [];
+        const open = core.concat(satellite).filter(s => s.gate.open && !s.demoted);
+        const tier = Math.max(1, ...open.filter(s => s.leverage).map(s => s.leverage.scale));
+        setStat('ovGates', `${open.length}/${core.length + satellite.length} open`, open.length ? `normal book · risk ${(tier * (status.rules ? status.rules.riskPct : .01) * 100).toFixed(1)}%` : 'learning book only (0.25% risk)', open.length);
+        const live = status.live;
+        const gated = status.forward && status.forward.gated;
+        const NEXT = { days: () => '3+ days of forward test', trades: () => `30+ normal-book trades (now ${gated ? gated.trades : 0})`, edge: () => `a proven edge over 4+ weeks (now ${gated && gated.weeks !== undefined ? gated.weeks : 0})`, risk: () => 'drawdown under 10%', account: () => 'a read-only account link', approval: () => "the owner's approval" };
+        const missing = live ? live.conditions.filter(c => !c.ok) : [];
+        setStat('ovLive', live ? `locked · ${live.met}/${live.total}` : 'locked', live ? (missing.length ? `next: ${(NEXT[missing[0].id] || (() => missing[0].text))()}` : 'all conditions met: owner decides') : '', 0);
+        const health = status.health || {};
+        const healthy = health.ok !== false && tickAge < 40 * 60000;
+        setStat('ovHealth', healthy ? 'OK' : 'CHECK', [tickAge >= 40 * 60000 ? 'agent silent' : '', (health.staleMarks || []).length ? `stale: ${health.staleMarks.join(', ')}` : '', health.errorsLastHour ? `${health.errorsLastHour} errors/h` : '', Number.isFinite(health.modelAgeHours) ? `model ${Math.round(health.modelAgeHours)} h old` : ''].filter(Boolean).join(' · '), healthy ? 1 : -1);
+        // Open positions, best first, at live prices.
+        $('#ovPositions').replaceChildren(...(marked.length ? marked.sort((a, b) => b.pnl - a.pnl).map(row => {
+          const item = document.createElement('li');
+          const left = document.createElement('span');
+          left.textContent = `${row.held.symbol} ${row.held.side} ${(+row.held.leverage).toFixed(1)}x · ${row.held.book === 'learning' ? 'learning' : 'NORMAL'} · ${row.held.strategy}`;
+          const right = document.createElement('span');
+          right.textContent = `${plusMoney(row.pnl)}${row.live ? '' : ' (agent)'}`;
+          right.className = row.pnl > 0 ? 'positive' : row.pnl < 0 ? 'negative' : '';
+          item.append(left, right);
+          return item;
+        }) : [Object.assign(document.createElement('li'), { textContent: 'No open positions.' })]));
+        // The last 24 hours, crypto and prediction markets, in plain lines.
+        const since = now - 24 * 3600000;
+        const closed = (status.history || []).filter(trade => Date.parse(trade.closedAt) >= since);
+        const lines = [];
+        if (closed.length) {
+          const pnl = closed.reduce((sum, trade) => sum + trade.pnl, 0);
+          const best = closed.reduce((a, b) => (b.pnl > a.pnl ? b : a));
+          const worst = closed.reduce((a, b) => (b.pnl < a.pnl ? b : a));
+          lines.push([`crypto: ${closed.length} closed · ${closed.filter(t => t.pnl > 0).length} won`, plusMoney(pnl), pnl]);
+          lines.push([`best ${best.symbol} ${best.strategy} · worst ${worst.symbol} ${worst.strategy}`, `${plusMoney(best.pnl)} / ${plusMoney(worst.pnl)}`, 0]);
+        } else lines.push(['crypto: no trade closed', '—', 0]);
+        const logs = (status.log || []).filter(entry => Date.parse(entry.at) >= since);
+        const count = kinds => logs.filter(entry => kinds.includes(entry.kind)).length;
+        lines.push([`opened ${count(['OPEN'])} normal · ${count(['LEARN'])} learning · skipped ${count(['SKIP'])} by the risk rules`, `${count(['WATCH'])} watched`, 0]);
+        const special = logs.filter(entry => ['TRAIN', 'DEMOTE', 'HALT', 'RESET', 'PAUSE', 'RESUME', 'ERROR'].includes(entry.kind));
+        for (const entry of special.slice(0, 4)) lines.push([`${new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${entry.kind} ${entry.text}`, '', entry.kind === 'ERROR' || entry.kind === 'HALT' ? -1 : 0]);
+        if (autopilotStatus) {
+          const pm = (autopilotStatus.history || []).filter(trade => Date.parse(trade.closedAt) >= since);
+          const pmPnl = pm.reduce((sum, trade) => sum + trade.pnl, 0);
+          lines.push([`prediction markets: ${pm.length} closed · ${(autopilotStatus.positions || []).length} open`, pm.length ? plusMoney(pmPnl) : '—', pmPnl]);
+        }
+        $('#ovDigest').replaceChildren(...lines.map(([text, value, tone]) => {
+          const item = document.createElement('li');
+          const left = document.createElement('span');
+          left.textContent = text;
+          left.title = text;
+          const right = document.createElement('span');
+          right.textContent = value;
+          right.className = tone > 0 ? 'positive' : tone < 0 ? 'negative' : '';
+          item.append(left, right);
+          return item;
+        }));
+      }
+      setInterval(refreshLivePrices, 10000);
+      setInterval(renderOverview, 5000);                         // the ages ("12 s ago") move on
+      // Back from the background (an iPhone app is paused there): fetch everything at once.
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        refreshExchange().then(() => refreshLivePrices());
+        refreshAutopilot();
+      });
+
       function renderTerminal() {
+        renderOverview();
         if ($('#terminal').hidden) return;
         const source = activeTermSource();
         const model = source === 'exchange' ? termModelFromExchange(exchangeStatus) : source === 'polymarket' ? termModelFromPolymarket(autopilotStatus) : termModelFromDevice();
@@ -1735,7 +1882,7 @@
       function setView(view) {
         const terminal = view !== 'cards';
         $('#terminal').hidden = !terminal;
-        document.querySelector('.stats').hidden = terminal;
+        $('#demoStats').hidden = terminal;            // the demo's own tiles (not the overview's)
         $('#lastTradesPanel').hidden = terminal;
         document.querySelector('.layout').hidden = terminal;
         $('#viewBtn').textContent = terminal ? 'Cards view' : 'Terminal view';

@@ -189,7 +189,9 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
   async function retrainIfDue() {
     const model = state.model;
     // Also due when the strategies or coins changed since the last training (a new release).
-    const stale = !!model && (Object.keys(strategies).some(name => !model.strategies[name]) || (Array.isArray(model.symbols) && opts.symbols.some(symbol => !model.symbols.includes(symbol))));
+    // A model from an older evidence gate (no weekly blocks: gate.weeks missing) is outdated too.
+    const stale = !!model && (Object.keys(strategies).some(name => !model.strategies[name]) || (Array.isArray(model.symbols) && opts.symbols.some(symbol => !model.symbols.includes(symbol)))
+      || Object.values(model.strategies).some(s => s.gate && s.gate.weeks === undefined));
     const due = !model || stale || now() - model.trainedAt >= opts.retrainHours * HOUR;
     // The retry wait is for FAILED attempts: a model outdated by a new release (new coins or
     // strategies) is retrained at once unless an attempt already failed since the last training.
