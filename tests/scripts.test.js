@@ -120,3 +120,36 @@ test('watchdog: healthy agents pass; silence, a halt, a dead price feed and an o
     assert.equal(watchdog.main([dir, '--report', out], now), 0);
   } finally { process.stdout.write = quiet; }
 });
+
+// ---------- the daily report ----------
+const daily = require('../scripts/daily-report.js');
+test('daily report: health, crypto equity and last 24 h, gates, the real-money lock, prediction markets', () => {
+  const now = Date.parse('2026-11-20T08:00:00Z');
+  const ago = h => new Date(now - h * 3600000).toISOString();
+  const gate = (open, ci, weeks = 40) => ({ open, trades: 400, weeks, meanR: (ci[0] + ci[1]) / 2, ci });
+  const exchange = {
+    lastTick: ago(.2), account: { bankroll: 10000, equity: 10500, peak: 10600, halted: false }, health: { staleMarks: [], errorsLastHour: 0 },
+    positions: [{ book: 'learning' }, { book: 'gated' }],
+    history: [{ closedAt: ago(2), pnl: 40, learning: false }, { closedAt: ago(5), pnl: -10, learning: true }, { closedAt: ago(30), pnl: 999, learning: true }],
+    model: { trainedAt: now - 3600000, strategies: { trend4h: { gate: gate(true, [.05, .4]), learnable: false, leverage: { scale: 1.5 } }, trend: { gate: gate(false, [-.2, .05]), learnable: true } },
+      satellite: { strategies: { trend: { gate: gate(false, [-.3, -.01]), learnable: false } } } },
+    forward: { gated: { trades: 6, weeks: 1, meanR: .68 } },
+    live: { met: 2, total: 6, conditions: [{ id: 'days', ok: true, text: 'days' }, { id: 'trades', ok: false, text: '30+ closed normal-book trades (now 6)' }] },
+    shadow: { orders: 3, trades: 3, pnl: -.41, sent: 0 },
+    log: [{ at: ago(1), kind: 'DEMOTE', text: 'trend4h: last 20 live trades average -0.30R' }]
+  };
+  const polymarket = { lastTick: ago(.2), account: { realized: -212.3, halted: false }, positions: [{}, {}], history: [], model: { gate: { open: false, trades: 58, meanReturn: .11 } } };
+  const text = daily.report({ exchange, polymarket, now });
+  assert.match(text, /^# Metyu daily report · 2026-11-20 08:00 UTC/);
+  assert.match(text, /\*\*Health:\*\* OK/);
+  assert.match(text, /Equity 10500\.00 \(\+\$500\.00 since start, peak 10600\.00\), 2 open \(1 normal book\)/);
+  assert.match(text, /Last 24 h: 2 closed \(1 won\), \+\$30\.00; normal book 1 \(\+\$40\.00\)/, 'older trades are left out');
+  assert.match(text, /Evidence gates: 1\/3 open \(core trend4h 1\.5x\); learning: core trend/);
+  assert.match(text, /Closest to a gate: core trend4h/);
+  assert.match(text, /Real money: LOCKED, 2\/6; next: 30\+ closed normal-book trades \(now 6\)/);
+  assert.match(text, /Shadow orders: 3 mirrored, 3 closed, −\$0\.41, sent 0/);
+  assert.match(text, /Alarms \(24 h\): 1; latest: DEMOTE/);
+  assert.match(text, /Realized −\$212\.30, 2 open, 0 closed in 24 h/);
+  const sick = daily.report({ exchange: { ...exchange, lastTick: ago(3) }, polymarket, now });
+  assert.match(sick, /\*\*Health:\*\* 1 problem\(s\)\n- crypto agent: silent for 180 min/);
+});

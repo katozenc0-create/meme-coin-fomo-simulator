@@ -1,0 +1,76 @@
+#!/usr/bin/env node
+'use strict';
+// Metyu daily report: one short, reproducible summary of the published state (the autopilot-data
+// branch), for the daily steward routine (docs/STEWARD.md) and for the owner.
+//
+//   git fetch origin autopilot-data && git worktree add /tmp/state origin/autopilot-data   (or any copy)
+//   node scripts/daily-report.js <dir with exchange-status.json and status.json> [--now ISO]
+//
+// Prints Markdown. Reads only; trades nothing. Exit code 0 always (problems are in the text; the
+// watchdog is the alarm).
+const fs = require('fs');
+const path = require('path');
+const { assess } = require('./watchdog.js');
+
+const HOUR = 3600000;
+const money = value => `${value < 0 ? '−' : '+'}$${Math.abs(value).toFixed(2)}`;
+const readJson = file => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+
+function gatesOf(model) {
+  if (!model || !model.strategies) return [];
+  const row = (tier, name, s) => ({ tier, name, open: !!s.gate.open, weeks: s.gate.weeks, meanR: s.gate.meanR, ci: s.gate.ci, learnable: s.learnable, demoted: !!s.demoted, leverage: s.leverage ? s.leverage.scale : 1 });
+  return Object.entries(model.strategies).map(([name, s]) => row('core', name, s))
+    .concat(model.satellite ? Object.entries(model.satellite.strategies).map(([name, s]) => row('satellite', name, s)) : []);
+}
+
+/** The report as Markdown lines. Pure: parsed status files and `now` in. */
+function report({ exchange, polymarket, now = Date.now() }) {
+  const lines = [];
+  const since = now - 24 * HOUR;
+  lines.push(`# Metyu daily report · ${new Date(now).toISOString().slice(0, 16).replace('T', ' ')} UTC`, '');
+  const problems = assess({ exchange, polymarket, now });
+  lines.push(`**Health:** ${problems.length ? `${problems.length} problem(s)` : 'OK'}`);
+  for (const problem of problems) lines.push(`- ${problem}`);
+  lines.push('');
+  if (exchange && exchange.account) {
+    const a = exchange.account;
+    const closed = (exchange.history || []).filter(t => Date.parse(t.closedAt) >= since);
+    const pnl = closed.reduce((sum, t) => sum + t.pnl, 0);
+    const normal = closed.filter(t => !t.learning);
+    lines.push('## Crypto (virtual money)');
+    lines.push(`- Equity ${a.equity.toFixed(2)} (${money(a.equity - a.bankroll)} since start, peak ${a.peak.toFixed(2)}), ${exchange.positions.length} open (${exchange.positions.filter(p => p.book !== 'learning').length} normal book)`);
+    lines.push(`- Last 24 h: ${closed.length} closed (${closed.filter(t => t.pnl > 0).length} won), ${money(pnl)}; normal book ${normal.length} (${money(normal.reduce((s, t) => s + t.pnl, 0))})`);
+    const gates = gatesOf(exchange.model);
+    const open = gates.filter(g => g.open && !g.demoted);
+    lines.push(`- Evidence gates: ${open.length}/${gates.length} open${open.length ? ` (${open.map(g => `${g.tier} ${g.name} ${g.leverage}x`).join(', ')})` : ''}; learning: ${gates.filter(g => g.learnable).map(g => `${g.tier} ${g.name}`).join(', ') || 'none'}`);
+    const best = gates.slice().sort((x, y) => y.ci[0] - x.ci[0])[0];
+    if (best) lines.push(`- Closest to a gate: ${best.tier} ${best.name}, mean ${best.meanR.toFixed(2)}R, gate interval [${best.ci[0].toFixed(2)}, ${best.ci[1].toFixed(2)}], ${best.weeks ?? '?'} weeks`);
+    const f = exchange.forward && exchange.forward.gated;
+    if (f) lines.push(`- Forward test (normal book): ${f.trades} trades over ${f.weeks ?? '?'} weeks, mean ${f.meanR.toFixed(2)}R`);
+    if (exchange.live) lines.push(`- Real money: LOCKED, ${exchange.live.met}/${exchange.live.total}; next: ${(exchange.live.conditions.find(c => !c.ok) || { text: 'all met: owner decides' }).text}`);
+    if (exchange.shadow) lines.push(`- Shadow orders: ${exchange.shadow.orders} mirrored, ${exchange.shadow.trades} closed, ${money(exchange.shadow.pnl)}, sent ${exchange.shadow.sent}`);
+    const alarms = (exchange.log || []).filter(e => Date.parse(e.at) >= since && ['ERROR', 'HALT', 'DEMOTE', 'RESET'].includes(e.kind));
+    if (alarms.length) lines.push(`- Alarms (24 h): ${alarms.length}; latest: ${alarms[0].kind} ${alarms[0].text.slice(0, 120)}`);
+    lines.push('');
+  }
+  if (polymarket && polymarket.account) {
+    const closed = (polymarket.history || []).filter(t => Date.parse(t.closedAt) >= since);
+    const gate = polymarket.model && polymarket.model.gate;
+    lines.push('## Prediction markets (virtual money)');
+    lines.push(`- Realized ${money(polymarket.account.realized)}, ${polymarket.positions.length} open, ${closed.length} closed in 24 h`);
+    if (gate) lines.push(`- Evidence gate ${gate.open ? 'OPEN' : 'closed'}: ${gate.trades} out-of-sample trades, mean ${(gate.meanReturn * 100).toFixed(1)}%`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+function main(argv = process.argv.slice(2)) {
+  const dir = argv[0] || 'data';
+  const at = argv.indexOf('--now');
+  const now = at >= 0 ? Date.parse(argv[at + 1]) : Date.now();
+  process.stdout.write(`${report({ exchange: readJson(path.join(dir, 'exchange-status.json')), polymarket: readJson(path.join(dir, 'status.json')), now })}\n`);
+  return 0;
+}
+
+if (require.main === module) process.exitCode = main();
+module.exports = { report, gatesOf };
