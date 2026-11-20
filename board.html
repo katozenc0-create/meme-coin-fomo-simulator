@@ -175,7 +175,7 @@
     <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a></nav></div>
     <h1>Metyu <span>live board</span></h1>
     <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
-    <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No wallet, keys or orders. Live mode reads public Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Polymarket prices · no wallet, no orders · not financial advice</span></p>
+    <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No orders and no keys that can move money: a wallet or exchange account is only ever read. Live data are public Coinbase and Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Coinbase &amp; Polymarket prices · wallet read-only · no orders · not financial advice</span></p>
 
     <section class="panel">
       <div class="controls primary">
@@ -758,10 +758,15 @@
       // Where the 24/7 autopilot publishes its status: the local server.py, or, on GitHub Pages
       // (owner.github.io/repo), the autopilot-data branch that the GitHub Actions workflow writes.
       // ?autopilot=<url> overrides both.
+      const ON_PAGES = location.hostname.endsWith('.github.io');
+      function accountLinkedRemotely() {
+        const live = exchangeStatus && exchangeStatus.live;
+        return !!(live && live.conditions.some(condition => condition.id === 'account' && condition.ok));
+      }
       function autopilotSources() {
         const override = new URLSearchParams(location.search).get('autopilot');
         if (override) return [override];
-        const sources = ['/api/autopilot/status'];
+        const sources = ON_PAGES ? [] : ['/api/autopilot/status'];   // GitHub Pages has no local server
         if (location.hostname.endsWith('.github.io')) {
           const owner = location.hostname.split('.')[0];
           const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
@@ -840,7 +845,7 @@
       function exchangeSources() {
         const override = new URLSearchParams(location.search).get('exchange');
         if (override) return [override];
-        const sources = ['/api/exchange/status'];
+        const sources = ON_PAGES ? [] : ['/api/exchange/status'];
         if (location.hostname.endsWith('.github.io')) {
           const owner = location.hostname.split('.')[0];
           const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
@@ -851,6 +856,7 @@
       const usd = value => (!Number.isFinite(value) ? '—' : value >= 1000 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : value >= 1 ? `$${value.toFixed(value >= 100 ? 2 : 3)}` : `$${value.toPrecision(4)}`);
       const rText = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}R`;
       let exchangeStatus = null;
+      let accountAsked = false;   // on GitHub Pages the sealed account box is fetched once, when linked
       const svgEl = (name, attrs) => {
         const el = document.createElementNS('http://www.w3.org/2000/svg', name);
         for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
@@ -887,12 +893,13 @@
           const points = chart[key].map((value, i) => (Number.isFinite(value) ? `${x(i).toFixed(1)},${y(value).toFixed(1)}` : null)).filter(Boolean);
           if (points.length > 1) nodes.push(svgEl('polyline', { points: points.join(' '), class: cls }));
         }
+        // Lines first; their labels are laid out afterwards so they never overlap: lines at the same
+        // price share one label (a stop trailed to the entry: "short in · stop"), close ones are spaced.
+        const labels = [];
         const hline = (price, cls, label) => {
           if (!Number.isFinite(price) || price < lo || price > hi) return;
           nodes.push(svgEl('line', { x1: pad.l, x2: W - pad.r, y1: y(price), y2: y(price), class: cls }));
-          const text = svgEl('text', { x: W - pad.r + 3, y: y(price) + 3 });
-          text.textContent = label;
-          nodes.push(text);
+          labels.push({ y: y(price), label });
         };
         hline(chart.support, 'level', 'support');
         hline(chart.resistance, 'level', 'resist.');
@@ -901,6 +908,19 @@
           hline(position.stop, 'stop', 'stop');
           hline(position.target, 'target', 'target');
           hline(position.liquidation, 'liq', 'liq.');
+        }
+        const LABEL_GAP = 9;
+        const placed = [];
+        for (const item of labels.sort((a, b) => a.y - b.y)) {
+          const last = placed[placed.length - 1];
+          // Shared labels must fit the 58-unit margin: "short in" + "stop" becomes "in/stop".
+          if (last && Math.abs(item.y - last.at) < 1) { last.label = `${last.label.replace(/^(short|long) in$/, 'in')}/${item.label.replace(/^(short|long) in$/, 'in')}`; continue; }
+          placed.push({ at: item.y, y: last ? Math.max(item.y, last.y + LABEL_GAP) : item.y, label: item.label });
+        }
+        for (const item of placed) {
+          const text = svgEl('text', { x: W - pad.r + 3, y: item.y + 3 });
+          text.textContent = item.label;
+          nodes.push(text);
         }
         const first = svgEl('text', { x: pad.l + 2, y: Hh - 4 });
         first.textContent = new Date(bars[0][0]).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit' });
@@ -929,6 +949,7 @@
         if (!status) { $('#exchangePanel').hidden = true; exchangeStatus = null; renderTerminal(); return false; }
         $('#exchangePanel').hidden = false;
         exchangeStatus = status;
+        if (ON_PAGES && !accountBox && !accountAsked && accountLinkedRemotely()) { accountAsked = true; loadAccountBox(); }
         renderTerminal();
         const account = status.account;
         const strategies = status.model ? Object.entries(status.model.strategies) : [];
@@ -938,20 +959,25 @@
         const health = status.health || {};
         const healthText = health.staleMarks && health.staleMarks.length ? ` · ⚠ stale prices: ${health.staleMarks.join(', ')} (not traded)` : '';
         $('#exStatus').textContent = `${liveness(status.lastTick, status.paused)}${healthText} · ${Object.keys(status.marks || {}).length} coins, live Coinbase prices · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
+        // The forward test of both books: the normal book (what real money would copy) first.
+        const gatedForward = status.forward && status.forward.gated;
         const forward = status.forward && status.forward.learning;
-        $('#exForward').hidden = !forward;
-        if (forward) {
-          $('#exForward').textContent = forward.trades
-            ? `${trainingText(status.createdAt, status.trainingDays || TRAINING_DAYS)} · forward test: ${forward.trades} closed learning trades · ${forward.wins} won · mean ${rText(forward.meanR)} per trade · 95% [${rText(forward.ci[0])}, ${rText(forward.ci[1])}] · ${forward.convincing ? 'convincing' : 'not convincing yet (needs 30+ trades and an interval above 0)'}`
-            : `${trainingText(status.createdAt, status.trainingDays || TRAINING_DAYS)} · forward test: no closed learning trades yet`;
-          $('#exForward').className = `trades-summary ${forward.trades && forward.meanR > 0 ? 'positive' : forward.trades && forward.meanR < 0 ? 'negative' : ''}`;
+        $('#exForward').hidden = !forward && !gatedForward;
+        if (forward || gatedForward) {
+          const book = (name, f) => (f && f.trades
+            ? `${name}: ${f.trades} closed · ${f.wins} won · ${f.pnl >= 0 ? '+' : '−'}$${Math.abs(f.pnl).toFixed(0)} · mean ${rText(f.meanR)} · 95% [${rText(f.ci[0])}, ${rText(f.ci[1])}]`
+            : `${name}: no closed trades yet`);
+          const lead = gatedForward && gatedForward.trades ? gatedForward : forward;
+          $('#exForward').textContent = `${trainingText(status.createdAt, status.trainingDays || TRAINING_DAYS)} · forward test · ${book('normal book', gatedForward)}${gatedForward && gatedForward.trades >= 30 ? '' : ' (needs 30+)'} · ${book('learning book', forward)}`;
+          $('#exForward').className = `trades-summary ${lead && lead.trades && lead.meanR > 0 ? 'positive' : lead && lead.trades && lead.meanR < 0 ? 'negative' : ''}`;
         }
         $('#exStats').hidden = false;
         signed($('#exEquity'), account.equity - account.bankroll, formatMoney(account.equity));
         signed($('#exRealized'), account.realized, `${account.realized >= 0 ? '+' : ''}${formatMoney(account.realized)}`);
         $('#exTrades').textContent = account.trades ? `${account.trades} · ${Math.round(account.wins / account.trades * 100)}%` : '0 · —';
         $('#exOpen').textContent = String(status.positions.length);
-        $('#exGates').textContent = strategies.length ? `${openGates}/${strategies.length} open` : 'not trained';
+        const satelliteGates = status.model && status.model.satellite ? Object.values(status.model.satellite.strategies) : [];
+        $('#exGates').textContent = strategies.length ? `${openGates}/${strategies.length} open${satelliteGates.length ? ` · new coins ${satelliteGates.filter(s => s.gate.open).length}/${satelliteGates.length}` : ''}` : 'not trained';
         $('#exTick').textContent = status.lastTick ? new Date(status.lastTick).toLocaleTimeString() : '—';
         // Chart: keep the chosen coin; default to the first coin with a position, else BTC.
         const symbols = Object.keys(status.charts || {});
@@ -1007,7 +1033,7 @@
         }));
         renderTrades($('#exTradeList'), $('#exTradeSummary'), (status.history || []).map(trade => ({
           closedAt: trade.closedAt, market: `${trade.symbol} · ${trade.strategy}`, side: trade.side, leverage: (+trade.leverage).toFixed(1),
-          pnl: trade.pnl, margin: trade.margin, note: `${trade.learning ? 'learning · ' : ''}${usd(trade.entry)} → ${usd(trade.exit)} · ${rText(trade.r)} · ${trade.reason}`
+          pnl: trade.pnl, margin: trade.margin, note: `${trade.learning ? 'learning' : 'NORMAL BOOK'}${trade.tier === 'satellite' ? ' · new coin' : ''} · ${usd(trade.entry)} → ${usd(trade.exit)} · ${rText(trade.r)} · ${trade.reason}`
         })));
         $('#exFeed').replaceChildren(...status.log.slice(0, 40).map(entry => {
           const item = document.createElement('li');
@@ -1030,8 +1056,9 @@
       function accountSources() {
         const override = new URLSearchParams(location.search).get('account');
         if (override) return [override];
-        const sources = ['/api/account'];
-        if (location.hostname.endsWith('.github.io')) {
+        const sources = ON_PAGES ? [] : ['/api/account'];
+        // The sealed box exists only when the account sync has linked an account: ask for it only then.
+        if (ON_PAGES && accountLinkedRemotely()) {
           const owner = location.hostname.split('.')[0];
           const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
           sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/account.enc.json`);
@@ -1394,7 +1421,8 @@
         const charts = status.charts || {};
         const trends = Object.values(charts).map(chart => chart.trend).filter(Boolean);
         const count = name => trends.filter(trend => trend === name).length;
-        const riskPct = openGates ? (status.rules ? status.rules.riskPct : .01) : (status.rules ? status.rules.learnRiskPct : .0025);
+        const topScale = Math.max(1, ...strategies.filter(s => s.gate.open && !s.demoted && s.leverage).map(s => s.leverage.scale));
+        const riskPct = openGates ? (status.rules ? status.rules.riskPct : .01) * topScale : (status.rules ? status.rules.learnRiskPct : .0025);
         const newest = status.positions.slice().sort((a, b) => String(b.openedAt).localeCompare(String(a.openedAt)))[0];
         let trade = null;
         if (newest) {
@@ -1415,7 +1443,7 @@
           agents: {
             Scanner: [alive ? 'scan' : 'idle', alive ? 'on' : '', trends.length ? `${trends.length} coins · ${count('up')} up · ${count('down')} down · ${count('range')} range` : `${Object.keys(status.marks || {}).length} coins`],
             Risk: [recentFilter ? 'filter' : alive ? 'pass' : 'idle', recentFilter ? 'warn' : alive ? 'on' : '', lastFilter ? `${lastFilter.market}: ${lastFilter.reason}` : `${openGates}/${strategies.length} gates open · ${learnable} learning`, !!recentFilter],
-            Sizer: [newest ? 'size' : 'idle', newest ? 'on' : '', `${(riskPct * 100).toFixed(2)}% risk per trade${openGates ? '' : ' (learning)'}`],
+            Sizer: [newest ? 'size' : 'idle', newest ? 'on' : '', `${(riskPct * 100).toFixed(2)}% risk per trade${openGates ? (topScale > 1 ? ` (${topScale}x evidence tier)` : '') : ' (learning)'}`],
             Exec: [status.positions.length ? 'live' : 'idle', status.positions.length ? 'blue' : '', lastExec ? `${lastExec.kind.toLowerCase()} ${lastExec.market} · ${lastExec.value}` : `${status.positions.length} open`],
             Logger: ['write', 'amber', `line #${events.length}`],
             Equity: [acct.halted ? 'halted' : 'update', acct.halted ? 'warn' : 'blue', `${formatMoney(eq)} · drawdown ${(drawdown * 100).toFixed(1)}% · kill at 15%`]
