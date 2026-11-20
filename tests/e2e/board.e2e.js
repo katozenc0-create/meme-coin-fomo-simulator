@@ -489,11 +489,14 @@ test('exchange panel shows the crypto autopilot: chart with levels, positions, g
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
   await page.waitForFunction(() => !document.querySelector('#exchangePanel').hidden && /Live · real time/.test(document.querySelector('#exStatus').textContent));
   assert.match(await text(page, '#exStatus'), /2 coins, live Coinbase prices · learning book: 0\.25% risk per trade, up to 2x/);
-  assert.match(await text(page, '#exForward'), /Training · day 3\/3 · forward test: 1 closed learning trades · 1 won · mean \+0\.86R per trade/);
+  assert.match(await text(page, '#exForward'), /Training · day 3\/3 · forward test · normal book: no closed trades yet \(needs 30\+\) · learning book: 1 closed · 1 won · \+\$\d+ · mean \+0\.86R/);
   assert.equal(await text(page, '#exGates'), '0/2 open');
   assert.equal(await page.inputValue('#exSymbol'), 'BTC-USD', 'the coin with a position is shown first');
   assert.ok(await page.locator('#exChart').isVisible(), 'the chart is visible');
   assert.ok(await page.locator('#exChart rect').count() >= 120, 'candles drawn');
+  // Price labels on the right edge never overlap (a stop trailed to the entry shares one label).
+  const labelYs = await page.$$eval('#exChart text', texts => texts.filter(t => Number(t.getAttribute('x')) > 200).map(t => Number(t.getAttribute('y'))).sort((a, b) => a - b));
+  for (let i = 1; i < labelYs.length; i += 1) assert.ok(labelYs[i] - labelYs[i - 1] >= 8.9, `labels ${labelYs[i - 1]} and ${labelYs[i]} overlap`);
   assert.equal(await page.locator('#exChart polyline').count(), 2, 'EMA20 and EMA50');
   for (const cls of ['entry', 'stop', 'target']) assert.equal(await page.locator(`#exChart line.${cls}`).count(), 1, `${cls} line`);
   assert.equal(await page.locator('#exChart line.liq').count(), 0, 'a far liquidation price is not drawn (it would squash the chart)');
@@ -625,7 +628,7 @@ test('v2 status line: real time vs every 15 minutes, and the owner pause', async
   await page.route(published, route => route.fulfill({ json: status }));
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
   await page.waitForFunction(() => /Live · real time/.test(document.querySelector('#exStatus').textContent));
-  assert.match(await text(page, '#exForward'), /^Training · day 1\/3 · forward test: no closed learning trades yet/);
+  assert.match(await text(page, '#exForward'), /^Training · day 1\/3 · forward test · normal book: no closed trades yet \(needs 30\+\) · learning book: no closed trades yet/);
   status = make(20, true);
   await page.reload();
   await page.waitForFunction(() => /Running 24\/7 · scheduled · PAUSED by the owner/.test(document.querySelector('#exStatus').textContent));
