@@ -736,3 +736,17 @@ test('the evidence gate: weekly block bootstrap and a multiple-testing correctio
   assert.equal(learnable({ gate: { trades: 400, weeks: 40, ci: [-.3, .2], ci95: [-.2, .1] } }), true);
   assert.equal(learnable({ gate: { trades: 400, weeks: 5, ci: [-.3, -.1], ci95: [-.25, -.1] } }), true, 'too few weeks: still undecided');
 });
+
+test('a model from the old evidence gate (no weekly blocks) is retrained at once', async () => {
+  const fake = fakeExchange((s, t) => 100 * (1 + .02 * Math.sin(t / H / 6)));
+  const clock = 700 * H;
+  fake.now = () => clock;
+  const state = freshState();
+  const oldGate = { open: true, trades: 157, meanR: .24, ci: [.09, .41] };          // no `weeks`: the old gate
+  state.model = { trainedAt: clock - 10 * 60000, symbols: ['AAA-USD', 'CCC-USD'], strategies: Object.fromEntries(Object.keys(X.STRATEGIES).map(name => [name, { params: X.STRATEGIES[name].grid[0], gate: oldGate }])) };
+  state.lastTrainAttempt = state.model.trainedAt;
+  const pilot = createExchangeAutopilot({ getJson: fake.getJson, now: () => clock, state, options: { symbols: ['AAA-USD', 'CCC-USD'], learn: true, trainBars: 600 } });
+  await pilot.tick();
+  assert.equal(state.model.trainedAt, clock, 'retrained');
+  assert.ok(Object.values(state.model.strategies).every(s => Number.isInteger(s.gate.weeks)), 'the new gate counts weeks');
+});

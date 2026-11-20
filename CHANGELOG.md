@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.3.0: a live overview first on the board
+
+- **Metyu · live overview** opens the board, right under the title:
+  - crypto equity at live prices, today's P&L since 00:00 UTC, and open positions with their unrealized P&L (normal or learning);
+  - the evidence gates and the current risk tier;
+  - the real-money lock and the next condition to meet;
+  - health, with data freshness ("agent 4 min ago · prices 5 s ago").
+- **Live prices between the agent's runs.** Every 10 seconds the board reads Coinbase's public ticker for the coins with an open position. It moves each position's P&L from the agent's mark by the price change since. Before, P&L was up to ~20 minutes old: the 15-minute agent plus the 5-minute data cache.
+- **The last 24 hours** in plain lines: trades closed and their P&L, best and worst, what was opened, skipped and watched, training and alarms, and the prediction markets.
+- **Fresh on return.** When the iPhone app comes back from the background, everything is fetched at once. The exchange status is checked every 30 s (it was 60 s).
+- **The agent retrains at once** when its model comes from the older evidence gate (no weekly blocks), instead of waiting up to 24 hours.
+- **Fix:** the demo's stat tiles have their own id. The view switch hid "the first `.stats` on the page", which is now the overview.
+
 ## 2.2.0: an honest evidence gate, and ready for the API switch-offs
 
 Research for this release covered the APIs Metyu depends on and the statistics of backtests.

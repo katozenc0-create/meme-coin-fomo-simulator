@@ -486,8 +486,28 @@ test('exchange panel shows the crypto autopilot: chart with levels, positions, g
   const page = await env.page({ width: 390, height: 844 });
   const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
   await page.route(published, route => route.fulfill({ json: status }));
+  // Live Coinbase price, $1,000 above the agent's mark: the LONG's P&L moves by 0.05 x 1000 = +$50.
+  const tickers = [];
+  await page.route('https://api.exchange.coinbase.com/products/*/ticker', route => { tickers.push(route.request().url()); return route.fulfill({ json: { price: String(bars[299].c + 1000) } }); });
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
   await page.waitForFunction(() => !document.querySelector('#exchangePanel').hidden && /Live · real time/.test(document.querySelector('#exStatus').textContent));
+  // The live overview, first on the page: equity, today, open P&L at live prices, the last 24 hours.
+  await page.waitForFunction(() => /prices \d+ s ago/.test(document.querySelector('#ovFresh').textContent));
+  assert.ok(await page.locator('#overview').isVisible());
+  assert.equal(await page.evaluate(() => document.querySelector('section').id), 'overview', 'the overview comes first');
+  assert.deepEqual(tickers.map(url => new URL(url).pathname), ['/products/BTC-USD/ticker'], 'only the coins with a position are priced live');
+  const livePnl = (status.positions[0].pnl + 50).toFixed(2);
+  const positionsText = await text(page, '#ovPositions');
+  assert.ok(positionsText.includes('BTC-USD LONG 1.5x · learning · trend'), positionsText);
+  assert.ok(positionsText.includes(`+$${livePnl}`), `${positionsText} should show +$${livePnl}`);
+  assert.match(await text(page, '#ovOpen'), /^1 · \+\$/);
+  assert.match(await text(page, '#ovOpenSub'), /0 normal · 1 learning/);
+  assert.match(await text(page, '#ovGates'), /0\/2 open/);
+  assert.match(await text(page, '#ovGatesSub'), /learning book only/);
+  assert.match(await text(page, '#ovLive'), /locked · \d\/6/);
+  assert.match(await text(page, '#ovLiveSub'), /^next: /);
+  assert.match(await text(page, '#ovDigest'), /crypto: 1 closed · 1 won\s*\+\$21\.5/);
+  assert.match(await text(page, '#ovDigest'), /opened 0 normal · 1 learning/);
   assert.match(await text(page, '#exStatus'), /2 coins, live Coinbase prices · learning book: 0\.25% risk per trade, up to 2x/);
   assert.match(await text(page, '#exForward'), /Training · day 3\/3 · forward test · normal book: no closed trades yet \(needs 30\+\) · learning book: 1 closed · 1 won · \+\$\d+ · mean \+0\.86R/);
   assert.equal(await text(page, '#exGates'), '0/2 open');
