@@ -558,3 +558,15 @@ test('sampleEventMarkets keeps at most N random markets per event, deterministic
   assert.ok(Math.abs(kept / 2000 - .3) < .04, `winner kept ${kept / 2000}`);
   assert.equal(M.sampleEventMarkets(big, 0).length, 300, '0 = keep everything');
 });
+
+test('price history: the CLOB format and the Data API v2 format both parse; the v2 route is the last fallback', () => {
+  const clob = { history: [{ t: 200, p: .6 }, { t: 100, p: .5 }, { t: 300, p: 1 }] };
+  const v2 = { data: [{ timestamp: 100, price: .5, resolution_seconds: 43200 }, { timestamp: 200, price: .6, resolution_seconds: 43200 }], pagination: { has_more: false } };
+  assert.deepEqual(M.normaliseHistory(clob), [{ t: 100, p: .5 }, { t: 200, p: .6 }], 'sorted; a resolved 1.0 is dropped');
+  assert.deepEqual(M.normaliseHistory(v2), [{ t: 100, p: .5 }, { t: 200, p: .6 }]);
+  const urls = M.historyUrls('123');
+  assert.equal(urls.length, 3);
+  assert.match(urls[0], /^\/api\/polymarket\/history\?token_id=123/);
+  assert.match(urls[1], /^https:\/\/clob\.polymarket\.com\/prices-history\?market=123&interval=max&fidelity=720$/);
+  assert.match(urls[2], /^https:\/\/data-api\.polymarket\.com\/v2\/prices-history\?token_id=123&interval=max&bucket_seconds=43200$/);
+});

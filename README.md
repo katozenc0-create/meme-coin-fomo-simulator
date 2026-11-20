@@ -257,12 +257,17 @@ Each reading comes with plain-language notes you can check against the chart on 
 - a 6-hour cool-down on a coin after a loss on it;
 - a kill-switch at −15% from the peak closes everything.
 
-**Training and the evidence gate:** once a day the autopilot fetches 3000 hourly bars per coin and runs a walk-forward:
+**Training and the evidence gate:** once a day the autopilot fetches about **2 years** of hourly bars per coin (`--train-bars 17520`) and runs a walk-forward:
 - Each strategy's parameters are chosen on the first 60% of every coin's history.
-- They are judged only on the last 40%, which the choice never saw.
-- A strategy's gate opens only with 30+ out-of-sample trades and a 95% bootstrap interval of the mean R above zero, after all costs. A gate-approved strategy trades the normal book.
-- With `--learn`, an undecided strategy (interval still includes zero) trades the tagged **learning book** as a forward test.
-- A strategy whose interval lies entirely below zero is proven to lose after costs and is not traded at all.
+- They are judged only on the last 40% (about 40 weeks), which the choice never saw.
+- The gate is honest about two things. These follow Bailey and López de Prado on [backtest overfitting](https://papers.ssrn.com/abstract=2326253) and the [deflated Sharpe ratio](https://papers.ssrn.com/abstract=2460551):
+  - **Dependence.** Crypto moves together, so one week's shorts across 16 coins are close to one observation, not 16. The interval comes from a **weekly block bootstrap**.
+  - **Multiple testing.** 4 strategies × 2 tiers are judged at once, so the interval that must clear zero is Bonferroni-corrected (99.4% for 8 tests).
+- A gate opens only with 30+ out-of-sample trades over **12+ different weeks** and that corrected interval above zero, after all costs. A gate-approved strategy trades the normal book.
+- With `--learn`, an undecided strategy trades the tagged **learning book** as a forward test. Undecided means the plain weekly 95% interval still reaches above zero, or there are too few trades or weeks.
+- A strategy whose weekly 95% interval lies entirely below zero is proven to lose after costs and is not traded at all.
+
+**What two years of data said (20 November 2026):** no gate is open. Over ~250 days, the 4-hour trend pullback looked proven: 157 trades, +0.24R, interval [+0.09, +0.41]. But those 157 trades came from only 12 weeks of one downtrend, and the weekly interval already crossed zero. Over 2 years (459 trades, 40 weeks) its mean is −0.02R. The earlier edge was the regime, not the strategy. This is why the gate counts weeks.
 
 The first training run, on about 24,000 hourly bars from 8 coins (July–November 2026), opened no gate. Trend pullback was −0.13R [−0.28, +0.03], so it is undecided and trades the learning book. Breakout and reversion lost money even before costs. That is what honest testing usually finds. The forward test on the board ("Forward test · day N/14", in R per trade) is what will show whether any strategy has real value.
 

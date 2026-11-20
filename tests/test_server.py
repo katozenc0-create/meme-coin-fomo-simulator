@@ -158,6 +158,26 @@ class ServerTests(unittest.TestCase):
         self.assertIn("fidelity=60", seen[1])
         self.assertEqual(bad_status, 400)
 
+    def test_price_history_falls_back_to_the_data_api_v2(self) -> None:
+        original = server._http_get_json
+        calls = []
+
+        def fake(url: str, timeout: float = 8.0) -> object:
+            calls.append(url)
+            if url.startswith(server.POLYMARKET_CLOB_HISTORY_URL):
+                raise urllib.error.URLError("retired")
+            return {"data": [{"timestamp": 100, "price": 0.4, "resolution_seconds": 43200}, {"timestamp": 200, "price": 0.45}], "pagination": {"has_more": False}}
+
+        server._http_get_json = fake
+        server.clear_cache()
+        try:
+            history = server.fetch_price_history("55555", 720)
+        finally:
+            server._http_get_json = original
+            server.clear_cache()
+        self.assertEqual(history, [{"t": 100, "p": 0.4}, {"t": 200, "p": 0.45}])
+        self.assertIn("data-api.polymarket.com/v2/prices-history?token_id=55555&interval=max&bucket_seconds=43200", calls[-1])
+
     def test_upstream_responses_are_cached_but_errors_are_not(self) -> None:
         calls = []
         original = server._http_get_json

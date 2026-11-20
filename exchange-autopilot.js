@@ -121,7 +121,10 @@ function makeGetJson({ fetchImpl = fetch, timeoutMs = 15000, retries = 1 } = {})
 function learnable(trained) {
   if (!trained) return true;
   const gate = trained.gate;
-  return gate.trades < X.RULES.minTrades || gate.ci[1] > 0;
+  // Undecided by the plain 95% weekly interval (not the corrected one, which would make almost
+  // anything look undecided): too few trades or weeks, or an interval that still reaches above 0.
+  const ci = gate.ci95 || gate.ci;
+  return gate.trades < X.RULES.minTrades || (gate.weeks !== undefined && gate.weeks < X.RULES.minWeeks) || ci[1] > 0;
 }
 
 /**
@@ -374,14 +377,17 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
 }
 
 // ---------- forward evidence and public status ----------
-/** Forward test of closed trades in R (P&L / risk at entry), with a seeded bootstrap 95% interval. */
+/**
+ * Forward test of closed trades in R (P&L / risk at entry): a weekly block-bootstrap 95% interval
+ * (trades of one week move together), convincing only with 30+ trades over 4+ different weeks.
+ */
+const FORWARD_MIN_WEEKS = 4;
 function forwardEvidence(history, { learning, now = Date.now() } = {}) {
   const trades = (history || []).filter(trade => trade.risk > 0 && (learning === undefined || !!trade.learning === learning));
-  const rs = trades.map(trade => trade.r);
-  const ev = X.evidence(rs);
+  const ev = X.evidenceOfTrades(trades, { tests: 1, minWeeks: FORWARD_MIN_WEEKS });
   const first = trades.length ? Math.min(...trades.map(trade => Date.parse(trade.openedAt))) : null;
   return {
-    trades: ev.trades, wins: ev.wins, pnl: trades.reduce((sum, trade) => sum + trade.pnl, 0), meanR: ev.meanR, ci: ev.ci,
+    trades: ev.trades, weeks: ev.weeks, wins: ev.wins, pnl: trades.reduce((sum, trade) => sum + trade.pnl, 0), meanR: ev.meanR, ci: ev.ci,
     days: first ? (now - first) / X.DAY : 0, convincing: ev.open
   };
 }
@@ -474,7 +480,8 @@ function parseArgs(argv) {
   }
   args.interval = Math.max(60, Number(args.interval) || 900);
   if (args.bankroll !== undefined) args.bankroll = Math.max(100, Number(args.bankroll) || DEFAULTS.bankroll);
-  args['train-bars'] = Math.max(600, Math.min(6000, Math.round(Number(args['train-bars']) || 3000)));
+  // Up to ~2 years of hourly bars: the gate needs many independent weeks, not just many trades.
+  args['train-bars'] = Math.max(600, Math.min(20000, Math.round(Number(args['train-bars']) || 3000)));
   args.retrain = Math.max(1, Number(args.retrain) || 24);
   if (args.symbols) {
     args.symbols = String(args.symbols).split(',').map(s => s.trim().toUpperCase()).filter(Boolean);

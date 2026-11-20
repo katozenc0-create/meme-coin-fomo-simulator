@@ -26,12 +26,14 @@ POLYMARKET_GAMMA_URL = "https://gamma-api.polymarket.com/markets"
 POLYMARKET_GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events"
 POLYMARKET_CLOB_BOOK_URL = "https://clob.polymarket.com/book"
 POLYMARKET_CLOB_HISTORY_URL = "https://clob.polymarket.com/prices-history"
+# Polymarket is moving price history to the Data API: /v2/prices-history (token_id, bucket_seconds).
+POLYMARKET_DATA_HISTORY_URL = "https://data-api.polymarket.com/v2/prices-history"
 AUTOPILOT_STATE = Path(os.environ.get("AUTOPILOT_STATE", str(ROOT / "data" / "autopilot.json")))
 EXCHANGE_STATUS = Path(os.environ.get("EXCHANGE_STATUS", str(ROOT / "data" / "exchange-status.json")))
 ACCOUNT_BOX = Path(os.environ.get("ACCOUNT_BOX", str(ROOT / "data" / "account.enc.json")))
 # The same policy is in each page's <meta http-equiv="Content-Security-Policy"> (GitHub Pages cannot
 # send headers); tests keep the two identical. frame-ancestors only works as a header.
-CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag; object-src 'none'; base-uri 'none'; form-action 'none'"
+CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com; object-src 'none'; base-uri 'none'; form-action 'none'"
 
 mimetypes.add_type("application/manifest+json", ".webmanifest")   # PWA manifest (home-screen install)
 SERVED_EXTENSIONS = {".webmanifest", ".html", ".css", ".js", ".json", ".csv", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".txt", ".md"}
@@ -168,17 +170,31 @@ def fetch_price_history(token_id: str, fidelity: int = 720) -> list[dict]:
     """Read-only CLOB price history ([{t, p}]) for one outcome token."""
     if not TOKEN_ID.fullmatch(token_id):
         raise ValueError("token id must be numeric")
-    query = urlencode({"market": token_id, "interval": "max", "fidelity": max(1, min(fidelity, 10080))})
-    payload = _cached_get_json(f"{POLYMARKET_CLOB_HISTORY_URL}?{query}", ttl=3600)
-    rows = payload.get("history", []) if isinstance(payload, dict) else []
-    history = []
-    for row in rows:
-        if isinstance(row, dict):
-            try:
-                history.append({"t": int(row["t"]), "p": float(row["p"])})
-            except (KeyError, TypeError, ValueError):
-                continue
-    return history
+    fidelity = max(1, min(fidelity, 10080))
+    sources = (
+        (f"{POLYMARKET_CLOB_HISTORY_URL}?{urlencode({'market': token_id, 'interval': 'max', 'fidelity': fidelity})}", "history", "t", "p"),
+        (f"{POLYMARKET_DATA_HISTORY_URL}?{urlencode({'token_id': token_id, 'interval': 'max', 'bucket_seconds': fidelity * 60})}", "data", "timestamp", "price"),
+    )
+    last_error: Exception | None = None
+    for url, key, time_key, price_key in sources:
+        try:
+            payload = _cached_get_json(url, ttl=3600)
+        except Exception as error:  # the next source (the CLOB route is being retired)
+            last_error = error
+            continue
+        rows = payload.get(key, []) if isinstance(payload, dict) else []
+        history = []
+        for row in rows:
+            if isinstance(row, dict):
+                try:
+                    history.append({"t": int(row[time_key]), "p": float(row[price_key])})
+                except (KeyError, TypeError, ValueError):
+                    continue
+        if history:
+            return history
+    if last_error:
+        raise last_error
+    return []
 
 
 def _compact_market(market: dict, keys: tuple[str, ...]) -> dict:

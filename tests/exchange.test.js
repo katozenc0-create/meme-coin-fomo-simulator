@@ -369,7 +369,13 @@ test('forward evidence, public status with charts, persistence and CLI options',
   assert.equal(forward.trades, 32);
   assert.equal(forward.wins, 24);
   close(forward.meanR, (24 * .6 - 8) / 32, 1e-12);
-  assert.equal(forward.convincing, forward.ci[0] > 0);
+  assert.equal(forward.weeks, 1, 'all 32 trades fall in one week');
+  assert.equal(forward.convincing, false, 'one week is not 32 independent observations');
+  const spread = Array.from({ length: 40 }, (_, i) => ({ learning: false, risk: 100, r: i % 5 ? .8 : -1, pnl: 0, openedAt: new Date(i * 1.5 * X.DAY).toISOString() }));
+  const forwardSpread = forwardEvidence(spread, { learning: false, now: 70 * X.DAY });
+  assert.ok(forwardSpread.weeks >= 8);
+  assert.equal(forwardSpread.convincing, forwardSpread.ci[0] > 0);
+  assert.equal(forwardSpread.convincing, true, '40 winning-on-average trades over 9 weeks');
   assert.equal(forwardEvidence(history, { learning: false }).trades, 0);
 
   const { pilot, state } = setup({ priceOf: (s, t) => 100 + 2 * Math.sin(t / H / 4), model: UNDECIDED });
@@ -393,7 +399,7 @@ test('forward evidence, public status with charts, persistence and CLI options',
   assert.equal(loadState(path.join(dir, 'missing.json'), { bankroll: 500 }).account.bankroll, 500);
 
   assert.deepEqual(parseArgs(['--once', '--learn', '--state', 'x.json', '--symbols', 'btc-usd,ETH-USD', '--train-bars', '99999']),
-    { state: 'x.json', 'status-out': null, interval: 900, bankroll: undefined, once: true, learn: true, 'train-bars': 6000, retrain: 24, symbols: ['BTC-USD', 'ETH-USD'], 'account-public': null, pause: false });
+    { state: 'x.json', 'status-out': null, interval: 900, bankroll: undefined, once: true, learn: true, 'train-bars': 20000, retrain: 24, symbols: ['BTC-USD', 'ETH-USD'], 'account-public': null, pause: false });
   assert.throws(() => parseArgs(['--symbols', 'BTCUSDT']), /look like BTC-USD/);
   assert.throws(() => parseArgs(['--wallet', 'x']), /unknown option/);
 });
@@ -704,4 +710,29 @@ test('the autopilot opens a proven strategy at the higher risk tier and logs why
   assert.equal(b.state.shadow.open[held.id].usd, 25, 'real-money rehearsal stays at $25, no leverage');
   const status = statusOf(b.state, { now: 600 * H });
   assert.equal(status.model.strategies.test.leverage.scale, 2);
+});
+
+test('the evidence gate: weekly block bootstrap and a multiple-testing correction', () => {
+  const W = 7 * X.DAY;
+  // 120 trades, +0.15R on average, but all crowded into 3 weeks: never enough for the gate.
+  const crowded = Array.from({ length: 120 }, (_, i) => ({ r: i % 2 ? 1.3 : -1, openedAt: (i % 3) * W + i * H }));
+  const ev = X.evidenceOfTrades(crowded);
+  assert.equal(ev.weeks, 3);
+  assert.equal(ev.open, false, 'fewer than 12 weeks');
+  // The same edge spread over 40 weeks, each week mixed: the gate can open.
+  const spread = Array.from({ length: 400 }, (_, i) => ({ r: (i % 2 ? 1.3 : -1) + ((i * 37) % 11 - 5) / 20, openedAt: Math.floor(i / 10) * W + (i % 10) * H }));   // weeks differ a little
+  const good = X.evidenceOfTrades(spread);
+  assert.equal(good.weeks, 40);
+  assert.ok(good.ci[0] > 0 && good.open);
+  assert.ok(good.ci[0] < good.ci95[0] && good.ci[1] > good.ci95[1], 'the 8-test interval is wider than the plain 95% one');
+  // Weekly blocks: when the weeks themselves disagree, the interval is wider than an i.i.d. one.
+  const regime = Array.from({ length: 400 }, (_, i) => ({ r: Math.floor(i / 10) % 2 ? 1 : -.8, openedAt: Math.floor(i / 10) * W + (i % 10) * H }));
+  const blocks = X.evidenceOfTrades(regime, { tests: 1 });
+  const iid = X.evidence(regime.map(t => t.r));
+  assert.ok(blocks.ci95[1] - blocks.ci95[0] > 2 * (iid.ci[1] - iid.ci[0]), 'one good or bad week counts once, not ten times');
+  assert.equal(blocks.open, false, 'a regime coin-flip is not an edge');
+  // learnable uses the plain weekly 95% interval: proven losers stay out of the learning book.
+  assert.equal(learnable({ gate: { trades: 400, weeks: 40, ci: [-.3, .05], ci95: [-.25, -.02] } }), false);
+  assert.equal(learnable({ gate: { trades: 400, weeks: 40, ci: [-.3, .2], ci95: [-.2, .1] } }), true);
+  assert.equal(learnable({ gate: { trades: 400, weeks: 5, ci: [-.3, -.1], ci95: [-.25, -.1] } }), true, 'too few weeks: still undecided');
 });
