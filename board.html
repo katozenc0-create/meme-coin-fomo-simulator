@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -1028,7 +1028,8 @@
           const tierText = s.gate.open && !s.demoted && s.leverage ? ` · risk ${s.leverage.scale}x (${s.leverage.scale > 1 ? 'evidence-based leverage' : s.leverage.reason})` : '';
           head.textContent = `${s.label}: ${s.demoted ? 'GATE OPEN but DEMOTED by live results · learning book' : s.gate.open ? 'GATE OPEN · normal book' : s.learnable ? 'gate closed · learning book' : 'gate closed · not traded (loses after costs)'}${tierText}`;
           const live = s.live && s.live.trades ? `live: ${s.live.trades}/${s.live.window} recent trades · ${s.live.wins} won · mean ${rText(s.live.meanR)}` : 'live: no closed trades yet';
-          item.append(head, document.createElement('br'), `${s.gate.trades} out-of-sample trades · ${s.gate.wins} won · mean ${rText(s.gate.meanR)} · 95% [${rText(s.gate.ci[0])}, ${rText(s.gate.ci[1])}]`, document.createElement('br'), live);
+          const interval = s.gate.weeks !== undefined ? `${s.gate.weeks} weeks · gate interval (weekly blocks, ${s.gate.tests || 8} tests) [${rText(s.gate.ci[0])}, ${rText(s.gate.ci[1])}]` : `95% [${rText(s.gate.ci[0])}, ${rText(s.gate.ci[1])}]`;
+          item.append(head, document.createElement('br'), `${s.gate.trades} out-of-sample trades · ${s.gate.wins} won · mean ${rText(s.gate.meanR)} · ${interval}`, document.createElement('br'), live);
           return item;
         }));
         renderTrades($('#exTradeList'), $('#exTradeSummary'), (status.history || []).map(trade => ({

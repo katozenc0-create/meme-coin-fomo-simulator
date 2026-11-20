@@ -25,11 +25,27 @@
   // SOL and every token in one request. Solana's own public RPC refuses browser origins (HTTP 403)
   // but serves servers, so it is the fallback (the GitHub runner). publicnode was tried and dropped:
   // it blocks the token-account lookup without a personal token.
-  const DEFAULT_BALANCES = 'https://lite-api.jup.ag/ultra/v1/balances';
+  // Jupiter is retiring lite-api.jup.ag in favour of api.jup.ag (same paths; keyless use is rate
+  // limited). Each Jupiter URL is a list: the first that answers wins, so the switch-off is seamless.
+  const JUPITER_HOSTS = ['https://lite-api.jup.ag', 'https://api.jup.ag'];
+  const DEFAULT_BALANCES = JUPITER_HOSTS.map(host => `${host}/ultra/v1/balances`);
   const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
-  const DEFAULT_PRICES = 'https://lite-api.jup.ag/price/v3';
+  const DEFAULT_PRICES = JUPITER_HOSTS.map(host => `${host}/price/v3`);
   // Token symbols and names (and a USD price when the price API has none), up to 100 mints a call.
-  const DEFAULT_TOKENS = 'https://lite-api.jup.ag/tokens/v2/search';
+  const DEFAULT_TOKENS = JUPITER_HOSTS.map(host => `${host}/tokens/v2/search`);
+  const urlList = value => (value ? (Array.isArray(value) ? value : [value]) : []);
+  /** GET the first URL of `urls` (each + `suffix`) that answers 2xx; throws with the last status. */
+  async function getFirst(urls, suffix, fetchImpl, timeoutMs) {
+    let last = 'no URL';
+    for (const url of urls) {
+      try {
+        const response = await fetchImpl(`${url}${suffix}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
+        if (response.ok) return response;
+        last = `HTTP ${response.status}`;
+      } catch (error) { last = error.message; }
+    }
+    throw new Error(last);
+  }
   const HTTPS_URL = /^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i;
 
   /**
@@ -52,7 +68,7 @@
     const wallet = normaliseAddress(address);
     if (!wallet) throw new Error('not a Solana address (base58, 32-44 characters). Use the PUBLIC address, never a seed phrase or a private key.');
     const endpoints = rpcUrls || (rpcUrl ? [rpcUrl] : [DEFAULT_RPC]);
-    if (!endpoints.every(url => HTTPS_URL.test(url)) || (balancesUrl && !HTTPS_URL.test(balancesUrl))) throw new Error('the Solana RPC URL must be an https URL');
+    if (!endpoints.every(url => HTTPS_URL.test(url)) || !urlList(balancesUrl).every(url => HTTPS_URL.test(url))) throw new Error('the Solana RPC URL must be an https URL');
     const sources = [
       ...(balancesUrl ? [{ name: 'Jupiter', read: () => readJupiter({ wallet, balancesUrl, fetchImpl }) }] : []),
       ...endpoints.map(url => ({ name: new URL(url).host, read: () => readRpc({ wallet, rpcUrl: url, fetchImpl }) }))
@@ -71,8 +87,7 @@
 
   /** Jupiter's balances API: { SOL: { uiAmount }, <mint>: { uiAmount }, ... } in one request. */
   async function readJupiter({ wallet, balancesUrl, fetchImpl }) {
-    const response = await fetchImpl(`${balancesUrl}/${wallet}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const response = await getFirst(urlList(balancesUrl), `/${wallet}`, fetchImpl, 15000);
     const data = await response.json();
     if (!data || typeof data !== 'object' || Array.isArray(data) || data.error) throw new Error((data && data.error) || 'unexpected answer');
     let lamports = 0;
@@ -118,8 +133,8 @@
     for (let i = 0; i < unknown.length; i += 50) {
       try {
         const query = new URLSearchParams({ ids: unknown.slice(i, i + 50).join(',') });
-        const response = await fetchImpl(`${priceUrl}?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
-        if (response.ok) Object.assign(prices, await response.json());
+        const response = await getFirst(urlList(priceUrl), `?${query}`, fetchImpl, 10000);
+        Object.assign(prices, await response.json());
       } catch (error) { /* unpriced: shown without a USD value */ }
     }
     return prices;
@@ -128,12 +143,11 @@
   /** Symbol, name and USD price per mint from Jupiter's token list; {} when unavailable. */
   async function tokenInfo({ mints, tokensUrl, fetchImpl }) {
     const info = {};
-    if (!tokensUrl) return info;
+    if (!urlList(tokensUrl).length) return info;
     for (let i = 0; i < mints.length; i += 100) {
       try {
         const query = new URLSearchParams({ query: mints.slice(i, i + 100).join(',') });
-        const response = await fetchImpl(`${tokensUrl}?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
-        if (!response.ok) continue;
+        const response = await getFirst(urlList(tokensUrl), `?${query}`, fetchImpl, 10000);
         const list = await response.json();
         for (const token of Array.isArray(list) ? list : []) {
           if (token && SOLANA_ADDRESS.test(String(token.id))) info[token.id] = token;

@@ -67,6 +67,8 @@
     cooldownHours: 6,         // no re-entry on a coin for 6 h after a losing trade on it
     timeStopHours: 72,
     minTrades: 30,            // the evidence gate's bar, the same as the Prediction Lab's
+    minWeeks: 12,             // ...and at least 12 different weeks with trades: trades in one week move together
+    familySize: 8,            // strategies x tiers tested at once (4 x 2): the gate's interval is corrected for them
     liveReviewTrades: 20,     // live watchdog: the last 20 closed trades of a strategy (both books, in R)...
     liveDemoteR: -.25         // ...averaging below -0.25R demote it to the learning book until they recover
   });
@@ -96,6 +98,34 @@
     boots.sort((a, b) => a - b);
     return [boots[Math.floor(.025 * reps)], boots[Math.ceil(.975 * reps) - 1]];
   }
+
+  /**
+   * Block bootstrap: resamples whole GROUPS (here the trades of one calendar week) instead of single
+   * trades. Crypto moves together, so the shorts of one week across 16 coins are close to ONE
+   * observation, not 16; an ordinary bootstrap treats them as 16 and overstates the confidence.
+   * `alpha` is two-sided (0.05 = a 95% interval).
+   */
+  function blockBootstrapCI(groups, { alpha = .05, seed = 20261112, reps = 4000 } = {}) {
+    const nonEmpty = groups.filter(group => group.length);
+    const n = nonEmpty.reduce((sum, group) => sum + group.length, 0);
+    if (!n) return [0, 0];
+    const rng = createRng(seed);
+    const boots = [];
+    for (let rep = 0; rep < reps; rep += 1) {
+      let total = 0;
+      let count = 0;
+      while (count < n) {
+        const group = nonEmpty[Math.floor(rng() * nonEmpty.length)];
+        for (const value of group) { total += value; count += 1; }
+      }
+      boots.push(total / count);
+    }
+    boots.sort((a, b) => a - b);
+    const lo = Math.min(reps - 1, Math.max(0, Math.floor(alpha / 2 * reps)));
+    return [boots[lo], boots[Math.max(0, Math.ceil((1 - alpha / 2) * reps) - 1)]];
+  }
+  const WEEK = 7 * 24 * 3600000;
+  const weekOf = time => Math.floor(Number(time) / WEEK);
 
   // ---------- market data ----------
   /** Candles, oldest first: { t (open time, ms), o, h, l, c, v }. Drops bad rows and duplicates. */
@@ -554,11 +584,34 @@
   }
 
   /**
+   * The evidence gate, honest about two things (Bailey & Lopez de Prado on backtest overfitting):
+   *  - dependence: the interval comes from a WEEKLY block bootstrap (see blockBootstrapCI);
+   *  - multiple testing: `tests` hypotheses are judged at once (4 strategies x 2 tiers), so the
+   *    interval that must clear zero is Bonferroni-corrected (95% -> 99.4% for 8 tests).
+   * trades: [{ r, openedAt (ms or ISO) }]. `ci95` (weekly, uncorrected) says whether a strategy is
+   * still undecided (learning book) or proven to lose; `ci` (corrected) opens the gate.
+   */
+  function evidenceOfTrades(trades, { tests = RULES.familySize, minTrades = RULES.minTrades, minWeeks = RULES.minWeeks } = {}) {
+    const rs = trades.map(trade => trade.r);
+    const byWeek = new Map();
+    for (const trade of trades) {
+      const week = weekOf(typeof trade.openedAt === 'string' ? Date.parse(trade.openedAt) : trade.openedAt);
+      if (!byWeek.has(week)) byWeek.set(week, []);
+      byWeek.get(week).push(trade.r);
+    }
+    const groups = [...byWeek.values()];
+    const ci95 = blockBootstrapCI(groups, { alpha: .05 });
+    const ci = tests > 1 ? blockBootstrapCI(groups, { alpha: .05 / tests }) : ci95;
+    const enough = rs.length >= minTrades && groups.length >= minWeeks;
+    return { trades: rs.length, weeks: groups.length, wins: rs.filter(r => r > 0).length, meanR: mean(rs), ci, ci95, tests, open: enough && ci[0] > 0 };
+  }
+
+  /**
    * Walk-forward training over several coins. For each strategy: the parameter set with the best
    * mean R on the first `split` of every coin's history (needs 10+ trades), then the evidence gate
    * judged ONLY on the trades in the remaining, unseen part.
    */
-  function train(candlesBySymbol, { split = .6, costs = COSTS, now = Date.now() } = {}) {
+  function train(candlesBySymbol, { split = .6, costs = COSTS, now = Date.now(), tests = RULES.familySize } = {}) {
     const seriesByTf = {};
     const seriesFor = tf => {
       if (!seriesByTf[tf]) {
@@ -580,7 +633,7 @@
         if (!chosen || score > chosen.score) chosen = { params, score, inSample: rs.length };
       }
       const outTrades = series.flatMap(s => backtest(s.candles, name, chosen.params, { from: s.cut, to: s.candles.length, costs, ind: s.ind, symbol: s.symbol }));
-      const gate = evidence(outTrades.map(trade => trade.r));
+      const gate = evidenceOfTrades(outTrades, { tests });
       strategies[name] = { label: STRATEGIES[name].label, timeframe: timeframeOf(name), params: chosen.params, inSampleTrades: chosen.inSample, inSampleMeanR: finite(chosen.score) ? chosen.score : null, gate };
     }
     const bars = series.reduce((sum, s) => sum + s.candles.length, 0);
@@ -684,7 +737,8 @@
     const conditions = [
       { id: 'days', ok: days >= minDays, text: `forward test ran ${minDays}+ days (now ${Math.floor(days)})` },
       { id: 'trades', ok: !!forward && forward.trades >= RULES.minTrades, text: `${RULES.minTrades}+ closed normal-book forward-test trades (now ${forward ? forward.trades : 0}; learning trades do not count)` },
-      { id: 'edge', ok: !!forward && forward.trades >= RULES.minTrades && forward.ci[0] > 0, text: `95% interval of the mean R above zero (now ${forward && forward.trades ? `[${forward.ci[0].toFixed(2)}, ${forward.ci[1].toFixed(2)}]` : 'no trades'})` },
+      // Weekly block bootstrap (trades of one week move together) over at least 4 different weeks.
+      { id: 'edge', ok: !!forward && forward.trades >= RULES.minTrades && (forward.weeks === undefined || forward.weeks >= 4) && forward.ci[0] > 0, text: `95% interval of the mean R above zero, over 4+ different weeks (now ${forward && forward.trades ? `[${forward.ci[0].toFixed(2)}, ${forward.ci[1].toFixed(2)}]${forward.weeks !== undefined ? ` · ${forward.weeks} week${forward.weeks === 1 ? '' : 's'}` : ''}` : 'no trades'})` },
       { id: 'risk', ok: !!account && !account.halted && drawdown < .1, text: `no kill-switch and drawdown under 10% (now ${(drawdown * 100).toFixed(1)}%)` },
       { id: 'account', ok: !!(accountLink && accountLink.linked && accountLink.viewOnly), text: 'a real account or wallet linked read-only (view-only key or public address)' },
       { id: 'approval', ok: !!approval, text: "the owner's explicit approval, with the limits below" }
@@ -695,7 +749,7 @@
 
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
-    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS,
+    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

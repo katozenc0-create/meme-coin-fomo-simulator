@@ -208,6 +208,7 @@ test('nothing in the repository holds a private key, an API secret or a .env fil
 
 // ---------- Solana wallet (e.g. the Fomo app): public address only ----------
 const WALLET = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+const JUPITER = new Set(['lite-api.jup.ag', 'api.jup.ag']);   // the retiring host and its successor
 const MEME = 'Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk';
 function fakeSolana({ lamports = 2_500_000_000, prices = { [MEME]: { usdPrice: 0.002 } }, rpcError = null } = {}) {
   const calls = [];
@@ -215,9 +216,9 @@ function fakeSolana({ lamports = 2_500_000_000, prices = { [MEME]: { usdPrice: 0
     calls.push({ url, init });
     const reply = body => ({ ok: true, status: 200, json: async () => body });
     const target = new URL(url);
-    if (target.host === 'lite-api.jup.ag' && target.pathname === '/price/v3') return reply(prices);
+    if (JUPITER.has(target.host) && target.pathname === '/price/v3') return reply(prices);
     // These tests exercise the RPC path: Jupiter's balances API is 'down' here.
-    if (target.host === 'lite-api.jup.ag') return { ok: false, status: 404, json: async () => ({}) };
+    if (JUPITER.has(target.host)) return { ok: false, status: 404, json: async () => ({}) };
     const { method, params, id } = JSON.parse(init.body);
     if (rpcError) return reply({ jsonrpc: '2.0', id, error: { message: rpcError } });
     if (method === 'getBalance') return reply({ jsonrpc: '2.0', id, result: { value: lamports } });
@@ -241,7 +242,7 @@ test('Solana wallet: SOL and tokens read from the public address, priced, and vi
   assert.equal(balances[2].price, .002);
   const rpcCalls = fake.calls.filter(c => new URL(c.url).host === 'api.mainnet-beta.solana.com');
   assert.ok(rpcCalls.every(c => c.init.method === 'POST' && ['getBalance', 'getTokenAccountsByOwner'].includes(JSON.parse(c.init.body).method)), 'read-only RPC methods only');
-  const priceCall = fake.calls.find(c => new URL(c.url).host === 'lite-api.jup.ag' && new URL(c.url).pathname === '/price/v3');
+  const priceCall = fake.calls.find(c => JUPITER.has(new URL(c.url).host) && new URL(c.url).pathname === '/price/v3');
   assert.equal(new URL(priceCall.url).searchParams.get('ids'), MEME, 'only unlisted tokens are priced on Jupiter');
 
   const getJson = async url => { if (url.includes('SOL-USD')) return { price: '150' }; throw new Error('HTTP 404'); };
@@ -290,9 +291,9 @@ test('wallet reader: Jupiter balances first (one request), Solana RPC as the fal
       urls.push(url);
       const target = new URL(url);
       const reply = body => ({ ok: true, status: 200, json: async () => body });
-      if (target.host === 'lite-api.jup.ag' && target.pathname === '/price/v3') return reply({ [MEME2]: { usdPrice: .5 } });
-      if (target.host === 'lite-api.jup.ag' && target.pathname === '/tokens/v2/search') return reply([{ id: MEME2, symbol: 'FIGHT<script>', name: 'Fight Coin', usdPrice: .4 }]);
-      if (target.host === 'lite-api.jup.ag') {
+      if (JUPITER.has(target.host) && target.pathname === '/price/v3') return reply({ [MEME2]: { usdPrice: .5 } });
+      if (JUPITER.has(target.host) && target.pathname === '/tokens/v2/search') return reply([{ id: MEME2, symbol: 'FIGHT<script>', name: 'Fight Coin', usdPrice: .4 }]);
+      if (JUPITER.has(target.host)) {
         if (jupiter !== 'ok') return { ok: false, status: 503, json: async () => ({}) };
         assert.equal(target.pathname, `/ultra/v1/balances/${WALLET}`);
         return reply({ SOL: { amount: '2000000000', uiAmount: 2 }, [MEME2]: { uiAmount: 10 }, 'not a mint': { uiAmount: 5 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 0 } });
@@ -310,4 +311,25 @@ test('wallet reader: Jupiter balances first (one request), Solana RPC as the fal
   assert.deepEqual(await W.solanaBalances({ address: WALLET, fetchImpl: fallback.fetchImpl }), [{ asset: 'SOL', free: 1, locked: 0 }]);
   await assert.rejects(W.solanaBalances({ address: WALLET, fetchImpl: make({ jupiter: 'down', rpc: 'down' }).fetchImpl }), /^Error: Jupiter: HTTP 503; api\.mainnet-beta\.solana\.com: getBalance HTTP 403$/);
   assert.throws(() => A.solanaProvider({ address: 'METYU_BOARD_PASSPHRASE' }), /link the wallet on the Live Board instead/);
+});
+
+test('Jupiter: when lite-api.jup.ag is switched off, balances, prices and names come from api.jup.ag', async () => {
+  const W = require('../metyu-wallet.js');
+  const MEME2 = 'KMnDBXcPXoz6oMJW5XG4tXdwSWpmWEP2RQM1Uujpump';
+  const hosts = [];
+  const fetchImpl = async url => {
+    const target = new URL(url);
+    hosts.push(`${target.host}${target.pathname.split('/').slice(0, 3).join('/')}`);
+    const reply = body => ({ ok: true, status: 200, json: async () => body });
+    if (target.host === 'lite-api.jup.ag') return { ok: false, status: 410, json: async () => ({}) };   // retired
+    if (target.host !== 'api.jup.ag') throw new Error(`unexpected ${url}`);
+    if (target.pathname.startsWith('/ultra/v1/balances/')) return reply({ SOL: { uiAmount: 1 }, [MEME2]: { uiAmount: 4 } });
+    if (target.pathname === '/price/v3') return reply({ [MEME2]: { usdPrice: .25 } });
+    if (target.pathname === '/tokens/v2/search') return reply([{ id: MEME2, symbol: 'MEME', name: 'Meme' }]);
+    throw new Error(`unexpected ${url}`);
+  };
+  const balances = await W.solanaBalances({ address: WALLET, fetchImpl });
+  assert.deepEqual(balances, [{ asset: 'SOL', free: 1, locked: 0 }, { asset: 'MEME', mint: MEME2, name: 'Meme', free: 4, locked: 0, price: .25 }]);
+  assert.ok(hosts.includes('api.jup.ag/ultra/v1') && hosts.includes('api.jup.ag/price/v3') && hosts.includes('api.jup.ag/tokens/v2'), 'every Jupiter call fell back');
+  assert.ok(!hosts.some(h => h.startsWith('api.mainnet-beta')), 'no RPC needed');
 });

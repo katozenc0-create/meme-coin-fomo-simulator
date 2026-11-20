@@ -916,7 +916,7 @@
       while (queue.length) {
         const market = queue.shift();
         try {
-          const data = await fetchJsonImpl([`/api/polymarket/history?token_id=${encodeURIComponent(market.yesToken)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(market.yesToken)}&interval=max&fidelity=720`]);
+          const data = await fetchJsonImpl(historyUrls(market.yesToken));
           market.history = normaliseHistory(data);
         } catch (error) { market.history = []; }
         done += 1;
@@ -984,11 +984,21 @@
     return found;
   }
 
-  /** Cleans a CLOB prices-history payload into [{t (seconds), p}] sorted by time. */
+  /**
+   * Where a token's 12-hourly price history lives: the local proxy, the CLOB's prices-history, then
+   * the Data API's /v2/prices-history, which Polymarket is moving price history to.
+   */
+  function historyUrls(tokenId) {
+    const id = encodeURIComponent(tokenId);
+    return [`/api/polymarket/history?token_id=${id}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${id}&interval=max&fidelity=720`, `https://data-api.polymarket.com/v2/prices-history?token_id=${id}&interval=max&bucket_seconds=43200`];
+  }
+
+  /** Cleans a CLOB or Data API v2 prices-history payload into [{t (seconds), p}] sorted by time. */
   function normaliseHistory(raw) {
-    const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.history) ? raw.history : []);
+    // CLOB: { history: [{ t, p }] }. Data API v2: { data: [{ timestamp, price }], pagination }.
+    const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.history) ? raw.history : raw && Array.isArray(raw.data) ? raw.data : []);
     return rows
-      .map(point => ({ t: Number(point.t), p: Number(point.p) }))
+      .map(point => ({ t: Number(point.t ?? point.timestamp), p: Number(point.p ?? point.price) }))
       .filter(point => Number.isFinite(point.t) && point.p > 0 && point.p < 1)
       .sort((a, b) => a.t - b.t);
   }
@@ -1400,7 +1410,7 @@
       let entry = cache.get(tokenId);
       if (!entry || now() - entry.at > (entry.failed ? retryMs : ttlMs)) {
         try {
-          const data = await fetchJsonImpl([`/api/polymarket/history?token_id=${encodeURIComponent(tokenId)}&fidelity=720`, `https://clob.polymarket.com/prices-history?market=${encodeURIComponent(tokenId)}&interval=max&fidelity=720`]);
+          const data = await fetchJsonImpl(historyUrls(tokenId));
           entry = { at: now(), history: normaliseHistory(data) };
         } catch (error) { entry = { at: now(), history: [], failed: true }; }   // retried soon, not in 6 h
         cache.set(tokenId, entry);
@@ -1476,6 +1486,6 @@
   return {
     DEFAULT_CONFIG, createRng, clamp, logit, sigmoid, normalCdf, normalInv, expectedValue, kellyFraction, ema,
     estimateFairProbability, createEvidence, researchNoise, processVarianceAt, openPosition, markPosition, liquidationPrice, accrueInterest,
-    decide, advise, capToPortfolio, reviewPosition, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, loadResolvedMarkets, sampleEventMarkets, trainModel, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
+    decide, advise, capToPortfolio, reviewPosition, toCsv, createDataClient, fetchJson: defaultDataClient.fetchJson, proxyState: defaultDataClient.proxyState, parseGammaResolution, settlePosition, parseResolvedForTraining, priceAt, recentPrices, normaliseHistory, historyUrls, buildTrainingSamples, fitCalibration, weightByEvent, predictCalibrated, takerFeeRate, takerFeeExponent, feePerShare, marketCategory, marketCluster, modelMayTrade, flattenEvents, isValidSavedModel, createMomentumTracker, parseList, toUnixSeconds, richFeatures, fitRichCalibration, predictModel, walkForward, loadResolvedMarkets, sampleEventMarkets, trainModel, brierScore, logLoss, reliability, simulatedResolvedMarkets, fillFromBook, normaliseLevels, CONFIDENCE_VARIANCE, createMarket, researchSignal, runAgentOnMarket, backtest, stressTest, STRESS_SCENARIOS, portfolioStressTest, parseGammaMarket, polymarketUrl, sidePriceOf
   };
 });

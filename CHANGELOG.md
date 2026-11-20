@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.2.0: an honest evidence gate, and ready for the API switch-offs
+
+Research for this release covered the APIs Metyu depends on and the statistics of backtests.
+
+**The evidence gate no longer fools itself.** This follows Bailey and López de Prado on backtest overfitting and the deflated Sharpe ratio:
+- **Weekly block bootstrap.** Crypto moves together: one week's shorts across 16 coins are close to one observation, not 16. The gate's interval now resamples whole weeks (`blockBootstrapCI`, `evidenceOfTrades`).
+- **Multiple testing.** 8 hypotheses (4 strategies × 2 tiers) are judged at once, so the interval that must clear zero is Bonferroni-corrected (99.4%).
+- **12+ different weeks** are needed, besides 30+ trades.
+- **About 2 years of training data** (`--train-bars 17520`, cap raised to 20000), so the test window spans ~40 weeks instead of ~14. The retrain takes about 4 minutes once a day.
+- **The forward test and the real-money lock** use the same weekly bootstrap, over 4+ different weeks.
+- **Result:** no gate is open. The 4-hour trend's +0.24R on 157 trades came from 12 weeks of one downtrend; over 2 years it is −0.02R. The normal book (and its leverage tier) stays idle until a strategy truly proves itself. The learning book keeps testing the 6 undecided strategy–tier pairs at 0.25% risk.
+
+**Ready for the API switch-offs:**
+- **Jupiter** is retiring `lite-api.jup.ag` for `api.jup.ag` (same paths). Every Jupiter call (balances, prices, token names) now tries `lite-api.jup.ag` first, then `api.jup.ag`. Checked live with lite-api blocked: 143 assets read through api.jup.ag.
+- **Polymarket** is moving price history from the CLOB's `/prices-history` to the Data API's `/v2/prices-history` (`{ data: [{ timestamp, price }] }`). Training, the momentum tracker and the `server.py` proxy fall back to it. Checked live with the CLOB blocked: 82 markets loaded through the Data API.
+- The CSP allows both successor hosts, in the header and in every page.
+
 ## 2.1.0: Metyu learns from its own live results
 
 - **Separate budgets for the two books.** The learning book's small research trades no longer count toward the normal book's 4 positions or its 3% side-risk cap. They have their own limits: 8 positions and 2% side risk. A strategy that passed the evidence gate is never blocked by research trades. Margin stays shared.
