@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.0: a daily steward routine
+
+- **`CLAUDE.md`:** a guide that every Claude session reads.
+  - The hard rules: virtual money only, the evidence gate never loosened, no secrets, no Actions server, no deletions or force-pushes.
+  - The layout, the checks and the conventions.
+- **`docs/STEWARD.md`:** the daily routine. Look at the published state, the scheduler and the health; fix real problems first (root cause, one PR each, green CI); then make at most one small improvement; report to the owner in Turkish. Anything about real money, the gate or the risk rules waits for the owner.
+- **`scripts/daily-report.js`:** a short, reproducible Markdown report of the published state. It covers health, equity and the last 24 hours, the gates and the closest one, the forward test, the real-money lock, shadow orders, alarms and the prediction markets.
+
 ## 2.3.0: a live overview first on the board
 
 - **Metyu · live overview** opens the board, right under the title:
