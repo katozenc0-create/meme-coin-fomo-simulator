@@ -41,6 +41,9 @@ function assess({ exchange, polymarket, now = Date.now(), limits = LIMITS }) {
   }
   if (!silent('Polymarket agent', polymarket)) {
     if (polymarket.account && polymarket.account.halted) problems.push('Polymarket agent: HALTED by the kill-switch (restart: a new value of METYU_RESET_HALT)');
+    // Its daily self-training can fail quietly (a data source down): an old model is a problem too.
+    const trainedAt = polymarket.model && polymarket.model.trainedAt;
+    if (trainedAt && (now - trainedAt) / HOUR >= limits.modelHours) problems.push(`Polymarket agent: the model is ${Math.round((now - trainedAt) / HOUR)} h old (daily training keeps failing)`);
   }
   return problems;
 }

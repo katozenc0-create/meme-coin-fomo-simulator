@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.1
+
+- **Watchdog:** the Polymarket agent's model age is checked too. 48+ hours old means its daily self-training keeps failing; until now only the crypto model was checked.
+
 ## 2.4.0: a daily steward routine
 
 - **`CLAUDE.md`:** a guide that every Claude session reads.
