@@ -1,0 +1,907 @@
+{
+ "available": true,
+ "virtualMoney": true,
+ "generatedAt": "2026-11-21T20:15:39.402Z",
+ "createdAt": "2026-11-12T21:59:56.133Z",
+ "lastTick": "2026-11-21T20:15:39.401Z",
+ "account": {
+  "bankroll": 10000,
+  "cash": 9194.849411803929,
+  "peak": 10000,
+  "halted": false,
+  "realized": -212.31854796018075,
+  "trades": 4,
+  "wins": 0
+ },
+ "paused": false,
+ "model": {
+  "source": "autopilot · 1299 resolved markets",
+  "trainedAt": 1795273254049,
+  "kind": "calib",
+  "gate": {
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0,
+   "spread": 0.02,
+   "tradeHorizon": 7
+  }
+ },
+ "positions": [
+  {
+   "id": "679022",
+   "question": "Will David Lisnard win the 2027 French presidential election?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/will-david-lisnard-win-the-2027-french-presidential-election",
+   "openedAt": "2026-11-13T12:42:59.117Z",
+   "lastAccrual": 1795292135813,
+   "position": {
+    "side": "NO",
+    "entry": 0.83468351,
+    "margin": 98.85169048968613,
+    "leverage": 1,
+    "notional": 98.85169048968613,
+    "borrowed": 0,
+    "shares": 118.43014664287082,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.11656767944861926,
+   "beliefVariance": 0.2395032590433922,
+   "lastYes": 0.1715,
+   "spread": 0.0009999999999999731,
+   "learning": true
+  },
+  {
+   "id": "2299955",
+   "question": "Will Anthropic's valuation hit (HIGH) $1.75T by December 31?",
+   "cluster": "finance",
+   "url": "https://polymarket.com/market/will-anthropics-valuation-hit-high-1pt75t-by-december-31-328",
+   "openedAt": "2026-11-13T10:33:06.770Z",
+   "lastAccrual": 1795292135813,
+   "position": {
+    "side": "NO",
+    "entry": 0.599711,
+    "margin": 98.94661602963447,
+    "leverage": 1,
+    "notional": 98.94661602963447,
+    "borrowed": 0,
+    "shares": 164.990497138846,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.32620379523585463,
+   "beliefVariance": 0.10058808705959163,
+   "lastYes": 0.245,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  {
+   "id": "6828351",
+   "question": "Louisiana-Lafayette Ragin' Cajuns vs. UNCW Seahawks",
+   "cluster": "sports",
+   "url": "https://polymarket.com/market/cbb-loulaf-ncw-2026-11-14",
+   "openedAt": "2026-11-13T08:12:36.625Z",
+   "lastAccrual": 1795292135813,
+   "position": {
+    "side": "NO",
+    "entry": 0.5324887500000001,
+    "margin": 99.01467627120284,
+    "leverage": 1,
+    "notional": 99.01467627120284,
+    "borrowed": 0,
+    "shares": 185.94698248780435,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.05,
+    "takerExponent": 1
+   },
+   "belief": 0.39498769202995343,
+   "beliefVariance": 0.09862434197520355,
+   "lastYes": 0.495,
+   "spread": 0.010000000000000009,
+   "learning": true
+  },
+  {
+   "id": "6884119",
+   "question": "Jensen Huang divorce by December 31, 2026?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/jensen-huang-divorce-in-2026",
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "lastAccrual": 1795292135813,
+   "position": {
+    "side": "NO",
+    "entry": 0.777191,
+    "margin": 100,
+    "leverage": 1,
+    "notional": 100,
+    "borrowed": 0,
+    "shares": 128.66849976389332,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.16676496264645857,
+   "beliefVariance": 0.17189943396095747,
+   "lastYes": 0.055,
+   "spread": 0.009999999999999995,
+   "learning": true
+  },
+  {
+   "id": "6919847",
+   "question": "Will there be no new be CEO of NVIDIA by December 31, 2028?",
+   "cluster": "culture",
+   "url": "https://polymarket.com/market/will-candidate-a-be-the-next-ceo-of-nvidia",
+   "openedAt": "2026-11-14T21:01:01.696Z",
+   "lastAccrual": 1795292135813,
+   "position": {
+    "side": "NO",
+    "entry": 0.902386312088214,
+    "margin": 98.2293234101258,
+    "leverage": 1,
+    "notional": 98.2293234101258,
+    "borrowed": 0,
+    "shares": 108.85506805041527,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.05,
+    "takerExponent": 1
+   },
+   "belief": 0.07571476760043999,
+   "beliefVariance": 0.05480571545884251,
+   "lastYes": 0.1025,
+   "spread": 0.0010000000000000009,
+   "learning": true
+  },
+  {
+   "id": "6998285",
+   "question": "Will Jensen Huang rejoin NVIDIA by December 31, 2026?",
+   "cluster": "tech",
+   "url": "https://polymarket.com/market/will-jensen-huang-rejoin-nvidia-by-december-31-2026",
+   "openedAt": "2026-11-15T05:30:47.104Z",
+   "lastAccrual": 1795292135813,
+   "position": {
+    "side": "NO",
+    "entry": 0.88332991,
+    "margin": 97.78973403524094,
+    "leverage": 1,
+    "notional": 97.78973403524094,
+    "borrowed": 0,
+    "shares": 110.70578832232788,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.09094630009184176,
+   "beliefVariance": 0.04727957415635163,
+   "lastYes": 0.068,
+   "spread": 0.0040000000000000036,
+   "learning": true
+  }
+ ],
+ "watching": 18,
+ "history": [
+  {
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "closedAt": "2026-11-15T05:30:47.661Z",
+   "market": "UFC 334: Josh Hokit vs. Ciryl Gane (Heavyweight, Main Card)",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.65158875,
+   "exitYes": 0.615,
+   "outcome": "CLOSED",
+   "margin": 100,
+   "pnl": -43.49791183472705,
+   "reason": "stop-loss: margin down 43.5% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-14T03:31:00.803Z",
+   "closedAt": "2026-11-14T21:01:02.368Z",
+   "market": "Will Bitcoin dip to $60,000 by December 31, 2026?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.54745625,
+   "exitYes": 0.63,
+   "outcome": "CLOSED",
+   "margin": 98.56963034046734,
+   "pnl": -36.68942299183841,
+   "reason": "stop-loss: margin down 37.2% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-13T13:46:35.195Z",
+   "closedAt": "2026-11-13T15:31:22.039Z",
+   "market": "Will Bitcoin dip to $67,500 in November?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.40710624999999995,
+   "exitYes": 0.795,
+   "outcome": "CLOSED",
+   "margin": 59.8624699357565,
+   "pnl": -32.131213133615276,
+   "reason": "stop-loss: margin down 53.7% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "closedAt": "2026-11-13T08:12:36.929Z",
+   "market": "Commanders vs. Giants",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.5474632500000001,
+   "exitYes": 0.485,
+   "outcome": "YES",
+   "margin": 100,
+   "pnl": -100,
+   "reason": "market resolved",
+   "learning": true
+  }
+ ],
+ "log": [
+  {
+   "at": "2026-11-21T20:00:57.662Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-21T19:00:52.502Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-21T18:00:52.295Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-21T16:45:42.229Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-21T15:30:55.637Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-21T15:02:29.325Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1299 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-21T14:30:45.447Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-21T13:15:38.888Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-21T12:00:54.821Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-21T10:45:40.833Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-21T09:30:45.581Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-21T08:15:33.628Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-21T07:01:00.777Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-21T05:45:33.650Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-21T04:45:31.917Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-21T03:30:52.677Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-21T02:15:33.770Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-21T01:01:10.792Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-21T00:01:01.152Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-20T23:00:58.527Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-20T22:00:54.015Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-20T20:45:39.466Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-20T19:45:33.656Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-20T18:30:58.093Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-20T17:30:48.690Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-20T16:30:46.927Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-20T15:15:38.705Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-20T14:46:57.704Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1326 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-20T14:01:02.837Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-20T12:53:06.998Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-20T11:45:47.821Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T10:45:44.647Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T09:45:34.297Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T08:45:34.023Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T07:45:33.831Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T06:45:30.787Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-20T05:30:50.124Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T04:30:47.842Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T03:30:44.195Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-20T02:30:43.592Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-20T01:30:43.017Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-20T00:15:40.135Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-19T23:01:00.128Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-19T21:45:45.099Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T20:45:39.327Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T19:45:32.890Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T18:30:59.662Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T17:15:46.422Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T16:15:43.077Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-19T15:15:31.003Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-19T14:32:37.543Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1286 resolved markets · evidence gate closed · 58 out-of-sample trades, mean 11.0% [-11.0%, 32.0%]"
+  },
+  {
+   "at": "2026-11-19T14:01:06.485Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T13:00:58.801Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T12:00:54.079Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T10:45:39.820Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T09:30:46.790Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T08:30:44.704Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-19T07:30:44.122Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-19T06:15:32.647Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-19T05:00:51.988Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-19T04:00:51.663Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-19T02:45:34.954Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-19T01:30:52.535Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-19T00:30:51.646Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T23:15:39.374Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T22:15:36.866Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-18T21:00:56.598Z",
+   "kind": "INFO",
+   "text": "watching 11 markets"
+  },
+  {
+   "at": "2026-11-18T19:45:33.205Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-18T18:30:48.836Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-18T17:30:45.678Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-18T16:15:34.250Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-18T15:00:57.757Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-18T14:32:38.395Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1296 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-18T13:45:40.996Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-18T12:31:00.915Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T11:30:55.091Z",
+   "kind": "INFO",
+   "text": "watching 14 markets"
+  },
+  {
+   "at": "2026-11-18T10:30:44.822Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-18T09:15:37.692Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-18T08:15:34.180Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T07:15:33.423Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T06:15:32.623Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T05:15:31.370Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T04:00:54.963Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T03:00:53.647Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T01:45:33.594Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-18T00:30:45.845Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-17T23:30:44.651Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-17T22:15:34.492Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-17T21:00:55.112Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-17T19:59:32.216Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-17T18:45:37.200Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-17T17:45:35.511Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-17T16:45:31.602Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-17T15:30:47.034Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-17T14:17:24.728Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-17T14:17:24.592Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1322 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-17T13:15:43.076Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-17T12:15:35.997Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-17T11:00:57.341Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-17T10:00:56.898Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  }
+ ],
+ "trainings": [
+  {
+   "at": "2026-11-21T15:00:54.049Z",
+   "markets": 1299,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-20T14:45:35.469Z",
+   "markets": 1326,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-19T14:30:56.355Z",
+   "markets": 1286,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0.1096983849526607,
+   "ci": [
+    -0.10995959932743492,
+    0.31967746366896405
+   ],
+   "trades": 58
+  },
+  {
+   "at": "2026-11-18T14:30:56.130Z",
+   "markets": 1296,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-17T14:15:43.264Z",
+   "markets": 1322,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-16T14:00:56.304Z",
+   "markets": 1298,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-15T14:00:53.748Z",
+   "markets": 1334,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-14T13:46:28.324Z",
+   "markets": 1330,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-13T22:00:57.839Z",
+   "markets": 816,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-12T21:59:56.133Z",
+   "markets": 1278,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  }
+ ],
+ "forward": {
+  "learning": {
+   "trades": 4,
+   "wins": 0,
+   "pnl": -212.31854796018075,
+   "meanReturn": -0.5859869968657324,
+   "ci": [
+    -0.8587447795868176,
+    -0.38790852554825295
+   ],
+   "days": 8.927584131944444,
+   "convincing": false
+  },
+  "gated": {
+   "trades": 0,
+   "wins": 0,
+   "pnl": 0,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "days": 0,
+   "convincing": false
+  }
+ }
+}
