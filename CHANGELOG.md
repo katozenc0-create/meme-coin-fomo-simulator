@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.0: a professional live board, and a wallet verified on-chain
+
+- **Layout:**
+  - a compact header with a one-line summary, then the live overview;
+  - the live panels next: wallet, crypto agent, prediction-market agent, account, terminal;
+  - the **demo simulator** in its own section at the bottom. Its controls used to sit above the live data.
+- **Real vs virtual, everywhere.** Every panel carries a label: `REAL · READ-ONLY` (the wallet), `VIRTUAL · 24/7` (the agents) or `DEMO`. The overview opens with a separate **real wallet strip**: the balance, the short address and "✓ verified on-chain N s ago". Under it come the virtual paper-trading figures.
+- **Wallet verified on-chain:**
+  - a verification line: "✓ verified on-chain at HH:MM", the source (Solana blockchain via Jupiter or the Solana RPC), and a **Verify on Solscan ↗** link for an independent check;
+  - the list shows the 5 largest holdings and anything worth $1+, at most 12 rows; airdrop dust is summed up in one line.
+- **Security fix: impostor tokens.** Anyone can mint a token named "USDC". A scam airdrop ("USDC (usdc-earn.xyz - claim)") was priced at $1 a token and added thousands of dollars to a wallet's total. A token that takes a protected name (SOL, WSOL, USDC, USDT, USD, PYUSD, USDS, DAI) without the real mint is now an **impostor**: never priced, never counted, and flagged on the board ("⚠ … likely a scam airdrop, not counted. Never interact with it."). This covers the browser wallet and the account sync.
+- Service worker cache `metyu-shell-v5`, so the new board replaces the old copy.
+
 ## 2.4.2: 50-50 resolutions settle
 
 - **Fix: a Polymarket position could stay open forever.** A cancelled game or a tie resolves at 0.5/0.5 (`umaResolutionStatus: resolved`), and Polymarket pays $0.50 a share to both sides. `parseGammaResolution` only knew YES (≥0.99) and NO (≤0.01), so it treated such a market as "resolution pending" for ever. A learning position on Louisiana-Lafayette vs. UNCW (ended 15 Nov) kept its margin locked for a week. Such a market now resolves as `SPLIT`, and `settlePosition` pays $0.50 a share. A dry run on the live state settled it: −$6.04.

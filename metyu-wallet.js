@@ -157,6 +157,8 @@
     return info;
   }
 
+  // Names only the real mints may carry (the stablecoins are priced at $1 by name downstream).
+  const PROTECTED_SYMBOLS = new Set(['SOL', 'WSOL', 'USDC', 'USDT', 'USD', 'PYUSD', 'USDS', 'DAI']);
   // A display-safe symbol: letters, digits and a few marks, at most 12 characters.
   const cleanSymbol = value => String(value || '').replace(/[^\p{L}\p{N}$._-]/gu, '').slice(0, 12);
 
@@ -168,6 +170,12 @@
       const fromPrices = prices[mint] && Number(prices[mint].usdPrice ?? prices[mint].price);
       const price = Number.isFinite(fromPrices) && fromPrices > 0 ? fromPrices : Number(token.usdPrice);
       const symbol = known || cleanSymbol(token.symbol) || shortAddress(mint);
+      // Anyone can mint a token named "USDC": scam airdrops do, to look like money. A token that
+      // takes a known asset's name without its real mint is an impostor: never priced, flagged.
+      if (!known && PROTECTED_SYMBOLS.has(symbol.toUpperCase())) {
+        out.push({ asset: `${symbol}?`, mint, name: `impostor of ${symbol.toUpperCase()}: not the real mint (likely a scam airdrop)`, free: amount, locked: 0, impostor: true });
+        continue;
+      }
       out.push({ asset: symbol, mint, ...(token.name ? { name: String(token.name).slice(0, 40) } : {}), free: amount, locked: 0, ...(Number.isFinite(price) && price > 0 ? { price } : {}) });
     }
     return out;

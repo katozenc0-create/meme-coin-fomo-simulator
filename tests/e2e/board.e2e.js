@@ -185,10 +185,13 @@ test('phone layout: settings folded, the market cards close to the top; desktop 
   assert.equal(await phone.evaluate(() => document.querySelector('#settings').open), false, 'settings folded on a phone');
   assert.ok(await phone.locator('#autopilotPanel').isHidden(), 'no server: no autopilot panel');
   assert.ok(await phone.locator('#startBtn').isVisible(), 'Start stays visible');
+  // The live system comes first; the demo simulator is its own section after the live panels.
+  const order = await phone.evaluate(() => ['walletPanel', 'exchangePanel', 'terminal', 'simulatorTitle', 'demoControls', 'board'].map(id => document.getElementById(id)).filter(el => el.getClientRects().length).map(el => el.getBoundingClientRect().top + scrollY));
+  assert.ok(order.length >= 4, 'the visible sections were measured');
+  assert.deepEqual(order.slice().sort((a, b) => a - b), order, 'wallet, agents, terminal, then the simulator');
   await phone.click('#startBtn');
   await phone.waitForSelector('#board .card');
-  const top = await phone.evaluate(() => document.querySelector('#board .card').getBoundingClientRect().top + scrollY);
-  assert.ok(top < 844, `the first market card starts within the first screen (${Math.round(top)}px)`);
+  assert.ok(await phone.locator('#board .card').first().isVisible(), 'the demo cards render');
   await phone.click('#settings > summary');
   assert.ok(await phone.locator('#maxLev').isVisible(), 'settings open on tap');
   assert.deepEqual(phone.errors, []);
@@ -508,6 +511,7 @@ test('exchange panel shows the crypto autopilot: chart with levels, positions, g
   assert.match(await text(page, '#ovLiveSub'), /^next: /);
   assert.match(await text(page, '#ovDigest'), /crypto: 1 closed · 1 won\s*\+\$21\.5/);
   assert.match(await text(page, '#ovDigest'), /opened 0 normal · 1 learning/);
+  assert.equal(await text(page, '#ovWallet'), 'not linked', 'the real wallet strip, kept apart from the virtual figures');
   assert.match(await text(page, '#exStatus'), /2 coins, live Coinbase prices · learning book: 0\.25% risk per trade, up to 2x/);
   assert.match(await text(page, '#exForward'), /Training · day 3\/3 · forward test · normal book: no closed trades yet \(needs 30\+\) · learning book: 1 closed · 1 won · \+\$\d+ · mean \+0\.86R/);
   assert.equal(await text(page, '#exGates'), '0/2 open');
@@ -581,11 +585,12 @@ test('Solana wallet linked on this device: balances read from the network, addre
   // Jupiter's successor host is the fallback; here it is down, so nothing reaches the real network.
   await page.route('https://api.jup.ag/**', route => route.fulfill({ status: 503, json: {} }));
   await page.route('https://lite-api.jup.ag/price/v3?**', route => route.fulfill({ json: { [meme]: { usdPrice: .01 } } }));
-  await page.route('https://lite-api.jup.ag/tokens/v2/search?**', route => route.fulfill({ json: [{ id: meme, symbol: 'BONK', name: 'Bonk' }] }));
+  // A scam airdrop named "USDC" (not the real mint): it must never be counted as $1 a token.
+  await page.route('https://lite-api.jup.ag/tokens/v2/search?**', route => route.fulfill({ json: [{ id: meme, symbol: 'BONK', name: 'Bonk' }, { id: 'ABcQ2wbqLSu7RZCe5ELhbCxW6wJvMh5EB6KpBGfhpcwt', symbol: 'USDC', name: 'USDC (usdc-earn.xyz - claim)' }] }));
   // Jupiter's balances API is the primary source in the browser; fail it once to exercise the RPC fallback.
   let jupiterUp = false;
   await page.route(`https://lite-api.jup.ag/ultra/v1/balances/${wallet}`, route => (jupiterUp
-    ? route.fulfill({ json: { SOL: { uiAmount: 1.5 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 20 }, [meme]: { uiAmount: 1000 }, Ht3cqPuEUR6jiNiFsF1n93TPokuq1jqiMKujAjDdxXCB: { uiAmount: 1 }, '43mFcHg1TGjPXLXZymDWG1ttdcKXZTvP9zEPnpjGfhXM': { uiAmount: 1 } } })
+    ? route.fulfill({ json: { SOL: { uiAmount: 1.5 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 20 }, [meme]: { uiAmount: 1000 }, Ht3cqPuEUR6jiNiFsF1n93TPokuq1jqiMKujAjDdxXCB: { uiAmount: 1 }, '43mFcHg1TGjPXLXZymDWG1ttdcKXZTvP9zEPnpjGfhXM': { uiAmount: 1 }, ABcQ2wbqLSu7RZCe5ELhbCxW6wJvMh5EB6KpBGfhpcwt: { uiAmount: 9389 } } })
     : route.fulfill({ status: 503, json: {} })));
   await page.route('https://api.exchange.coinbase.com/products/SOL-USD/ticker', route => route.fulfill({ json: { price: '150' } }));
   await page.goto(`${env.base}/board.html`);
@@ -599,6 +604,10 @@ test('Solana wallet linked on this device: balances read from the network, addre
   await page.waitForFunction(() => /address: Metyu reads/.test(document.querySelector('#wStatus').textContent));
   assert.equal(await text(page, '#wTotal'), '$255', '1.5 SOL × $150 + 20 USDC + 1000 × $0.01');
   assert.equal(await text(page, '#wShort'), '7xKX…gAsU');
+  // Verified on-chain, with an independent check on a block explorer.
+  assert.match(await text(page, '#wVerified'), /^✓ verified on-chain at \d\d:\d\d$/);
+  assert.equal(await page.getAttribute('#wExplorer', 'href'), `https://solscan.io/account/${wallet}`);
+  assert.equal(await page.getAttribute('#wExplorer', 'rel'), 'noopener noreferrer');
   assert.match(await text(page, '#wBalances'), /SOL\$225.*USDC\$20.*BONK\$10.*Bonk · Dz9m…bonk/);
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), wallet);
   const leaks = seen.filter(r => (r.url.includes(wallet) || r.body.includes(wallet)) && !['api.mainnet-beta.solana.com', 'lite-api.jup.ag', 'api.jup.ag'].includes(new URL(r.url).host));
@@ -607,7 +616,8 @@ test('Solana wallet linked on this device: balances read from the network, addre
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#wTotal').textContent === '$255');
   assert.match(await text(page, '#wBalances'), /\+ 2 tokens without a USD price \(NFTs, airdrops or unlisted coins\)/, 'unpriced tokens are summed up, not listed');
-  assert.equal(await page.locator('#wBalances li').count(), 4, 'SOL, USDC, the priced meme coin and one summary line');
+  assert.equal(await page.locator('#wBalances li').count(), 5, 'SOL, USDC, the priced meme coin, the impostor warning and one summary line');
+  assert.match(await text(page, '#wBalances'), /⚠ 1 impostor token \(USDC without the real mint\): likely a scam airdrop, not counted/);
   await page.click('#wUnlink');
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), null);
   assert.equal(await page.locator('#wForm').isVisible(), true);

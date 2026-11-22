@@ -23,7 +23,18 @@
     .top-nav { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid #252b2c; background: rgba(12,14,15,.92); }
     .brand { font: 900 17px Georgia, serif; } .brand::before { content: "◉"; margin-right: 7px; color: var(--acid); }
     .top-nav nav { display: flex; gap: 14px; } .top-nav a { color: var(--muted); font: 11px Consolas, monospace; text-decoration: none; } .top-nav a:hover { color: var(--text); }
-    h1 { margin: 18px 0 6px; font: 900 clamp(30px, 5vw, 54px)/.95 Impact, sans-serif; text-transform: uppercase; } h1 span { color: var(--acid); }
+    h1 { margin: 16px 0 2px; font: 900 clamp(24px, 4vw, 40px)/1 Impact, sans-serif; text-transform: uppercase; letter-spacing: .01em; } h1 span { color: var(--acid); }
+    .hero { margin-bottom: 12px; }
+    .hero-sub { margin: 4px 0 0; color: var(--muted); font: 12px/1.5 Consolas, monospace; }
+    .kind { display: inline-block; margin-left: 8px; padding: 1px 6px; border: 1px solid currentColor; border-radius: 3px; font: 800 9px/1.6 Consolas, monospace; letter-spacing: .06em; vertical-align: middle; }
+    .kind.virtual { color: var(--blue); } .kind.real { color: var(--amber); } .kind.demo { color: var(--muted); }
+    .ov-real { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 10px 0 4px; padding: 9px 12px; border: 1px solid rgba(255,209,102,.45); background: rgba(255,209,102,.06); font: 12px/1.5 Consolas, monospace; }
+    .ov-real strong { color: var(--amber); font: 800 16px Consolas, monospace; }
+    .ov-real a, .w-verify a { color: var(--amber); }
+    .ov-group { margin: 10px 0 0; color: var(--blue); font: 800 10px Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; }
+    .group-title { margin: 26px 0 10px; padding-top: 12px; border-top: 1px dashed var(--line); color: var(--muted); font: 900 13px Impact, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    .w-verify { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; color: var(--muted); font: 11px/1.5 Consolas, monospace; }
+    .w-verify .ok { color: var(--green); }
     .disclaimer { margin: 10px 0 14px; padding: 9px 14px; border-left: 3px solid var(--amber); background: rgba(255,209,102,.07); color: var(--amber); font: 12px/1.5 Consolas, monospace; }
     .panel { padding: 14px; border: 1px solid var(--line); background: rgba(13,26,19,.92); }
     .panel h2 { margin: 0 0 10px; color: var(--acid); font: 900 15px Impact, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
@@ -184,9 +195,14 @@
 <body>
   <div class="shell">
     <div class="top-nav"><span class="brand">Metyu Live Board</span><nav><a href="polymarket.html">Prediction lab</a><a href="index.html">FOMO simulator</a></nav></div>
-    <h1>Metyu <span>live board</span></h1>
+    <header class="hero">
+      <h1>Metyu <span>live board</span></h1>
+      <p class="hero-sub">Two 24/7 trading agents on live prices with virtual money, and your real wallet read on-chain (read-only).</p>
+    </header>
     <section class="panel overview" id="overview" aria-label="Metyu live overview" hidden>
       <div class="ov-head"><h2>Metyu · live overview</h2><span class="badge ov-fresh" id="ovFresh">—</span></div>
+      <div class="ov-real" id="ovReal"><span><span class="kind real">REAL · READ-ONLY</span> Solana wallet</span><strong id="ovWallet">not linked</strong><span id="ovWalletSub">link a public address in the wallet panel</span></div>
+      <p class="ov-group">Virtual money · paper trading</p>
       <div class="stats ov-stats">
         <div class="stat"><span>Crypto equity · live</span><strong id="ovEquity">—</strong><small id="ovEquitySub"></small></div>
         <div class="stat"><span>Today (UTC)</span><strong id="ovToday">—</strong><small id="ovTodaySub"></small></div>
@@ -203,29 +219,100 @@
     <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
     <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No orders and no keys that can move money: a wallet or exchange account is only ever read. Live data are public Coinbase and Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Coinbase &amp; Polymarket prices · wallet read-only · no orders · not financial advice</span></p>
 
-    <section class="panel">
-      <div class="controls primary">
-        <div class="field"><label for="mode">Mode</label><select id="mode"><option value="demo" selected>Demo · simulated live markets</option><option value="live">Live · Polymarket prices (read-only)</option></select></div>
-        <button class="btn" id="startBtn">Start board</button>
-        <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
-        <button class="btn secondary" id="flattenBtn">Flatten all</button>
-        <button class="btn secondary view-toggle" id="viewBtn" type="button">Cards view</button>
+    <section class="panel" id="walletPanel" style="margin-bottom:12px">
+      <h2>My Solana wallet <span class="kind real">REAL · READ-ONLY</span></h2>
+      <p class="note" id="wStatus">Paste your wallet's PUBLIC address (for example from the Fomo app: Deposit → Solana). It stays on this device only; balances are read directly from the Solana network. Never paste a seed phrase or a private key.</p>
+      <form class="ac-form" id="wForm" autocomplete="off">
+        <input type="text" id="wAddress" placeholder="Solana address (32-44 characters)" aria-label="Solana wallet address" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" required>
+        <button class="btn" type="submit" id="wLink">Link</button>
+      </form>
+      <div id="wBody" hidden>
+        <div class="stats">
+          <div class="stat"><span>Total (USD)</span><strong id="wTotal">—</strong></div>
+          <div class="stat"><span>Wallet</span><strong id="wShort">—</strong></div>
+          <div class="stat"><span>Access</span><strong class="positive">address only ✓</strong></div>
+          <div class="stat"><span>Updated</span><strong id="wUpdated">—</strong></div>
+        </div>
+        <p class="w-verify" id="wVerify"><span id="wVerified">not verified yet</span><span>source: Solana blockchain (Jupiter, Solana RPC)</span><a id="wExplorer" target="_blank" rel="noopener noreferrer" href="#">Verify on Solscan ↗</a></p>
+        <ul class="trades" id="wBalances"></ul>
+        <button class="btn secondary" type="button" id="wRefresh" style="margin-top:8px">Refresh</button>
+        <button class="btn secondary" type="button" id="wUnlink" style="margin-top:8px">Unlink</button>
       </div>
-      <details class="settings" id="settings" open>
-        <summary>Settings &amp; limits</summary>
-      <div class="controls">
-        <div class="field" id="skillField"><label for="skill">Research accuracy <output id="skillOut">70%</output></label><input id="skill" type="range" min="0" max="100" value="70"></div>
-        <div class="field"><label for="bankroll">Virtual bankroll $</label><input id="bankroll" type="number" min="100" step="100" value="10000" style="width:120px"></div>
-        <div class="field"><label for="maxLev">Max leverage</label><select id="maxLev"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option></select></div>
-        <div class="field"><label for="maxGross">Max gross exposure</label><select id="maxGross"><option value="1">1x equity</option><option value="1.5" selected>1.5x equity</option><option value="2">2x equity</option><option value="3">3x equity</option></select></div>
-        <div class="field"><label for="maxOpen">Max open positions</label><input id="maxOpen" type="number" min="1" max="8" value="6" style="width:90px"></div>
-        <div class="field"><label for="maxCluster" title="Markets of one category (Polymarket's own: politics, sports, crypto, tech, finance, economics…) move and are mis-forecast together">Max per category</label><input id="maxCluster" type="number" min="1" max="8" value="2" style="width:90px"></div>
-        <div class="field" id="speedField"><label for="speed">Speed <output id="speedOut">2x</output></label><input id="speed" type="range" min="1" max="10" value="2"></div>
-        <button class="btn secondary" id="exportBtn">Export trades (CSV)</button>
-        <button class="btn secondary" id="resetBtn">Reset account</button>
+    </section>
+
+    <section class="panel" id="exchangePanel" style="margin-bottom:12px" hidden>
+      <h2>Crypto agent · 31 coins <span class="kind virtual">VIRTUAL · 24/7</span></h2>
+      <p class="note" id="exStatus">Checking for the exchange autopilot (node exchange-autopilot.js)…</p>
+      <p class="trades-summary" id="exForward" hidden></p>
+      <div class="stats" id="exStats" hidden>
+        <div class="stat"><span>Equity</span><strong id="exEquity">—</strong></div>
+        <div class="stat"><span>Realized P&amp;L</span><strong id="exRealized">—</strong></div>
+        <div class="stat"><span>Trades · win rate</span><strong id="exTrades">—</strong></div>
+        <div class="stat"><span>Open positions</span><strong id="exOpen">—</strong></div>
+        <div class="stat"><span>Evidence gates</span><strong id="exGates">—</strong></div>
+        <div class="stat"><span>Last tick</span><strong id="exTick">—</strong></div>
       </div>
-      <p class="note" id="modeNote">Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu's research accuracy sets how much it knows beyond the price.</p>
-      </details>
+      <div class="ex-head" id="exChartHead" hidden>
+        <select id="exSymbol" aria-label="Coin"></select>
+        <span class="ex-price" id="exPrice"></span>
+        <span class="badge" id="exTrend"></span>
+      </div>
+      <svg class="ex-chart" id="exChart" viewBox="0 0 600 240" role="img" aria-label="Hourly chart" hidden></svg>
+      <div class="ex-legend" id="exLegend" hidden>
+        <span><i style="background:var(--amber)"></i>EMA20</span><span><i style="background:var(--blue)"></i>EMA50</span>
+        <span><i style="background:var(--muted)"></i>support / resistance</span><span><i style="background:var(--red)"></i>stop · liquidation</span><span><i style="background:var(--green)"></i>target</span>
+      </div>
+      <ul class="ex-notes" id="exNotes"></ul>
+      <h3 id="exLiveHead">Real money: locked</h3>
+      <ul class="lock-list" id="exLive"></ul>
+      <p class="note" id="exLiveLimits"></p>
+      <p class="note" id="exShadow" hidden></p>
+      <h3>Open positions</h3>
+      <ul class="trades" id="exPositions"></ul>
+      <h3>Strategies · evidence gate (out of sample, after costs)</h3>
+      <ul class="ex-strats" id="exStrategies"></ul>
+      <h3>Last trades</h3>
+      <p class="trades-summary" id="exTradeSummary">No closed trades yet.</p>
+      <ul class="trades" id="exTradeList"></ul>
+      <ul class="feed" id="exFeed" style="max-height:220px"></ul>
+    </section>
+
+    <section class="panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
+      <h2>Prediction-market agent · Polymarket <span class="kind virtual">VIRTUAL · 24/7</span></h2>
+      <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
+      <p class="trades-summary" id="apForward" hidden></p>
+      <div class="stats" id="apStats" hidden>
+        <div class="stat"><span>Equity</span><strong id="apEquity">—</strong></div>
+        <div class="stat"><span>Realized P&amp;L</span><strong id="apRealized">—</strong></div>
+        <div class="stat"><span>Trades · win rate</span><strong id="apTrades">—</strong></div>
+        <div class="stat"><span>Open positions</span><strong id="apOpen">—</strong></div>
+        <div class="stat"><span>Evidence gate</span><strong id="apGate">—</strong></div>
+        <div class="stat"><span>Last training</span><strong id="apTrained">—</strong></div>
+        <div class="stat"><span>Last tick</span><strong id="apTick">—</strong></div>
+      </div>
+      <p class="trades-summary" id="apTradeSummary" hidden></p>
+      <ul class="trades" id="apTradeList"></ul>
+      <ul class="feed" id="apFeed" style="max-height:220px"></ul>
+    </section>
+
+    <section class="panel" id="accountPanel" style="margin-bottom:12px" hidden>
+      <h2>My account · verified · read-only</h2>
+      <p class="note" id="acStatus">Your real balances are published encrypted. Enter your board passphrase to open them on this device.</p>
+      <form class="ac-form" id="acForm" autocomplete="on">
+        <input type="text" name="username" value="metyu-board" autocomplete="username" hidden aria-hidden="true">
+        <input type="password" id="acPass" name="password" autocomplete="current-password" placeholder="Board passphrase" aria-label="Board passphrase" minlength="12" required>
+        <button class="btn" type="submit" id="acOpen">Unlock</button>
+      </form>
+      <div id="acBody" hidden>
+        <div class="stats">
+          <div class="stat"><span>Total (USD)</span><strong id="acTotal">—</strong></div>
+          <div class="stat"><span>Exchange</span><strong id="acProvider">—</strong></div>
+          <div class="stat"><span>Key</span><strong id="acKey">—</strong></div>
+          <div class="stat"><span>Verified</span><strong id="acVerified">—</strong></div>
+        </div>
+        <ul class="trades" id="acBalances"></ul>
+        <button class="btn secondary" type="button" id="acLock" style="margin-top:8px">Lock</button>
+      </div>
     </section>
 
     <section class="term" id="terminal" aria-label="Metyu terminal">
@@ -300,105 +387,37 @@
       <div class="stat optional"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
     </div>
 
+    <h2 class="group-title" id="simulatorTitle">Simulator · demo markets and manual trading <span class="kind demo">DEMO</span></h2>
+
+    <section class="panel" id="demoControls">
+      <div class="controls primary">
+        <div class="field"><label for="mode">Mode</label><select id="mode"><option value="demo" selected>Demo · simulated live markets</option><option value="live">Live · Polymarket prices (read-only)</option></select></div>
+        <button class="btn" id="startBtn">Start board</button>
+        <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
+        <button class="btn secondary" id="flattenBtn">Flatten all</button>
+        <button class="btn secondary view-toggle" id="viewBtn" type="button">Cards view</button>
+      </div>
+      <details class="settings" id="settings" open>
+        <summary>Settings &amp; limits</summary>
+      <div class="controls">
+        <div class="field" id="skillField"><label for="skill">Research accuracy <output id="skillOut">70%</output></label><input id="skill" type="range" min="0" max="100" value="70"></div>
+        <div class="field"><label for="bankroll">Virtual bankroll $</label><input id="bankroll" type="number" min="100" step="100" value="10000" style="width:120px"></div>
+        <div class="field"><label for="maxLev">Max leverage</label><select id="maxLev"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="5">5x</option></select></div>
+        <div class="field"><label for="maxGross">Max gross exposure</label><select id="maxGross"><option value="1">1x equity</option><option value="1.5" selected>1.5x equity</option><option value="2">2x equity</option><option value="3">3x equity</option></select></div>
+        <div class="field"><label for="maxOpen">Max open positions</label><input id="maxOpen" type="number" min="1" max="8" value="6" style="width:90px"></div>
+        <div class="field"><label for="maxCluster" title="Markets of one category (Polymarket's own: politics, sports, crypto, tech, finance, economics…) move and are mis-forecast together">Max per category</label><input id="maxCluster" type="number" min="1" max="8" value="2" style="width:90px"></div>
+        <div class="field" id="speedField"><label for="speed">Speed <output id="speedOut">2x</output></label><input id="speed" type="range" min="1" max="10" value="2"></div>
+        <button class="btn secondary" id="exportBtn">Export trades (CSV)</button>
+        <button class="btn secondary" id="resetBtn">Reset account</button>
+      </div>
+      <p class="note" id="modeNote">Demo: 8 simulated markets stream at once; when one resolves a new one takes its place. Metyu's research accuracy sets how much it knows beyond the price.</p>
+      </details>
+    </section>
+
     <section class="panel" id="lastTradesPanel" style="margin-bottom:12px">
       <h2>Last 10 trades · P&amp;L</h2>
       <p class="trades-summary" id="lastTradesSummary">No closed trades yet.</p>
       <ul class="trades" id="lastTrades"></ul>
-    </section>
-
-    <section class="panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
-      <h2>Autopilot · 24/7 · virtual money</h2>
-      <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
-      <p class="trades-summary" id="apForward" hidden></p>
-      <div class="stats" id="apStats" hidden>
-        <div class="stat"><span>Equity</span><strong id="apEquity">—</strong></div>
-        <div class="stat"><span>Realized P&amp;L</span><strong id="apRealized">—</strong></div>
-        <div class="stat"><span>Trades · win rate</span><strong id="apTrades">—</strong></div>
-        <div class="stat"><span>Open positions</span><strong id="apOpen">—</strong></div>
-        <div class="stat"><span>Evidence gate</span><strong id="apGate">—</strong></div>
-        <div class="stat"><span>Last training</span><strong id="apTrained">—</strong></div>
-        <div class="stat"><span>Last tick</span><strong id="apTick">—</strong></div>
-      </div>
-      <p class="trades-summary" id="apTradeSummary" hidden></p>
-      <ul class="trades" id="apTradeList"></ul>
-      <ul class="feed" id="apFeed" style="max-height:220px"></ul>
-    </section>
-
-    <section class="panel" id="walletPanel" style="margin-bottom:12px">
-      <h2>My Solana wallet · read-only</h2>
-      <p class="note" id="wStatus">Paste your wallet's PUBLIC address (for example from the Fomo app: Deposit → Solana). It stays on this device only; balances are read directly from the Solana network. Never paste a seed phrase or a private key.</p>
-      <form class="ac-form" id="wForm" autocomplete="off">
-        <input type="text" id="wAddress" placeholder="Solana address (32-44 characters)" aria-label="Solana wallet address" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" required>
-        <button class="btn" type="submit" id="wLink">Link</button>
-      </form>
-      <div id="wBody" hidden>
-        <div class="stats">
-          <div class="stat"><span>Total (USD)</span><strong id="wTotal">—</strong></div>
-          <div class="stat"><span>Wallet</span><strong id="wShort">—</strong></div>
-          <div class="stat"><span>Access</span><strong class="positive">address only ✓</strong></div>
-          <div class="stat"><span>Updated</span><strong id="wUpdated">—</strong></div>
-        </div>
-        <ul class="trades" id="wBalances"></ul>
-        <button class="btn secondary" type="button" id="wRefresh" style="margin-top:8px">Refresh</button>
-        <button class="btn secondary" type="button" id="wUnlink" style="margin-top:8px">Unlink</button>
-      </div>
-    </section>
-
-    <section class="panel" id="accountPanel" style="margin-bottom:12px" hidden>
-      <h2>My account · verified · read-only</h2>
-      <p class="note" id="acStatus">Your real balances are published encrypted. Enter your board passphrase to open them on this device.</p>
-      <form class="ac-form" id="acForm" autocomplete="on">
-        <input type="text" name="username" value="metyu-board" autocomplete="username" hidden aria-hidden="true">
-        <input type="password" id="acPass" name="password" autocomplete="current-password" placeholder="Board passphrase" aria-label="Board passphrase" minlength="12" required>
-        <button class="btn" type="submit" id="acOpen">Unlock</button>
-      </form>
-      <div id="acBody" hidden>
-        <div class="stats">
-          <div class="stat"><span>Total (USD)</span><strong id="acTotal">—</strong></div>
-          <div class="stat"><span>Exchange</span><strong id="acProvider">—</strong></div>
-          <div class="stat"><span>Key</span><strong id="acKey">—</strong></div>
-          <div class="stat"><span>Verified</span><strong id="acVerified">—</strong></div>
-        </div>
-        <ul class="trades" id="acBalances"></ul>
-        <button class="btn secondary" type="button" id="acLock" style="margin-top:8px">Lock</button>
-      </div>
-    </section>
-
-    <section class="panel" id="exchangePanel" style="margin-bottom:12px" hidden>
-      <h2>Exchange · crypto · 24/7 · virtual money</h2>
-      <p class="note" id="exStatus">Checking for the exchange autopilot (node exchange-autopilot.js)…</p>
-      <p class="trades-summary" id="exForward" hidden></p>
-      <div class="stats" id="exStats" hidden>
-        <div class="stat"><span>Equity</span><strong id="exEquity">—</strong></div>
-        <div class="stat"><span>Realized P&amp;L</span><strong id="exRealized">—</strong></div>
-        <div class="stat"><span>Trades · win rate</span><strong id="exTrades">—</strong></div>
-        <div class="stat"><span>Open positions</span><strong id="exOpen">—</strong></div>
-        <div class="stat"><span>Evidence gates</span><strong id="exGates">—</strong></div>
-        <div class="stat"><span>Last tick</span><strong id="exTick">—</strong></div>
-      </div>
-      <div class="ex-head" id="exChartHead" hidden>
-        <select id="exSymbol" aria-label="Coin"></select>
-        <span class="ex-price" id="exPrice"></span>
-        <span class="badge" id="exTrend"></span>
-      </div>
-      <svg class="ex-chart" id="exChart" viewBox="0 0 600 240" role="img" aria-label="Hourly chart" hidden></svg>
-      <div class="ex-legend" id="exLegend" hidden>
-        <span><i style="background:var(--amber)"></i>EMA20</span><span><i style="background:var(--blue)"></i>EMA50</span>
-        <span><i style="background:var(--muted)"></i>support / resistance</span><span><i style="background:var(--red)"></i>stop · liquidation</span><span><i style="background:var(--green)"></i>target</span>
-      </div>
-      <ul class="ex-notes" id="exNotes"></ul>
-      <h3 id="exLiveHead">Real money: locked</h3>
-      <ul class="lock-list" id="exLive"></ul>
-      <p class="note" id="exLiveLimits"></p>
-      <p class="note" id="exShadow" hidden></p>
-      <h3>Open positions</h3>
-      <ul class="trades" id="exPositions"></ul>
-      <h3>Strategies · evidence gate (out of sample, after costs)</h3>
-      <ul class="ex-strats" id="exStrategies"></ul>
-      <h3>Last trades</h3>
-      <p class="trades-summary" id="exTradeSummary">No closed trades yet.</p>
-      <ul class="trades" id="exTradeList"></ul>
-      <ul class="feed" id="exFeed" style="max-height:220px"></ul>
     </section>
 
     <div class="layout">
@@ -1166,6 +1185,7 @@
       // read straight from the Solana network (and priced via Coinbase / Jupiter) by this device.
       const WALLET_KEY = 'metyuBoard.solanaWallet';
       let walletAddress = null;
+      let walletVerified = null;   // { total, at } after a successful on-chain read
       try { walletAddress = MetyuWallet.normaliseAddress(localStorage.getItem(WALLET_KEY)); } catch (error) { /* ignore */ }
       const STABLES = new Set(['USDC', 'USDT']);
       async function solUsd() {
@@ -1176,6 +1196,7 @@
         } catch (error) { return null; }
       }
       function showWalletForm(message) {
+        walletVerified = null;                     // unlinked or a new address: nothing verified yet
         $('#wForm').hidden = false;
         $('#wBody').hidden = true;
         $('#wBalances').replaceChildren();
@@ -1186,6 +1207,8 @@
         $('#wForm').hidden = true;
         $('#wBody').hidden = false;
         $('#wShort').textContent = MetyuWallet.shortAddress(walletAddress);
+        // Anyone can check the same balances independently on a block explorer.
+        $('#wExplorer').href = `https://solscan.io/account/${encodeURIComponent(walletAddress)}`;
         $('#wShort').title = walletAddress;
         $('#wStatus').textContent = 'Reading the Solana network…';
         try {
@@ -1196,13 +1219,25 @@
           }).sort((a, c) => (c.usd || 0) - (a.usd || 0));
           const total = rows.reduce((sum, row) => sum + (row.usd || 0), 0);
           $('#wTotal').textContent = formatMoney(total);
+          walletVerified = { total, at: Date.now() };
+          $('#wVerified').textContent = `✓ verified on-chain at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+          $('#wVerified').className = 'ok';
           $('#wUpdated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
           $('#wStatus').textContent = 'Linked on this device by its public address: Metyu reads the on-chain balances and can never sign or move funds. Positions inside the app itself (e.g. perps) are not wallet balances.';
           // Priced holdings are listed; tokens without a USD price (NFTs, spam airdrops, unlisted
           // coins) are summed up in one line so they do not bury the real balances.
-          const unpriced = rows.filter(row => row.usd === null && row.asset !== 'SOL');
-          const listed = rows.filter(row => !unpriced.includes(row));
-          const summary = unpriced.length ? [Object.assign(document.createElement('li'), { className: 'detail', textContent: `+ ${unpriced.length} token${unpriced.length === 1 ? '' : 's'} without a USD price (NFTs, airdrops or unlisted coins)` })] : [];
+          // Impostors (a token named like USDC or SOL without the real mint) are scam airdrops: warned about, never counted.
+          const impostors = rows.filter(row => row.impostor);
+          const unpriced = rows.filter(row => row.usd === null && row.asset !== 'SOL' && !row.impostor);
+          const priced = rows.filter(row => !unpriced.includes(row) && !row.impostor);
+          // The 5 largest holdings and anything worth $1+ (at most 12 rows); airdrop dust is summed up.
+          const listed = priced.filter((row, index) => index < 5 || (index < 12 && (row.usd || 0) >= 1));
+          const dust = priced.filter(row => !listed.includes(row));
+          const summary = [
+            ...(impostors.length ? [Object.assign(document.createElement('li'), { className: 'detail negative', textContent: `⚠ ${impostors.length} impostor token${impostors.length === 1 ? '' : 's'} (${[...new Set(impostors.map(row => row.asset.replace(/\?$/, '')))].join(', ')} without the real mint): likely a scam airdrop, not counted. Never interact with it.` })] : []),
+            ...(dust.length ? [Object.assign(document.createElement('li'), { className: 'detail', textContent: `+ ${dust.length} smaller balance${dust.length === 1 ? '' : 's'} (${formatMoney(dust.reduce((sum, row) => sum + (row.usd || 0), 0))} in total)` })] : []),
+            ...(unpriced.length ? [Object.assign(document.createElement('li'), { className: 'detail', textContent: `+ ${unpriced.length} token${unpriced.length === 1 ? '' : 's'} without a USD price (NFTs, airdrops or unlisted coins)` })] : [])
+          ];
           $('#wBalances').replaceChildren(...(rows.length ? [...listed.map(row => {
             const item = document.createElement('li');
             const name = document.createElement('span');
@@ -1220,6 +1255,8 @@
           }), ...summary] : [Object.assign(document.createElement('li'), { textContent: 'This wallet is empty.' })]));
         } catch (error) {
           $('#wStatus').textContent = `Could not read the wallet right now (${error.message}). It stays linked; try Refresh.`;
+          $('#wVerified').textContent = walletVerified ? `last verified ${ago(Date.now() - walletVerified.at)} ago` : 'not verified yet';
+          $('#wVerified').className = '';
         }
         renderTerminal();
       }
@@ -1666,6 +1703,17 @@
         const status = exchangeStatus;
         $('#overview').hidden = !status;
         if (!status) return;
+        // The REAL wallet first, kept apart from the virtual figures below.
+        if (!walletAddress) {
+          $('#ovWallet').textContent = 'not linked';
+          $('#ovWalletSub').textContent = 'link a public address in the wallet panel (read-only)';
+        } else if (!walletVerified) {
+          $('#ovWallet').textContent = 'reading…';
+          $('#ovWalletSub').textContent = `${MetyuWallet.shortAddress(walletAddress)} · reading the Solana blockchain`;
+        } else {
+          $('#ovWallet').textContent = formatMoney(walletVerified.total);
+          $('#ovWalletSub').textContent = `${MetyuWallet.shortAddress(walletAddress)} · ✓ verified on-chain ${ago(Date.now() - walletVerified.at)} ago`;
+        }
         const now = Date.now();
         const positions = status.positions || [];
         const marked = positions.map(held => ({ held, ...livePnl(held) }));

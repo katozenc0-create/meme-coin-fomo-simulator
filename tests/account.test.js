@@ -333,3 +333,30 @@ test('Jupiter: when lite-api.jup.ag is switched off, balances, prices and names 
   assert.ok(hosts.includes('api.jup.ag/ultra/v1') && hosts.includes('api.jup.ag/price/v3') && hosts.includes('api.jup.ag/tokens/v2'), 'every Jupiter call fell back');
   assert.ok(!hosts.some(h => h.startsWith('api.mainnet-beta')), 'no RPC needed');
 });
+
+test('wallet: a token named like USDC or SOL without the real mint is an impostor, never priced or counted', async () => {
+  const W = require('../metyu-wallet.js');
+  const FAKE = 'ABcQ2wbqLSu7RZCe5ELhbCxW6wJvMh5EB6KpBGfhpcwt';
+  const fetchImpl = async url => {
+    const target = new URL(url);
+    const reply = body => ({ ok: true, status: 200, json: async () => body });
+    if (JUPITER.has(target.host) && target.pathname.startsWith('/ultra/v1/balances/')) return reply({ SOL: { uiAmount: 1 }, EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { uiAmount: 5 }, [FAKE]: { uiAmount: 9389 } });
+    if (JUPITER.has(target.host) && target.pathname === '/price/v3') return reply({ [FAKE]: { usdPrice: 1 } });
+    if (JUPITER.has(target.host) && target.pathname === '/tokens/v2/search') return reply([{ id: FAKE, symbol: 'USDC', name: 'USDC (usdc-earn.xyz - claim)' }]);
+    throw new Error(`unexpected ${url}`);
+  };
+  const balances = await W.solanaBalances({ address: WALLET, fetchImpl });
+  const real = balances.find(b => b.mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+  const fake = balances.find(b => b.mint === FAKE);
+  assert.equal(real.asset, 'USDC');
+  assert.equal(fake.asset, 'USDC?');
+  assert.equal(fake.impostor, true);
+  assert.equal(fake.price, undefined, 'never priced, even when a price API quotes it');
+  assert.match(fake.name, /impostor of USDC: not the real mint/);
+  // The account sync counts the real USDC at $1 and leaves the impostor unpriced.
+  const getJson = async url => { if (url.includes('SOL-USD')) return { price: '100' }; throw new Error('HTTP 404'); };
+  const provider = { name: 'solana', permissions: async () => ({ canView: true, canTrade: false, canWithdraw: false, raw: {} }), balances: async () => balances };
+  const { snapshot } = await A.syncAccount({ provider, passphrase: PASS, getJson, now: () => 0 });
+  assert.equal(snapshot.totalUsd, 100 + 5, 'SOL + real USDC; the 9,389 fake USDC count for nothing');
+  assert.ok(snapshot.unpriced.includes('USDC?'));
+});
