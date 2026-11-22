@@ -398,6 +398,10 @@ test('terminal shows the 24/7 autopilots: crypto by default, Polymarket and this
   assert.equal(await text(page, '#tFiltered'), '1');
   assert.match(await text(page, '#tLog'), /enter.*BTC-USD.*margin \$2,133\.33.*exit.*ETH-USD.*\+\$21\.50.*filtered.*SOL-USD.*cool-down/);
   assert.match(await text(page, '#tWL'), /1 W \/ 0 L · realized \+\$21\.5/);
+  assert.match(await text(page, '#tRecent'), /ETH-USD · breakout\s*\+\$21\.5/, 'the last trades, newest first');
+  assert.match(await text(page, '#tRecentSum'), /\+\$21\.5\d? · 1\/1 won/);
+  assert.ok(await page.locator('#tRecent').isVisible(), 'the last 8 trades are on screen');
+  assert.ok(await page.locator('#agScanner').isHidden() && await page.locator('#tLog').isHidden(), 'the simple terminal: no agent cards, no raw log');
   assert.ok(await noHorizontalScroll(page), 'fits the phone');
 
   await page.selectOption('#tSource', 'polymarket');
@@ -608,16 +612,16 @@ test('Solana wallet linked on this device: balances read from the network, addre
   assert.match(await text(page, '#wVerified'), /^✓ verified on-chain at \d\d:\d\d$/);
   assert.equal(await page.getAttribute('#wExplorer', 'href'), `https://solscan.io/account/${wallet}`);
   assert.equal(await page.getAttribute('#wExplorer', 'rel'), 'noopener noreferrer');
-  assert.match(await text(page, '#wBalances'), /SOL\$225.*USDC\$20.*BONK\$10.*Bonk · Dz9m…bonk/);
+  assert.equal(await page.locator('#wBalances').count(), 0, 'no holdings list on the board: the verified total only');
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), wallet);
   const leaks = seen.filter(r => (r.url.includes(wallet) || r.body.includes(wallet)) && !['api.mainnet-beta.solana.com', 'lite-api.jup.ag', 'api.jup.ag'].includes(new URL(r.url).host));
   assert.deepEqual(leaks, [], 'the address only ever goes to the balance sources (Jupiter, Solana RPC)');
   jupiterUp = true;
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#wTotal').textContent === '$255');
-  assert.match(await text(page, '#wBalances'), /\+ 2 tokens without a USD price \(NFTs, airdrops or unlisted coins\)/, 'unpriced tokens are summed up, not listed');
-  assert.equal(await page.locator('#wBalances li').count(), 5, 'SOL, USDC, the priced meme coin, the impostor warning and one summary line');
-  assert.match(await text(page, '#wBalances'), /⚠ 1 impostor token \(USDC without the real mint\): likely a scam airdrop, not counted/);
+  // The scam "USDC" is not counted (the total stays $255) and is always warned about.
+  assert.ok(await page.locator('#wWarn').isVisible());
+  assert.match(await text(page, '#wWarn'), /⚠ 1 impostor token \(USDC without the real mint\): likely a scam airdrop, not counted/);
   await page.click('#wUnlink');
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), null);
   assert.equal(await page.locator('#wForm').isVisible(), true);
