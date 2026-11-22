@@ -41,6 +41,9 @@ function assess({ exchange, polymarket, now = Date.now(), limits = LIMITS }) {
   }
   if (!silent('Polymarket agent', polymarket)) {
     if (polymarket.account && polymarket.account.halted) problems.push('Polymarket agent: HALTED by the kill-switch (restart: a new value of METYU_RESET_HALT)');
+    // A position still open 3+ days after its market's end: a resolution Metyu does not understand.
+    const stuck = (polymarket.positions || []).filter(held => held.endDate && now - Date.parse(held.endDate) > 3 * 24 * HOUR);
+    if (stuck.length) problems.push(`Polymarket agent: ${stuck.length} position(s) still open 3+ days after the market ended (${stuck.map(held => String(held.question || held.id).slice(0, 40)).join('; ')})`);
     // Its daily self-training can fail quietly (a data source down): an old model is a problem too.
     const trainedAt = polymarket.model && polymarket.model.trainedAt;
     if (trainedAt && (now - trainedAt) / HOUR >= limits.modelHours) problems.push(`Polymarket agent: the model is ${Math.round((now - trainedAt) / HOUR)} h old (daily training keeps failing)`);

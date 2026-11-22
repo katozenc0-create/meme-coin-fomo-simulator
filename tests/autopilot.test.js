@@ -285,3 +285,20 @@ test('the Polymarket autopilot restarts after a kill-switch halt only on a new M
   await createAutopilot({ fetchJson, state, now: () => 2000, options: { resetHalt: 'r1' } }).tick();
   assert.equal(state.account.halted, true, 'the same value does not clear a later halt');
 });
+
+test('a 50-50 resolution (a cancelled game) settles at $0.50 a share instead of staying open forever', async () => {
+  const { pilot, state, fake } = setup();
+  await pilot.tick();
+  const [id] = Object.keys(state.positions);
+  assert.ok(id, 'a position opened');
+  const held = state.positions[id];
+  const cashBefore = state.account.cash;
+  Object.assign(fake.markets.get(id), { closed: true, umaResolutionStatus: 'resolved', price: .5 });
+  await pilot.tick();
+  assert.ok(!state.positions[id], 'settled');
+  const trade = state.history.find(t => t.outcome === 'SPLIT');
+  assert.ok(trade, 'booked as SPLIT');
+  const payout = held.position.shares * .5 - (held.position.borrowed || 0) - (held.position.interest || 0);
+  assert.ok(Math.abs(state.account.cash - (cashBefore + Math.max(0, payout))) < 1e-6);
+  assert.ok(!state.watch.some(market => market.id === id), 'it leaves the watchlist');
+});

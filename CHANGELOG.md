@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.2: 50-50 resolutions settle
+
+- **Fix: a Polymarket position could stay open forever.** A cancelled game or a tie resolves at 0.5/0.5 (`umaResolutionStatus: resolved`), and Polymarket pays $0.50 a share to both sides. `parseGammaResolution` only knew YES (≥0.99) and NO (≤0.01), so it treated such a market as "resolution pending" for ever. A learning position on Louisiana-Lafayette vs. UNCW (ended 15 Nov) kept its margin locked for a week. Such a market now resolves as `SPLIT`, and `settlePosition` pays $0.50 a share. A dry run on the live state settled it: −$6.04.
+- 50-50 markets are left out of the training data: they teach no probability.
+- **Watchdog:** a Polymarket position still open 3+ days after its market ended is reported. The published positions carry their market's `endDate`.
+
 ## 2.4.1
 
 - **Watchdog:** the Polymarket agent's model age is checked too. 48+ hours old means its daily self-training keeps failing; until now only the crypto model was checked.

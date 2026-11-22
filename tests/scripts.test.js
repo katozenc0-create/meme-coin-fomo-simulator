@@ -109,6 +109,8 @@ test('watchdog: healthy agents pass; silence, a halt, a dead price feed and an o
   const oldPm = watchdog.assess({ exchange, polymarket: { ...polymarket, model: { trainedAt: now - 60 * 3600000 } }, now });
   assert.deepEqual(oldPm, ['Polymarket agent: the model is 60 h old (daily training keeps failing)']);
   assert.deepEqual(watchdog.assess({ exchange, polymarket: { ...polymarket, model: { trainedAt: now - 20 * 3600000 } }, now }), [], 'a day-old model is fine');
+  const stuck = watchdog.assess({ exchange, polymarket: { ...polymarket, positions: [{ id: '1', question: 'Louisiana-Lafayette vs. UNCW', endDate: new Date(now - 5 * 86400000).toISOString() }, { id: '2', question: 'Later', endDate: new Date(now + 86400000).toISOString() }] }, now });
+  assert.deepEqual(stuck, ['Polymarket agent: 1 position(s) still open 3+ days after the market ended (Louisiana-Lafayette vs. UNCW)']);
   assert.match(watchdog.report([], now), /healthy/);
   // The CLI: exit code 1 and a report file when something is wrong, 0 when healthy.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metyu-watchdog-'));

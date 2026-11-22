@@ -830,12 +830,16 @@
     const yes = prices[yesIndex >= 0 ? yesIndex : 0];
     if (yes >= .99) return { outcome: 'YES' };
     if (yes <= .01) return { outcome: 'NO' };
+    // A 50-50 resolution (a cancelled or postponed game, a tie, an unresolvable question):
+    // Polymarket pays $0.50 a share on BOTH sides. Without this, such a position stayed open forever.
+    const resolved = String(raw.umaResolutionStatus || '').toLowerCase() === 'resolved';
+    if (resolved && Math.abs(yes - .5) < .01 && Math.abs(prices[1 - (yesIndex >= 0 ? yesIndex : 0)] - .5) < .01) return { outcome: 'SPLIT' };
     return { outcome: null };
   }
 
-  /** Settles a (possibly leveraged) position at resolution: winners get $1/share, losers $0. */
+  /** Settles a (possibly leveraged) position at resolution: winners get $1/share, losers $0; a 50-50 (SPLIT) pays $0.50 to both. */
   function settlePosition(position, outcome) {
-    const perShare = position.side === outcome ? 1 : 0;
+    const perShare = outcome === 'SPLIT' ? .5 : position.side === outcome ? 1 : 0;
     const payout = Math.max(0, position.shares * perShare - (position.borrowed || 0) - (position.interest || 0));
     return { payout, pnl: payout - position.margin };
   }
@@ -953,7 +957,8 @@
   /** A closed Gamma market → { id, question, endTs, outcome, yesToken } for training, or null. */
   function parseResolvedForTraining(raw) {
     const resolution = parseGammaResolution(raw);
-    if (!resolution || !resolution.outcome) return null;
+    // Only YES/NO outcomes teach the model a probability; a 50-50 resolution does not.
+    if (!resolution || (resolution.outcome !== 'YES' && resolution.outcome !== 'NO')) return null;
     const parse = parseList;
     const outcomes = parse(raw.outcomes).map(String);
     const tokens = parse(raw.clobTokenIds).map(String);
