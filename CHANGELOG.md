@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.1: simpler still
+
+- **Wallet:** no holdings list on the board, as the owner asked. The panel shows the verified total, the address, read-only access, "✓ verified on-chain" with its source, and the Solscan link for the details. Impostor tokens are still warned about.
+- **Terminal:** a simple view with the balance, trades, wins and losses, the current trade, the **last 8 trades** (market, P&L, time, side and book) and the result. The agent cards, the flow strip, the stage boxes and the raw log are out of sight.
+- **Forward test:** trades that all fall in one week no longer show a meaningless interval (`[+0.68R, +0.68R]`). The board says "all in 1 week: no interval yet".
+- Service worker cache `metyu-shell-v6`.
+
 ## 2.5.0: a professional live board, and a wallet verified on-chain
 
 - **Layout:**

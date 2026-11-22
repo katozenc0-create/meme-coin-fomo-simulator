@@ -35,6 +35,14 @@
     .group-title { margin: 26px 0 10px; padding-top: 12px; border-top: 1px dashed var(--line); color: var(--muted); font: 900 13px Impact, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
     .w-verify { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; color: var(--muted); font: 11px/1.5 Consolas, monospace; }
     .w-verify .ok { color: var(--green); }
+    /* The simple terminal: header, current trade, the last 8 trades, the result. The pipeline
+       detail (agents, flow, stages, raw log) stays in the page for tools, out of sight. */
+    .term.simple .term-agents, .term.simple .term-flow, .term.simple .stages, .term.simple .term-tailbox, .term.simple .term-logbox { display: none; }
+    .term.simple .term-body { grid-template-columns: minmax(0, 1fr); }
+    .term-recent { margin: 0; padding: 0; list-style: none; font: 12px/1.45 Consolas, monospace; }
+    .term-recent li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+    .term-recent .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .term-recent .d { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
     .disclaimer { margin: 10px 0 14px; padding: 9px 14px; border-left: 3px solid var(--amber); background: rgba(255,209,102,.07); color: var(--amber); font: 12px/1.5 Consolas, monospace; }
     .panel { padding: 14px; border: 1px solid var(--line); background: rgba(13,26,19,.92); }
     .panel h2 { margin: 0 0 10px; color: var(--acid); font: 900 15px Impact, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
@@ -231,10 +239,9 @@
           <div class="stat"><span>Total (USD)</span><strong id="wTotal">—</strong></div>
           <div class="stat"><span>Wallet</span><strong id="wShort">—</strong></div>
           <div class="stat"><span>Access</span><strong class="positive">address only ✓</strong></div>
-          <div class="stat"><span>Updated</span><strong id="wUpdated">—</strong></div>
         </div>
         <p class="w-verify" id="wVerify"><span id="wVerified">not verified yet</span><span>source: Solana blockchain (Jupiter, Solana RPC)</span><a id="wExplorer" target="_blank" rel="noopener noreferrer" href="#">Verify on Solscan ↗</a></p>
-        <ul class="trades" id="wBalances"></ul>
+        <p class="note negative" id="wWarn" hidden></p>
         <button class="btn secondary" type="button" id="wRefresh" style="margin-top:8px">Refresh</button>
         <button class="btn secondary" type="button" id="wUnlink" style="margin-top:8px">Unlink</button>
       </div>
@@ -315,8 +322,8 @@
       </div>
     </section>
 
-    <section class="term" id="terminal" aria-label="Metyu terminal">
-      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span class="term-bar-title">Metyu terminal · six agents · log first</span><label class="term-source">source <select id="tSource" aria-label="Terminal source"><option value="auto">auto</option></select></label><span class="term-chip on" id="tMode">paper · demo</span></div>
+    <section class="term simple" id="terminal" aria-label="Metyu terminal">
+      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span class="term-bar-title">Metyu terminal</span><label class="term-source">source <select id="tSource" aria-label="Terminal source"><option value="auto">auto</option></select></label><span class="term-chip on" id="tMode">paper · demo</span></div>
       <div class="term-head">
         <img class="term-logo" src="icons/icon.svg" alt="" />
         <div>
@@ -342,7 +349,7 @@
           <div class="agent" id="agEquity"><div class="row1"><span class="name">Equity</span><span class="term-chip blue" id="agEquityChip">update</span></div><div class="what">balance + curve · kill-switch</div><div class="rule">updates on every close</div><div class="last" id="agEquityLast">—</div></div>
         </div>
         <div class="term-main">
-          <div>
+          <div class="term-flow">
             <h4><span>Live flow · scan → check → size → exec → log</span><span id="tChecked">checked 0</span></h4>
             <div class="flow-chips" id="tFlow"></div>
           </div>
@@ -358,7 +365,11 @@
               <div class="market" id="tTradeMarket">no open position</div>
               <div class="term-kv" id="tTradeKv"></div>
             </div>
-            <div class="term-box">
+            <div class="term-box term-recentbox">
+              <h4><span>Last 8 trades</span><span id="tRecentSum">—</span></h4>
+              <ul class="term-recent" id="tRecent"></ul>
+            </div>
+            <div class="term-box term-tailbox">
               <h4><span>$ tail -f metyu.log</span><span id="tTailCount">0 lines</span></h4>
               <ul class="term-tail" id="tTail"></ul>
             </div>
@@ -369,7 +380,7 @@
             <div class="bar"><i id="tBar" style="width:50%"></i></div>
             <small class="note" id="tWL">0 W / 0 L</small>
           </div>
-          <div class="term-box">
+          <div class="term-box term-logbox">
             <h4><span>Log</span><span>reading the log</span></h4>
             <ul class="term-log" id="tLog"></ul>
           </div>
@@ -1009,8 +1020,10 @@
         const forward = status.forward && status.forward.learning;
         $('#exForward').hidden = !forward && !gatedForward;
         if (forward || gatedForward) {
+          // A weekly-block interval needs at least 2 weeks; with 1 it would only repeat the mean.
+          const interval = f => (f.weeks !== undefined && f.weeks < 2 ? `all in ${f.weeks} week: no interval yet` : `95% [${rText(f.ci[0])}, ${rText(f.ci[1])}]`);
           const book = (name, f) => (f && f.trades
-            ? `${name}: ${f.trades} closed · ${f.wins} won · ${f.pnl >= 0 ? '+' : '−'}$${Math.abs(f.pnl).toFixed(0)} · mean ${rText(f.meanR)} · 95% [${rText(f.ci[0])}, ${rText(f.ci[1])}]`
+            ? `${name}: ${f.trades} closed · ${f.wins} won · ${f.pnl >= 0 ? '+' : '−'}$${Math.abs(f.pnl).toFixed(0)} · mean ${rText(f.meanR)} · ${interval(f)}`
             : `${name}: no closed trades yet`);
           const lead = gatedForward && gatedForward.trades ? gatedForward : forward;
           $('#exForward').textContent = `${trainingText(status.createdAt, status.trainingDays || TRAINING_DAYS)} · forward test · ${book('normal book', gatedForward)}${gatedForward && gatedForward.trades >= 30 ? '' : ' (needs 30+)'} · ${book('learning book', forward)}`;
@@ -1199,7 +1212,6 @@
         walletVerified = null;                     // unlinked or a new address: nothing verified yet
         $('#wForm').hidden = false;
         $('#wBody').hidden = true;
-        $('#wBalances').replaceChildren();
         if (message) $('#wStatus').textContent = message;
       }
       async function refreshWallet() {
@@ -1222,37 +1234,15 @@
           walletVerified = { total, at: Date.now() };
           $('#wVerified').textContent = `✓ verified on-chain at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`;
           $('#wVerified').className = 'ok';
-          $('#wUpdated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
           $('#wStatus').textContent = 'Linked on this device by its public address: Metyu reads the on-chain balances and can never sign or move funds. Positions inside the app itself (e.g. perps) are not wallet balances.';
           // Priced holdings are listed; tokens without a USD price (NFTs, spam airdrops, unlisted
           // coins) are summed up in one line so they do not bury the real balances.
-          // Impostors (a token named like USDC or SOL without the real mint) are scam airdrops: warned about, never counted.
+          // No holdings list on the board: the verified total is what matters (Solscan has the detail).
+          // Impostors (a token named like USDC or SOL without the real mint) are scam airdrops: never
+          // counted, and always warned about.
           const impostors = rows.filter(row => row.impostor);
-          const unpriced = rows.filter(row => row.usd === null && row.asset !== 'SOL' && !row.impostor);
-          const priced = rows.filter(row => !unpriced.includes(row) && !row.impostor);
-          // The 5 largest holdings and anything worth $1+ (at most 12 rows); airdrop dust is summed up.
-          const listed = priced.filter((row, index) => index < 5 || (index < 12 && (row.usd || 0) >= 1));
-          const dust = priced.filter(row => !listed.includes(row));
-          const summary = [
-            ...(impostors.length ? [Object.assign(document.createElement('li'), { className: 'detail negative', textContent: `⚠ ${impostors.length} impostor token${impostors.length === 1 ? '' : 's'} (${[...new Set(impostors.map(row => row.asset.replace(/\?$/, '')))].join(', ')} without the real mint): likely a scam airdrop, not counted. Never interact with it.` })] : []),
-            ...(dust.length ? [Object.assign(document.createElement('li'), { className: 'detail', textContent: `+ ${dust.length} smaller balance${dust.length === 1 ? '' : 's'} (${formatMoney(dust.reduce((sum, row) => sum + (row.usd || 0), 0))} in total)` })] : []),
-            ...(unpriced.length ? [Object.assign(document.createElement('li'), { className: 'detail', textContent: `+ ${unpriced.length} token${unpriced.length === 1 ? '' : 's'} without a USD price (NFTs, airdrops or unlisted coins)` })] : [])
-          ];
-          $('#wBalances').replaceChildren(...(rows.length ? [...listed.map(row => {
-            const item = document.createElement('li');
-            const name = document.createElement('span');
-            name.className = 'market';
-            name.textContent = row.asset;
-            if (row.mint) name.title = row.mint;
-            const value = document.createElement('span');
-            value.className = 'pnl';
-            value.textContent = row.usd === null ? 'no USD price' : formatMoney(row.usd);
-            const detail = document.createElement('span');
-            detail.className = 'detail';
-            detail.textContent = `${row.free.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${row.asset}${row.name && row.name !== row.asset ? ` · ${row.name}` : ''}${row.mint ? ` · ${MetyuWallet.shortAddress(row.mint)}` : ''}`;
-            item.append(name, value, detail);
-            return item;
-          }), ...summary] : [Object.assign(document.createElement('li'), { textContent: 'This wallet is empty.' })]));
+          $('#wWarn').hidden = !impostors.length;
+          $('#wWarn').textContent = impostors.length ? `⚠ ${impostors.length} impostor token${impostors.length === 1 ? '' : 's'} (${[...new Set(impostors.map(row => row.asset.replace(/\?$/, '')))].join(', ')} without the real mint): likely a scam airdrop, not counted. Never interact with it.` : '';
         } catch (error) {
           $('#wStatus').textContent = `Could not read the wallet right now (${error.message}). It stays linked; try Refresh.`;
           $('#wVerified').textContent = walletVerified ? `last verified ${ago(Date.now() - walletVerified.at)} ago` : 'not verified yet';
@@ -1463,6 +1453,7 @@
           flow: ranked.slice(0, 4).map(slot => ({ name: shortName(slot.question), sub: `${cents(slot.prices[slot.prices.length - 1])} · edge ${(slot.edge * 100).toFixed(1)}${slot.position ? ` · ${slot.position.side}` : ''}`, pos: !!slot.position })),
           filtered: term.filtered, filteredSub: `of ${term.candidates} candidates`,
           sizer: term.sizePct === null ? '—' : `${(term.sizePct * 100).toFixed(0)}% eq`, sizerSub: term.sizePct === null ? 'of equity' : formatMoney(term.sizePct * eq),
+          recent: account.history.slice(-8).reverse().map(t => ({ at: Date.parse(t.closedAt), market: t.market, side: `${t.side} ${(+t.leverage || 1).toFixed(1)}x`, pnl: t.pnl })),
           line: term.line, pnl: eq - account.bankroll, pnlLabel: 'session P&L', trade,
           events: term.events, start: account.bankroll, since: 'this session',
           wl: `${account.wins} W / ${losses} L · ${term.filtered} filtered · ${term.line} log lines`
@@ -1520,6 +1511,7 @@
           }),
           filtered: events.filter(event => event.kind === 'FILTER').length, filteredSub: `of ${events.filter(event => event.kind === 'FILTER' || event.kind === 'ENTER').length} signals (recent log)`,
           sizer: newest ? `${(newest.margin / Math.max(1, eq) * 100).toFixed(1)}% eq` : `${(riskPct * 100).toFixed(2)}%`, sizerSub: newest ? `margin ${formatMoney(newest.margin)}` : 'risk per trade',
+          recent: recentOf(status),
           line: events.length, pnl: eq - acct.bankroll, pnlLabel: 'since start', trade,
           events, start: acct.bankroll, since: status.createdAt ? `since ${new Date(status.createdAt).toLocaleDateString()}` : 'since start',
           wl: `${acct.wins} W / ${losses} L · realized ${acct.realized >= 0 ? '+' : ''}${formatMoney(acct.realized)} · ${status.positions.length} open`
@@ -1565,6 +1557,7 @@
           flow: marks.slice(0, 4).map(({ held }) => ({ name: shortName(held.question), sub: `YES ${cents(held.lastYes)} · ${held.position.side}${held.learning ? ' · learning' : ''}`, pos: true })),
           filtered: events.filter(event => event.kind === 'FILTER').length, filteredSub: 'in the recent log',
           sizer: newest ? `${(newest.held.position.margin / Math.max(1, eq) * 100).toFixed(1)}% eq` : '—', sizerSub: newest ? `margin ${formatMoney(newest.held.position.margin)}` : 'of equity',
+          recent: recentOf(status),
           line: events.length, pnl: eq - acct.bankroll, pnlLabel: 'since start', trade,
           events, start: acct.bankroll, since: status.createdAt ? `since ${new Date(status.createdAt).toLocaleDateString()}` : 'since start',
           wl: `${acct.wins} W / ${losses} L · realized ${acct.realized >= 0 ? '+' : ''}${formatMoney(acct.realized)} · ${status.positions.length} open`
@@ -1572,7 +1565,32 @@
       }
 
       let termClock = null;                                    // a fixed text (autopilot) or null (live clock)
+      // The last 8 closed trades of a published agent (crypto: coin · strategy; Polymarket: question).
+      function recentOf(status) {
+        return (status.history || []).slice(0, 8).map(t => ({
+          at: Date.parse(t.closedAt),
+          market: t.symbol ? `${t.symbol} · ${t.strategy}` : t.market,
+          side: t.symbol ? `${t.side} ${(+t.leverage || 1).toFixed(1)}x${t.learning ? ' · learning' : ''}` : `${t.side}${t.outcome && t.outcome !== 'CLOSED' ? ` · resolved ${t.outcome}` : ''}`,
+          pnl: t.pnl
+        }));
+      }
+      function paintRecent(recent) {
+        const list = recent || [];
+        const total = list.reduce((sum, t) => sum + t.pnl, 0);
+        $('#tRecentSum').textContent = list.length ? `${total >= 0 ? '+' : '−'}${formatMoney(Math.abs(total))} · ${list.filter(t => t.pnl > 0).length}/${list.length} won` : '—';
+        $('#tRecentSum').className = total > 0 ? 'positive' : total < 0 ? 'negative' : '';
+        $('#tRecent').replaceChildren(...(list.length ? list.map(t => {
+          const item = document.createElement('li');
+          const market = Object.assign(document.createElement('span'), { className: 'm', textContent: t.market, title: t.market });
+          const pnl = Object.assign(document.createElement('span'), { className: t.pnl > 0 ? 'positive' : t.pnl < 0 ? 'negative' : '', textContent: `${t.pnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(t.pnl))}` });
+          const when = Number.isFinite(t.at) ? new Date(t.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+          const detail = Object.assign(document.createElement('span'), { className: 'd', textContent: `${when} · ${t.side}` });
+          item.append(market, pnl, detail);
+          return item;
+        }) : [Object.assign(document.createElement('li'), { textContent: 'No closed trades yet.' })]));
+      }
       function paintTerminal(model, source) {
+        paintRecent(model.recent);
         const select = $('#tSource');
         const sources = termSources();
         if ([...select.options].map(option => option.value).join() !== ['auto', ...sources.map(([id]) => id)].join()) {
