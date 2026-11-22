@@ -120,6 +120,14 @@ test('reads Polymarket resolutions and settles positions', () => {
   assert.deepEqual(M.parseGammaResolution({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' }), { outcome: 'YES' });
   assert.deepEqual(M.parseGammaResolution({ closed: 'true', outcomes: '["No","Yes"]', outcomePrices: '["1","0"]' }), { outcome: 'NO' });
   assert.deepEqual(M.parseGammaResolution({ closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0.6","0.4"]' }), { outcome: null });
+  // A 50-50 resolution (a cancelled game, a tie): resolved at 0.5/0.5, $0.50 a share to both sides.
+  const fiftyFifty = { closed: true, umaResolutionStatus: 'resolved', outcomes: '["Louisiana-Lafayette","UNCW"]', outcomePrices: '["0.5","0.5"]' };
+  assert.deepEqual(M.parseGammaResolution(fiftyFifty), { outcome: 'SPLIT' });
+  assert.deepEqual(M.parseGammaResolution({ ...fiftyFifty, umaResolutionStatus: 'proposed' }), { outcome: null }, 'not resolved yet: pending');
+  const plain = { side: 'NO', shares: 187.97, margin: 100, borrowed: 0, interest: 0 };
+  close(M.settlePosition(plain, 'SPLIT').payout, 187.97 * .5, 1e-9);
+  close(M.settlePosition({ ...plain, side: 'YES' }).payout ?? 0, 0, 1e-9);
+  assert.equal(M.parseResolvedForTraining({ ...fiftyFifty, id: '1', clobTokenIds: '["11","22"]', endDate: '2026-11-15T00:00:00Z' }), null, 'a 50-50 market teaches no probability');
   const levered = M.openPosition({ side: 'YES', yesPrice: .5, margin: 100, leverage: 3 });
   close(M.settlePosition(levered, 'YES').pnl, 600 - 200 - 100);   // 600 shares pay $1, repay 200
   close(M.settlePosition(levered, 'NO').pnl, -100);                // margin lost, never more

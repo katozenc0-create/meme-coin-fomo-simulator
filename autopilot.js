@@ -279,7 +279,8 @@ function statusOf(state, { now = Date.now() } = {}) {
     available: true, virtualMoney: true, generatedAt: new Date(now).toISOString(),
     createdAt: state.createdAt, lastTick: state.lastTick, account: state.account, paused: !!state.paused,
     model: model ? { source: model.source, trainedAt: model.trainedAt, kind: model.kind, gate: model.gate } : null,
-    positions: Object.entries(state.positions).map(([id, held]) => ({ id, ...held })),
+    // endDate from the watched market: the watchdog flags a position still open days after it.
+    positions: Object.entries(state.positions).map(([id, held]) => ({ id, ...held, endDate: (state.watch.find(market => market.id === id) || {}).endDate || null })),
     watching: state.watch.length,
     history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: (state.trainings || []).slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) }
