@@ -56,6 +56,10 @@ The board's **My account** panel then shows SOL and every token with a USD value
 
 **Never give anyone a seed phrase (recovery phrase) or a private key.** Not Metyu, not a website, not "support". `account-sync.js` refuses anything that is not a public address.
 
+### Impostor tokens
+
+A wallet can receive tokens nobody asked for. Scam airdrops are often named like real money ("USDC") to lure the owner to a phishing site. Metyu prices stablecoins by their **mint**, not by their name. A token named SOL, WSOL, USDC, USDT, USD, PYUSD, USDS or DAI without the real mint is flagged as an impostor and is never counted. Never interact with such a token, and never "claim" anything it advertises.
+
 ## The real-money lock
 
 Real orders are locked. The board lists six conditions, and all of them must hold before the owner may even decide to unlock:
