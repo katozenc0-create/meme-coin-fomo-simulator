@@ -56,6 +56,26 @@ The board's **My account** panel then shows SOL and every token with a USD value
 
 **Never give anyone a seed phrase (recovery phrase) or a private key.** Not Metyu, not a website, not "support". `account-sync.js` refuses anything that is not a public address.
 
+### Wallet protection
+
+Metyu reads a wallet by its **public address**: it cannot sign anything or move funds. What follows guards against the ways wallets actually get drained.
+
+- **Open token approvals (delegates).** One "approve" on a fake site lets another address move a token without asking again. This is the most common drain. The account sync checks the linked wallet on every tick (`solanaApprovals`, read-only RPC). The details stay inside the sealed box; only the **count** is published (no address). An open approval:
+  - raises a red alert on the board;
+  - is reported by the watchdog and in the daily report;
+  - makes the real-money lock stop counting the wallet.
+
+  Revoke approvals in your wallet app.
+- **Secrets are wiped on sight.** A recovery (seed) phrase or a private key typed or pasted into any field of the board is cleared at once, never kept, stored or sent, and a warning explains why (`looksLikeSecret`).
+- **No injected code (XSS).** The pages' Content-Security-Policy allows only this repository's own inline scripts, by their SHA-256 hash (`scripts/csp.js`); there is no `'unsafe-inline'` for scripts. An injected script, for example one that draws a fake "connect your wallet" prompt, is refused by the browser. An end-to-end test proves it.
+
+**What only you can do:**
+1. Never type your recovery phrase or private key into any website, chat or app other than the wallet itself. Metyu never asks for it, and nobody legitimate does.
+2. Never "claim" airdropped tokens or sign transactions from links. Check the address you send to.
+3. Keep larger amounts in a hardware wallet. Use the hot wallet (Fomo) only for small sums.
+4. Open the board from your home-screen icon or a bookmark, never from a link someone sends.
+5. Turn on two-factor authentication on GitHub and on any exchange. Enable GitHub secret scanning with push protection.
+
 ### Impostor tokens
 
 A wallet can receive tokens nobody asked for. Scam airdrops are often named like real money ("USDC") to lure the owner to a phishing site. Metyu prices stablecoins by their **mint**, not by their name. A token named SOL, WSOL, USDC, USDT, USD, PYUSD, USDS or DAI without the real mint is flagged as an impostor and is never counted. Never interact with such a token, and never "claim" anything it advertises.

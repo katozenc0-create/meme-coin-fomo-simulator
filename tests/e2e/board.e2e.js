@@ -599,10 +599,21 @@ test('Solana wallet linked on this device: balances read from the network, addre
   await page.route('https://api.exchange.coinbase.com/products/SOL-USD/ticker', route => route.fulfill({ json: { price: '150' } }));
   await page.goto(`${env.base}/board.html`);
   assert.ok(await page.locator('#walletPanel').isVisible());
+  // A recovery phrase pasted into the address field is wiped at once, with a loud warning.
   await page.fill('#wAddress', 'abandon ability able about above absent absorb abstract absurd abuse access accident');
+  assert.equal(await page.inputValue('#wAddress'), '', 'the phrase is wiped from the field at once');
+  assert.ok(await page.locator('#secAlert').isVisible());
+  assert.match(await text(page, '#secAlert'), /RECOVERY \(SEED\) PHRASE.*wiped at once: never kept, stored or sent/);
+  // A private key too, in any field.
+  await page.fill('#wAddress', '4' + '5'.repeat(86));
+  assert.equal(await page.inputValue('#wAddress'), '');
+  assert.match(await text(page, '#secAlert'), /PRIVATE KEY/);
+  // Anything else that is not an address is still refused by the form.
+  await page.fill('#wAddress', 'not-an-address');
   await page.click('#wLink');
   assert.match(await text(page, '#wStatus'), /not a Solana address.*Never paste a seed phrase/);
   assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.solanaWallet')), null, 'nothing stored');
+  assert.ok(!seen.some(r => /abandon|5{40}/.test(r.url + r.body)), 'the secrets never left the page');
   await page.fill('#wAddress', `  solana:${wallet}?amount=1 `);
   await page.click('#wLink');
   await page.waitForFunction(() => /address: Metyu reads/.test(document.querySelector('#wStatus').textContent));
@@ -691,4 +702,50 @@ test('board layout fits a phone screen', async () => {
   const page = await env.page({ width: 390, height: 844 });
   await page.goto(`${env.base}/board.html`);
   assert.ok(await noHorizontalScroll(page));
+});
+
+test('wallet security: an open token approval in the linked wallet raises a red alert on the board', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - 3 * X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  const link = { linked: true, viewOnly: true, provider: 'solana', verifiedAt: new Date(Date.now() - 600000).toISOString() };
+  let status = statusOf(state, { accountLink: { ...link, security: { approvals: 2, checkedAt: link.verifiedAt } } });
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#secAlert').hidden);
+  assert.match(await text(page, '#secAlert'), /WALLET SECURITY: the linked wallet has 2 open token approvals.*Revoke them now/);
+  assert.match(await text(page, '#exLive'), /2 OPEN TOKEN APPROVAL\(S\): revoke them/, 'the real-money lock does not count a drainable wallet');
+  // Revoked: the alert goes away.
+  status = statusOf(state, { accountLink: { ...link, security: { approvals: 0, checkedAt: link.verifiedAt } } });
+  await page.reload();
+  await page.waitForFunction(() => /no open token approvals/.test(document.querySelector('#exLive').textContent) || document.querySelector('#exLiveHead').textContent.includes('3/6'));
+  assert.ok(await page.locator('#secAlert').isHidden());
+  assert.deepEqual(page.errors, []);
+});
+
+test('CSP: an injected inline script is refused by the browser (no XSS on the board)', async () => {
+  const page = await env.page({ width: 390, height: 844 });
+  const violations = [];
+  await page.exposeFunction('reportViolation', v => violations.push(v));
+  await page.addInitScript(() => document.addEventListener('securitypolicyviolation', e => window.reportViolation(e.violatedDirective)));
+  await page.goto(`${env.base}/board.html`);
+  await page.waitForSelector('#overview', { state: 'attached' });
+  // What an attacker would try: insert a script element that fakes a wallet prompt.
+  await page.evaluate(() => {
+    const script = document.createElement('script');
+    script.textContent = 'window.__pwned = true; document.body.insertAdjacentHTML("afterbegin", "<p id=fake>Connect your wallet</p>")';
+    document.head.append(script);
+  });
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__pwned), undefined, 'the injected script did not run');
+  assert.equal(await page.locator('#fake').count(), 0);
+  assert.ok(violations.some(v => v.startsWith('script-src')), `a CSP violation was reported (${violations})`);
+  // The board's own scripts still run.
+  assert.ok(await page.evaluate(() => typeof MetyuWallet === 'object' && typeof MetyuWallet.looksLikeSecret === 'function'));
+  // The only console errors are the browser's own reports of the blocked injection.
+  assert.deepEqual(page.errors.filter(e => !/Executing inline script violates the following Content Security Policy/.test(e)), []);
 });

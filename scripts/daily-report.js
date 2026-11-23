@@ -31,7 +31,9 @@ function report({ exchange, polymarket, account = null, now = Date.now() }) {
   const problems = assess({ exchange, polymarket, account, now });
   lines.push(`**Health:** ${problems.length ? `${problems.length} problem(s)` : 'OK'}`);
   for (const problem of problems) lines.push(`- ${problem}`);
-  lines.push(`**Real wallet/account:** ${!account ? 'not linked' : account.linked ? `${account.provider}, read-only, verified ${Math.round((now - Date.parse(account.verifiedAt)) / HOUR)} h ago` : `refused (${account.reason || 'not view-only'})`}`);
+  const security = account && account.security;
+  const approvalsText = !security || security.approvals === null || security.approvals === undefined ? 'approvals not checked' : security.approvals ? `⚠ ${security.approvals} OPEN TOKEN APPROVAL(S)` : 'no open token approvals';
+  lines.push(`**Real wallet/account:** ${!account ? 'not linked' : account.linked ? `${account.provider}, read-only, verified ${Math.round((now - Date.parse(account.verifiedAt)) / HOUR)} h ago, ${approvalsText}` : `refused (${account.reason || 'not view-only'})`}`);
   lines.push('');
   if (exchange && exchange.account) {
     const a = exchange.account;

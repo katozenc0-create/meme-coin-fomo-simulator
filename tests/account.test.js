@@ -140,7 +140,7 @@ test('syncAccount seals priced balances; only a balance-free link record is publ
   assert.equal(snapshot.totalUsd, 35100);
   assert.deepEqual(snapshot.unpriced, ['ODD']);
   assert.deepEqual(snapshot.balances.map(b => b.asset), ['BTC', 'USDC', 'ODD'], 'largest first');
-  assert.deepEqual(publicInfo, { kind: 'account-public', linked: true, provider: 'coinbase', verifiedAt: '1970-01-01T00:00:00.000Z', viewOnly: true });
+  assert.deepEqual(publicInfo, { kind: 'account-public', linked: true, provider: 'coinbase', verifiedAt: '1970-01-01T00:00:00.000Z', viewOnly: true, security: { approvals: null, checkedAt: null } }, 'an exchange key has no token approvals to check');
   assert.ok(!JSON.stringify(box).includes('35100') && !JSON.stringify(publicInfo).includes('BTC'));
   const opened = await Vault.open(box, PASS);
   assert.equal(opened.totalUsd, 35100);
@@ -190,7 +190,12 @@ test('real-money lock: locked with a list of unmet conditions; never "ready" wit
   // A link counts only while re-verified: 25 h without a verification and it no longer does.
   const stale = X.liveReadiness({ ...base, accountLink: { linked: true, viewOnly: true, verifiedAt: new Date(now - 25 * 3600000).toISOString() } }).conditions.find(c => c.id === 'account');
   assert.equal(stale.ok, false);
-  assert.match(stale.text, /verified within 24 h \(last verified 25 h ago\)/);
+  assert.match(stale.text, /verified within 24 h, no open token approvals \(last verified 25 h ago\)/);
+  // An open token approval in the linked wallet blocks the account condition too.
+  const drained = X.liveReadiness({ ...base, accountLink: { ...base.accountLink, security: { approvals: 2 } } }).conditions.find(c => c.id === 'account');
+  assert.equal(drained.ok, false);
+  assert.match(drained.text, /2 OPEN TOKEN APPROVAL\(S\): revoke them/);
+  assert.equal(X.liveReadiness({ ...base, accountLink: { ...base.accountLink, security: { approvals: 0 } } }).conditions.find(c => c.id === 'account').ok, true);
   assert.equal(X.accountFresh({ linked: true, viewOnly: true }, now), false, 'no verification time: not fresh');
   // One week of trades: no degenerate interval in the text.
   const oneWeek = X.liveReadiness({ ...base, forward: { trades: 6, weeks: 1, ci: [.68, .68], meanR: .68 } }).conditions.find(c => c.id === 'edge');
@@ -256,7 +261,7 @@ test('Solana wallet: SOL and tokens read from the public address, priced, and vi
   const getJson = async url => { if (url.includes('SOL-USD')) return { price: '150' }; throw new Error('HTTP 404'); };
   const { box, publicInfo, snapshot } = await A.syncAccount({ provider: A.solanaProvider({ address: WALLET, fetchImpl: fakeSolana().fetchImpl }), passphrase: PASS, getJson, now: () => 0 });
   assert.equal(snapshot.totalUsd, 2.5 * 150 + 12.5 + 1500 * .002);
-  assert.deepEqual(publicInfo, { kind: 'account-public', linked: true, provider: 'solana', verifiedAt: '1970-01-01T00:00:00.000Z', viewOnly: true });
+  assert.deepEqual(publicInfo, { kind: 'account-public', linked: true, provider: 'solana', verifiedAt: '1970-01-01T00:00:00.000Z', viewOnly: true, security: { approvals: 0, checkedAt: '1970-01-01T00:00:00.000Z' } }, 'no open token approvals; only the count is public');
   assert.ok(!JSON.stringify(box).includes(WALLET) && !JSON.stringify(publicInfo).includes(WALLET), 'the address itself is never public');
   assert.equal((await Vault.open(box, PASS)).permissions.type, 'public address');
 });
@@ -367,4 +372,40 @@ test('wallet: a token named like USDC or SOL without the real mint is an imposto
   const { snapshot } = await A.syncAccount({ provider, passphrase: PASS, getJson, now: () => 0 });
   assert.equal(snapshot.totalUsd, 100 + 5, 'SOL + real USDC; the 9,389 fake USDC count for nothing');
   assert.ok(snapshot.unpriced.includes('USDC?'));
+});
+
+test('wallet security: open token approvals (delegates) are found; only their count is public', async () => {
+  const W = require('../metyu-wallet.js');
+  const DRAINER = 'DrA1nerxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.replace(/x/g, 'z');
+  const account = (mint, delegate, amount) => ({ account: { data: { parsed: { info: { mint, tokenAmount: { uiAmountString: '100' }, ...(delegate ? { delegate, delegatedAmount: { uiAmountString: String(amount) } } : {}) } } } } });
+  const fetchImpl = async (url, init) => {
+    const { id, params } = JSON.parse(init.body);
+    const legacy = params[1].programId === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+    return { ok: true, json: async () => ({ jsonrpc: '2.0', id, result: { value: legacy ? [account(MEME, DRAINER, 50), account('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'), account('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', DRAINER, 0)] : [] } }) };
+  };
+  assert.deepEqual(await W.solanaApprovals({ address: WALLET, fetchImpl }), [{ mint: MEME, delegate: DRAINER, amount: 50 }], 'a delegate with nothing left to spend is not a risk');
+  await assert.rejects(W.solanaApprovals({ address: WALLET, fetchImpl: async () => ({ ok: false, status: 403 }) }), /api\.mainnet-beta\.solana\.com: HTTP 403/);
+  // The account sync seals the details and publishes only the count.
+  const provider = { name: 'solana', permissions: async () => ({ canView: true, raw: {} }), balances: async () => [{ asset: 'SOL', free: 1, locked: 0 }], approvals: () => W.solanaApprovals({ address: WALLET, fetchImpl }) };
+  const getJson = async () => ({ price: '100' });
+  const { box, publicInfo, snapshot } = await A.syncAccount({ provider, passphrase: PASS, getJson, now: () => 0 });
+  assert.deepEqual(publicInfo.security, { approvals: 1, checkedAt: '1970-01-01T00:00:00.000Z' });
+  assert.ok(!JSON.stringify(publicInfo).includes(DRAINER) && !JSON.stringify(box).includes(DRAINER), 'no address in public');
+  assert.equal((await Vault.open(box, PASS)).approvals[0].delegate, DRAINER, 'the details are inside the sealed box');
+  assert.equal(snapshot.security.approvals, 1);
+  // A failing check is reported as unknown, never as "no approvals".
+  const failing = { ...provider, approvals: async () => { throw new Error('down'); } };
+  const failed = await A.syncAccount({ provider: failing, passphrase: PASS, getJson, now: () => 0 });
+  assert.deepEqual(failed.publicInfo.security, { approvals: null, checkedAt: null, error: 'approval check unavailable' });
+});
+
+test('wallet security: a recovery phrase or a private key is recognised so it can be refused anywhere', () => {
+  const W = require('../metyu-wallet.js');
+  assert.equal(W.looksLikeSecret('abandon ability able about above absent absorb abstract absurd abuse access accident'), 'seed');
+  assert.equal(W.looksLikeSecret(Array(24).fill('word').join(' ')), 'seed');
+  assert.equal(W.looksLikeSecret('4' + '5'.repeat(86)), 'private-key', 'base58 secret key');
+  assert.equal(W.looksLikeSecret(`[${Array(64).fill(7).join(',')}]`), 'private-key', 'a JSON key file');
+  assert.equal(W.looksLikeSecret(WALLET), null, 'a public address is not a secret');
+  assert.equal(W.looksLikeSecret('hello world'), null);
+  assert.equal(W.looksLikeSecret('my bankroll is ten thousand'), null);
 });

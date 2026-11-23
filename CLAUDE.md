@@ -34,6 +34,7 @@ npm run test:e2e         # Playwright, iPhone and desktop (~42); slow, run it la
 
 ## Conventions
 - **Edits:** patch `board.html` with exact-match Python replacements written to a scratch file. Heredocs containing `${` or backslashes trip the shell safety check.
+- **Inline scripts and the CSP:** after editing any inline `<script>` in a page, run `node scripts/csp.js --write`. The CSP allows inline scripts only by their hash, and the tests fail if a hash is stale.
 - **New feature:** a new feature gets a test, a CHANGELOG entry, and README or SECURITY notes if behaviour changes.
 - **PRs:** one PR per change. Merge only when all five checks are green (test, e2e, both CodeQL analyses, CodeQL).
 - **After merging:** fast-forward `claude/metyu-kod-eksikleri-xr3gwb` to `main` and push it.

@@ -115,6 +115,7 @@ test('watchdog: healthy agents pass; silence, a halt, a dead price feed and an o
   assert.deepEqual(watchdog.assess({ exchange, polymarket, account: fresh, now }), [], 'a link verified 2 h ago is fine');
   assert.deepEqual(watchdog.assess({ exchange, polymarket, account: { ...fresh, verifiedAt: new Date(now - 30 * 3600000).toISOString() }, now }), ['account link: last verified 30 h ago (the account sync keeps failing; the real-money lock no longer counts it)']);
   assert.deepEqual(watchdog.assess({ exchange, polymarket, account: { linked: false, reason: 'API key is not view-only' }, now }), ['account link refused: API key is not view-only']);
+  assert.deepEqual(watchdog.assess({ exchange, polymarket, account: { ...fresh, security: { approvals: 1 } }, now }), ['WALLET SECURITY: 1 open token approval(s): another address can move those tokens without asking. Revoke them in the wallet app now.']);
   assert.match(watchdog.report([], now), /healthy/);
   // The CLI: exit code 1 and a report file when something is wrong, 0 when healthy.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metyu-watchdog-'));
@@ -152,6 +153,8 @@ test('daily report: health, crypto equity and last 24 h, gates, the real-money l
   assert.match(text, /^# Metyu daily report · 2026-11-20 08:00 UTC/);
   assert.match(text, /\*\*Health:\*\* OK/);
   assert.match(text, /\*\*Real wallet\/account:\*\* not linked/);
+  assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), security: { approvals: 0 } }, now }), /verified 1 h ago, no open token approvals/);
+  assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), security: { approvals: 2 } }, now }), /⚠ 2 OPEN TOKEN APPROVAL\(S\)/);
   assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString() }, now }), /\*\*Real wallet\/account:\*\* solana, read-only, verified 1 h ago/);
   assert.match(text, /Equity 10500\.00 \(\+\$500\.00 since start, peak 10600\.00\), 2 open \(1 normal book\)/);
   assert.match(text, /Last 24 h: 2 closed \(1 won\), \+\$30\.00; normal book 1 \(\+\$40\.00\)/, 'older trades are left out');
@@ -163,4 +166,19 @@ test('daily report: health, crypto equity and last 24 h, gates, the real-money l
   assert.match(text, /Realized −\$212\.30, 2 open, 0 closed in 24 h/);
   const sick = daily.report({ exchange: { ...exchange, lastTick: ago(3) }, polymarket, now });
   assert.match(sick, /\*\*Health:\*\* 1 problem\(s\)\n- crypto agent: silent for 180 min/);
+});
+
+// ---------- the content security policy ----------
+const csp = require('../scripts/csp.js');
+test('CSP: only the repository\'s own inline scripts may run (hashes, no unsafe-inline), and every page is up to date', () => {
+  const { stale, policy } = csp.sync({ write: false });
+  assert.deepEqual(stale, [], 'run: node scripts/csp.js --write');
+  const scriptSrc = policy.split('; ').find(part => part.startsWith('script-src'));
+  assert.ok(!scriptSrc.includes("'unsafe-inline'") && !scriptSrc.includes("'unsafe-eval'"), scriptSrc);
+  assert.match(scriptSrc, /^script-src 'self'( 'sha256-[A-Za-z0-9+/]{43}=')+$/);
+  for (const page of csp.PAGES) {
+    const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
+    for (const script of csp.inlineScripts(html)) assert.ok(scriptSrc.includes(csp.hashOf(script)), `${page}: an inline script without its hash`);
+  }
+  assert.ok(policy.includes("object-src 'none'") && policy.includes("base-uri 'none'") && policy.includes("form-action 'none'"));
 });

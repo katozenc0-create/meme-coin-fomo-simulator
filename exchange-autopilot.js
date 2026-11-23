@@ -450,6 +450,8 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     // lock counts those trades only; the learning book's research trades never count toward it.
     live: X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now }),
     shadow: shadowSummary(state.shadow),
+    // The linked wallet's security check (counts only, no address): the board warns from it.
+    accountSecurity: accountLink && accountLink.linked ? { ...(accountLink.security || {}), verifiedAt: accountLink.verifiedAt } : null,
     charts
   };
 }

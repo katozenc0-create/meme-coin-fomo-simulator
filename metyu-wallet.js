@@ -181,5 +181,56 @@
     return out;
   }
 
-  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_BALANCES, DEFAULT_RPC, DEFAULT_PRICES, DEFAULT_TOKENS, normaliseAddress, shortAddress, solanaBalances };
+  /**
+   * Token approvals: SPL token accounts of `address` that have a DELEGATE, i.e. another address
+   * allowed to move up to `amount` of those tokens without the owner signing again. This is how
+   * most wallet drainers work (one careless "approve" on a fake site). Read-only RPC
+   * (getTokenAccountsByOwner, jsonParsed); the public RPC refuses browsers, so the account sync
+   * (a server) runs it. Returns [{ mint, delegate, amount }] or throws if every endpoint fails.
+   */
+  async function solanaApprovals({ address, rpcUrl, rpcUrls, fetchImpl = fetch }) {
+    const wallet = normaliseAddress(address);
+    if (!wallet) throw new Error('not a Solana address');
+    const endpoints = rpcUrls || (rpcUrl ? [rpcUrl] : [DEFAULT_RPC]);
+    if (!endpoints.length || !endpoints.every(url => HTTPS_URL.test(url))) throw new Error('the Solana RPC URL must be an https URL');
+    const errors = [];
+    for (const url of endpoints) {
+      try {
+        const approvals = [];
+        for (const [index, programId] of TOKEN_PROGRAMS.entries()) {
+          const response = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: index + 1, method: 'getTokenAccountsByOwner', params: [wallet, { programId }, { encoding: 'jsonParsed', commitment: 'confirmed' }] }), signal: AbortSignal.timeout(15000) });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          if (data.error) throw new Error(data.error.message || 'error');
+          for (const entry of (data.result && data.result.value) || []) {
+            const info = entry && entry.account && entry.account.data && entry.account.data.parsed && entry.account.data.parsed.info;
+            if (!info || !info.delegate || !SOLANA_ADDRESS.test(String(info.delegate))) continue;
+            const amount = Number(info.delegatedAmount && (info.delegatedAmount.uiAmountString ?? info.delegatedAmount.uiAmount)) || 0;
+            if (amount > 0 && SOLANA_ADDRESS.test(String(info.mint))) approvals.push({ mint: String(info.mint), delegate: String(info.delegate), amount });
+          }
+        }
+        return approvals;
+      } catch (error) { errors.push(`${new URL(url).host}: ${error.message}`); }
+    }
+    throw new Error(errors.join('; '));
+  }
+
+  // BIP-39 word lists are lowercase a-z words; a recovery phrase has 12, 15, 18, 21 or 24 of them.
+  const SEED_WORDS = /^[a-z]{3,8}(\s+[a-z]{3,8}){11,23}$/;
+  /**
+   * Whether pasted text looks like a SECRET that must never be typed into any website: a recovery
+   * (seed) phrase, or a private key (base58 of 64 bytes, ~87-88 characters, or a JSON array of 64
+   * numbers as wallets export it). Returns 'seed', 'private-key' or null.
+   */
+  function looksLikeSecret(text) {
+    const value = String(text || '').trim();
+    if (!value) return null;
+    const words = value.toLowerCase().split(/\s+/);
+    if ([12, 15, 18, 21, 24].includes(words.length) && SEED_WORDS.test(value.toLowerCase())) return 'seed';
+    if (/^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(value)) return 'private-key';
+    if (/^\[\s*\d{1,3}(\s*,\s*\d{1,3}){63}\s*\]$/.test(value)) return 'private-key';
+    return null;
+  }
+
+  return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_BALANCES, DEFAULT_RPC, DEFAULT_PRICES, DEFAULT_TOKENS, normaliseAddress, shortAddress, solanaBalances, solanaApprovals, looksLikeSecret };
 }));
