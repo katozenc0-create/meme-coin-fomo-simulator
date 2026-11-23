@@ -749,3 +749,33 @@ test('CSP: an injected inline script is refused by the browser (no XSS on the bo
   // The only console errors are the browser's own reports of the blocked injection.
   assert.deepEqual(page.errors.filter(e => !/Executing inline script violates the following Content Security Policy/.test(e)), []);
 });
+
+test('the simple board: the live overview and the terminal only; "All panels" shows the rest, remembered', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - 3 * X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  const status = statusOf(state);
+  const page = await env.page({ width: 390, height: 844 }, { view: null, layout: null });   // the app's own defaults
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#overview').hidden);
+  assert.ok(await page.locator('#overview').isVisible());
+  assert.ok(await page.locator('#terminal').isVisible(), 'the terminal right under the overview');
+  for (const id of ['#walletPanel', '#exchangePanel', '#demoControls', '#simulatorTitle', '#board']) assert.ok(await page.locator(id).isHidden(), `${id} hidden on the simple board`);
+  const [overviewBottom, terminalTop] = await page.evaluate(() => [document.querySelector('#overview').getBoundingClientRect().bottom, document.querySelector('#terminal').getBoundingClientRect().top]);
+  assert.ok(terminalTop >= overviewBottom && terminalTop - overviewBottom < 40, 'the two panels follow each other');
+  assert.equal(await text(page, '#layoutBtn'), 'All panels ▾');
+  await page.click('#layoutBtn');
+  assert.ok(await page.locator('#walletPanel').isVisible() && await page.locator('#exchangePanel').isVisible(), 'every panel one tap away');
+  assert.equal(await text(page, '#layoutBtn'), 'Simple view ▴');
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector('#overview').hidden);
+  assert.ok(await page.locator('#walletPanel').isVisible(), 'the choice is remembered');
+  await page.click('#layoutBtn');
+  assert.ok(await page.locator('#walletPanel').isHidden());
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});

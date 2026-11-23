@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.1: the simple board
+
+- As the owner asked, the board opens with **only two panels**: the live overview and the Metyu terminal, right under it.
+- Every other panel moves behind one **"All panels ▾"** button: the wallet link, the crypto and prediction-market agents, the account and the demo simulator. They stay in the page, so the wallet check, the account and the agents keep running. The choice is remembered.
+- Service worker cache `metyu-shell-v8`.
+
 ## 2.6.0: security: wallet protection and a strict CSP
 
 - **Open token approvals detected.** `solanaApprovals` (read-only RPC) lists SPL token accounts with a delegate, another address allowed to move tokens. The account sync runs it on every tick. The details are sealed; only the count is published (`account-public.json` → `security.approvals`). An open approval:
