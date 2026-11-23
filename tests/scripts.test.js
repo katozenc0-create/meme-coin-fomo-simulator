@@ -184,4 +184,5 @@ test('CSP: only the repository\'s own inline scripts may run (hashes, no unsafe-
   // Upper case and "</script >" are seen too; a script tag that cannot be paired is an error.
   assert.deepEqual(csp.inlineScripts('<SCRIPT>a()</SCRIPT ><script src="x.js"></script><Script type="module">b()</script>'), ['a()', 'b()']);
   assert.throws(() => csp.inlineScripts('<script>a()'), /could pair only 0/);
+  assert.deepEqual(csp.inlineScripts('<script>c()</script\t\n bar>'), ['c()'], 'any end tag a browser accepts');
 });

@@ -22,7 +22,7 @@ const CONNECT = "'self' https://gamma-api.polymarket.com https://clob.polymarket
 function inlineScripts(html) {
   // Case-insensitive, and tolerant of "</script >": every script element must be seen, or an
   // unhashed one would slip past the policy check. A <script> we cannot pair is an error.
-  const matches = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
+  const matches = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi)];   // browsers end a script at any </script...>
   const opened = (html.match(/<script\b/gi) || []).length;
   if (opened !== matches.length) throw new Error(`found ${opened} <script> tags but could pair only ${matches.length}`);
   return matches.filter(match => !/\ssrc\s*=/i.test(match[1] || '')).map(match => match[2]);
