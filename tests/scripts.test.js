@@ -111,6 +111,10 @@ test('watchdog: healthy agents pass; silence, a halt, a dead price feed and an o
   assert.deepEqual(watchdog.assess({ exchange, polymarket: { ...polymarket, model: { trainedAt: now - 20 * 3600000 } }, now }), [], 'a day-old model is fine');
   const stuck = watchdog.assess({ exchange, polymarket: { ...polymarket, positions: [{ id: '1', question: 'Louisiana-Lafayette vs. UNCW', endDate: new Date(now - 5 * 86400000).toISOString() }, { id: '2', question: 'Later', endDate: new Date(now + 86400000).toISOString() }] }, now });
   assert.deepEqual(stuck, ['Polymarket agent: 1 position(s) still open 3+ days after the market ended (Louisiana-Lafayette vs. UNCW)']);
+  const fresh = { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 2 * 3600000).toISOString() };
+  assert.deepEqual(watchdog.assess({ exchange, polymarket, account: fresh, now }), [], 'a link verified 2 h ago is fine');
+  assert.deepEqual(watchdog.assess({ exchange, polymarket, account: { ...fresh, verifiedAt: new Date(now - 30 * 3600000).toISOString() }, now }), ['account link: last verified 30 h ago (the account sync keeps failing; the real-money lock no longer counts it)']);
+  assert.deepEqual(watchdog.assess({ exchange, polymarket, account: { linked: false, reason: 'API key is not view-only' }, now }), ['account link refused: API key is not view-only']);
   assert.match(watchdog.report([], now), /healthy/);
   // The CLI: exit code 1 and a report file when something is wrong, 0 when healthy.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'metyu-watchdog-'));
@@ -147,6 +151,8 @@ test('daily report: health, crypto equity and last 24 h, gates, the real-money l
   const text = daily.report({ exchange, polymarket, now });
   assert.match(text, /^# Metyu daily report · 2026-11-20 08:00 UTC/);
   assert.match(text, /\*\*Health:\*\* OK/);
+  assert.match(text, /\*\*Real wallet\/account:\*\* not linked/);
+  assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString() }, now }), /\*\*Real wallet\/account:\*\* solana, read-only, verified 1 h ago/);
   assert.match(text, /Equity 10500\.00 \(\+\$500\.00 since start, peak 10600\.00\), 2 open \(1 normal book\)/);
   assert.match(text, /Last 24 h: 2 closed \(1 won\), \+\$30\.00; normal book 1 \(\+\$40\.00\)/, 'older trades are left out');
   assert.match(text, /Evidence gates: 1\/3 open \(core trend4h 1\.5x\); learning: core trend/);

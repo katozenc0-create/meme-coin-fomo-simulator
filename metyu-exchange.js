@@ -731,6 +731,13 @@
   // The training period before real money may even be considered (the owner chose 3 days); the
   // trade count and the confidence interval still have to be met, however long it takes.
   const TRAINING_DAYS = 3;
+  const ACCOUNT_FRESH_HOURS = 24;
+  /** A linked, view-only account whose last verification is at most ACCOUNT_FRESH_HOURS old. */
+  function accountFresh(link, now = Date.now()) {
+    if (!link || !link.linked || !link.viewOnly) return false;
+    const at = Date.parse(link.verifiedAt);
+    return Number.isFinite(at) && now - at <= ACCOUNT_FRESH_HOURS * HOUR && now - at >= -HOUR;
+  }
   function liveReadiness({ forward, createdAt, account, accountLink, now = Date.now(), approval = null, minDays = TRAINING_DAYS }) {
     const days = createdAt ? (now - Date.parse(createdAt)) / DAY : 0;
     const drawdown = account && account.peak > 0 ? 1 - (account.equity ?? account.cash) / account.peak : 0;
@@ -738,9 +745,10 @@
       { id: 'days', ok: days >= minDays, text: `forward test ran ${minDays}+ days (now ${Math.floor(days)})` },
       { id: 'trades', ok: !!forward && forward.trades >= RULES.minTrades, text: `${RULES.minTrades}+ closed normal-book forward-test trades (now ${forward ? forward.trades : 0}; learning trades do not count)` },
       // Weekly block bootstrap (trades of one week move together) over at least 4 different weeks.
-      { id: 'edge', ok: !!forward && forward.trades >= RULES.minTrades && (forward.weeks === undefined || forward.weeks >= 4) && forward.ci[0] > 0, text: `95% interval of the mean R above zero, over 4+ different weeks (now ${forward && forward.trades ? `[${forward.ci[0].toFixed(2)}, ${forward.ci[1].toFixed(2)}]${forward.weeks !== undefined ? ` · ${forward.weeks} week${forward.weeks === 1 ? '' : 's'}` : ''}` : 'no trades'})` },
+      { id: 'edge', ok: !!forward && forward.trades >= RULES.minTrades && (forward.weeks === undefined || forward.weeks >= 4) && forward.ci[0] > 0, text: `95% interval of the mean R above zero, over 4+ different weeks (now ${!forward || !forward.trades ? 'no trades' : forward.weeks !== undefined && forward.weeks < 2 ? `all ${forward.trades} trades in ${forward.weeks} week: no interval yet` : `[${forward.ci[0].toFixed(2)}, ${forward.ci[1].toFixed(2)}]${forward.weeks !== undefined ? ` · ${forward.weeks} weeks` : ''}`})` },
       { id: 'risk', ok: !!account && !account.halted && drawdown < .1, text: `no kill-switch and drawdown under 10% (now ${(drawdown * 100).toFixed(1)}%)` },
-      { id: 'account', ok: !!(accountLink && accountLink.linked && accountLink.viewOnly), text: 'a real account or wallet linked read-only (view-only key or public address)' },
+      // A link counts only while it is re-verified: an old "linked" record (the sync failing since) does not.
+      { id: 'account', ok: accountFresh(accountLink, now), text: `a real account or wallet linked read-only, verified within ${ACCOUNT_FRESH_HOURS} h (${!accountLink || !accountLink.linked ? 'not linked' : !accountLink.viewOnly ? 'the key is not view-only' : `last verified ${Math.round((now - Date.parse(accountLink.verifiedAt)) / HOUR)} h ago`})` },
       { id: 'approval', ok: !!approval, text: "the owner's explicit approval, with the limits below" }
     ];
     const met = conditions.filter(c => c.ok).length;
@@ -749,6 +757,7 @@
 
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
+    ACCOUNT_FRESH_HOURS, accountFresh,
     TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,

@@ -173,7 +173,7 @@ test('main: no key is a no-op, no passphrase refuses, and secrets never reach th
 test('real-money lock: locked with a list of unmet conditions; never "ready" without every one', () => {
   const now = Date.parse('2026-12-01T00:00:00Z');
   const strong = { trades: 40, ci: [.05, .4], meanR: .2, wins: 25 };
-  const base = { forward: strong, createdAt: '2026-11-10T00:00:00Z', account: { peak: 10000, equity: 10500, halted: false }, accountLink: { linked: true, viewOnly: true }, now };
+  const base = { forward: strong, createdAt: '2026-11-10T00:00:00Z', account: { peak: 10000, equity: 10500, halted: false }, accountLink: { linked: true, viewOnly: true, verifiedAt: new Date(now - 3 * 3600000).toISOString() }, now };
   const almost = X.liveReadiness(base);
   assert.equal(almost.locked, true);
   assert.equal(almost.ready, false, "the owner's approval is missing");
@@ -187,6 +187,14 @@ test('real-money lock: locked with a list of unmet conditions; never "ready" wit
   assert.equal(X.liveReadiness({ ...base, account: { peak: 10000, equity: 8900 } }).conditions.find(c => c.id === 'risk').ok, false, 'a 11% drawdown blocks');
   assert.equal(X.liveReadiness({ ...base, accountLink: { linked: true, viewOnly: false } }).conditions.find(c => c.id === 'account').ok, false);
   assert.deepEqual(X.LIVE_LIMITS, { maxOrderUsd: 25, maxDailyLossUsd: 50, maxOpenUsd: 100, maxLeverage: 1 });
+  // A link counts only while re-verified: 25 h without a verification and it no longer does.
+  const stale = X.liveReadiness({ ...base, accountLink: { linked: true, viewOnly: true, verifiedAt: new Date(now - 25 * 3600000).toISOString() } }).conditions.find(c => c.id === 'account');
+  assert.equal(stale.ok, false);
+  assert.match(stale.text, /verified within 24 h \(last verified 25 h ago\)/);
+  assert.equal(X.accountFresh({ linked: true, viewOnly: true }, now), false, 'no verification time: not fresh');
+  // One week of trades: no degenerate interval in the text.
+  const oneWeek = X.liveReadiness({ ...base, forward: { trades: 6, weeks: 1, ci: [.68, .68], meanR: .68 } }).conditions.find(c => c.id === 'edge');
+  assert.match(oneWeek.text, /all 6 trades in 1 week: no interval yet/);
 });
 
 test('nothing in the repository holds a private key, an API secret or a .env file', () => {

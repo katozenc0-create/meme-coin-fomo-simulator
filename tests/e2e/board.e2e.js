@@ -635,7 +635,7 @@ test('real-money lock is shown with every unmet condition and the first-order li
   const state = freshState();
   state.createdAt = new Date(Date.now() - 3 * X.DAY).toISOString();
   state.lastTick = new Date().toISOString();
-  const status = statusOf(state, { accountLink: { linked: true, viewOnly: true } });
+  const status = statusOf(state, { accountLink: { linked: true, viewOnly: true, verifiedAt: new Date(Date.now() - 600000).toISOString() } });
   const page = await env.page({ width: 390, height: 844 });
   const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
   await page.route(published, route => route.fulfill({ json: status }));

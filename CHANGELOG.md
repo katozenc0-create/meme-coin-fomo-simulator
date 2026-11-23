@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.2: a wallet link must stay verified
+
+- **Real-money lock:** the account condition counts only while the link is **re-verified within 24 hours**. The account sync re-verifies every tick. When it failed (a key revoked, a source down), the last `account-public.json` stayed published, and an old "linked" record kept counting.
+- **Watchdog:** it reports a linked account not verified for 24+ hours, and a refused (not view-only) key.
+- **Daily report:** a "Real wallet/account" line with the provider, read-only access and the last verification.
+- **Display fix:** the lock's edge condition no longer shows a degenerate interval when all trades fall in one week. It says "all N trades in 1 week: no interval yet".
+
 ## 2.5.1: simpler still
 
 - **Wallet:** no holdings list on the board, as the owner asked. The panel shows the verified total, the address, read-only access, "✓ verified on-chain" with its source, and the Solscan link for the details. Impostor tokens are still warned about.
