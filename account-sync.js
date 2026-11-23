@@ -139,7 +139,9 @@ function solanaProvider({ address, rpcUrl, balancesUrl, priceUrl = Wallet.DEFAUL
     name: 'solana',
     // An address cannot sign anything: view-only by construction.
     async permissions() { return { canView: true, canTrade: false, canWithdraw: false, canTransfer: false, raw: { type: 'public address', network: 'solana', canSign: false } }; },
-    balances: () => Wallet.solanaBalances({ address: wallet, rpcUrl, priceUrl, fetchImpl, ...(balancesUrl === undefined ? {} : { balancesUrl }) })
+    balances: () => Wallet.solanaBalances({ address: wallet, rpcUrl, priceUrl, fetchImpl, ...(balancesUrl === undefined ? {} : { balancesUrl }) }),
+    // Open token approvals (delegates): the main way wallets get drained.
+    approvals: () => Wallet.solanaApprovals({ address: wallet, rpcUrl, fetchImpl })
   };
 }
 
@@ -192,12 +194,21 @@ async function syncAccount({ provider, passphrase, getJson, now = () => Date.now
   assertViewOnly(permissions);
   const balances = await priceBalances(await provider.balances(), getJson);
   const verifiedAt = new Date(now()).toISOString();
+  // The security check: open token approvals. Details stay inside the sealed box; only the COUNT is
+  // public (no address, no tokens), so the board and the watchdog can raise the alarm.
+  let approvals = null;
+  let approvalsError = null;
+  if (typeof provider.approvals === 'function') {
+    try { approvals = await provider.approvals(); } catch (error) { approvalsError = error.message; }
+  }
+  const security = { approvals: approvals ? approvals.length : null, checkedAt: approvals ? verifiedAt : null, ...(approvalsError ? { error: 'approval check unavailable' } : {}) };
   const snapshot = {
     kind: 'account', provider: provider.name, verifiedAt, viewOnly: true, permissions: permissions.raw,
-    balances, totalUsd: balances.reduce((sum, b) => sum + (b.usd || 0), 0), unpriced: balances.filter(b => b.usd === null).map(b => b.asset)
+    balances, totalUsd: balances.reduce((sum, b) => sum + (b.usd || 0), 0), unpriced: balances.filter(b => b.usd === null).map(b => b.asset),
+    ...(approvals ? { approvals } : {}), security
   };
   const box = await Vault.seal(snapshot, passphrase, { label: 'metyu-account' });
-  return { box, snapshot, publicInfo: { kind: 'account-public', linked: true, provider: provider.name, verifiedAt, viewOnly: true } };
+  return { box, snapshot, publicInfo: { kind: 'account-public', linked: true, provider: provider.name, verifiedAt, viewOnly: true, security } };
 }
 
 function writeJson(file, value) {

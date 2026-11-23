@@ -28,6 +28,8 @@ function assess({ exchange, polymarket, account = null, now = Date.now(), limits
     if (!(age < 24)) problems.push(`account link: last verified ${Number.isFinite(age) ? `${Math.round(age)} h` : 'never'} ago (the account sync keeps failing; the real-money lock no longer counts it)`);
   }
   if (account && account.linked === false && account.reason) problems.push(`account link refused: ${account.reason}`);
+  // The most common way a wallet gets drained: a token approval given to a fake site.
+  if (account && account.linked && account.security && account.security.approvals > 0) problems.push(`WALLET SECURITY: ${account.security.approvals} open token approval(s): another address can move those tokens without asking. Revoke them in the wallet app now.`);
   const ageMin = iso => (iso ? (now - Date.parse(iso)) / MIN : Infinity);
   const silent = (name, status) => {
     if (!status) { problems.push(`${name}: no published status (the agent never ran or publishing failed)`); return true; }

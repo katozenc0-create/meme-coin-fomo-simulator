@@ -738,6 +738,7 @@
     const at = Date.parse(link.verifiedAt);
     return Number.isFinite(at) && now - at <= ACCOUNT_FRESH_HOURS * HOUR && now - at >= -HOUR;
   }
+  const openApprovals = link => !!(link && link.security && link.security.approvals > 0);
   function liveReadiness({ forward, createdAt, account, accountLink, now = Date.now(), approval = null, minDays = TRAINING_DAYS }) {
     const days = createdAt ? (now - Date.parse(createdAt)) / DAY : 0;
     const drawdown = account && account.peak > 0 ? 1 - (account.equity ?? account.cash) / account.peak : 0;
@@ -748,7 +749,8 @@
       { id: 'edge', ok: !!forward && forward.trades >= RULES.minTrades && (forward.weeks === undefined || forward.weeks >= 4) && forward.ci[0] > 0, text: `95% interval of the mean R above zero, over 4+ different weeks (now ${!forward || !forward.trades ? 'no trades' : forward.weeks !== undefined && forward.weeks < 2 ? `all ${forward.trades} trades in ${forward.weeks} week: no interval yet` : `[${forward.ci[0].toFixed(2)}, ${forward.ci[1].toFixed(2)}]${forward.weeks !== undefined ? ` · ${forward.weeks} weeks` : ''}`})` },
       { id: 'risk', ok: !!account && !account.halted && drawdown < .1, text: `no kill-switch and drawdown under 10% (now ${(drawdown * 100).toFixed(1)}%)` },
       // A link counts only while it is re-verified: an old "linked" record (the sync failing since) does not.
-      { id: 'account', ok: accountFresh(accountLink, now), text: `a real account or wallet linked read-only, verified within ${ACCOUNT_FRESH_HOURS} h (${!accountLink || !accountLink.linked ? 'not linked' : !accountLink.viewOnly ? 'the key is not view-only' : `last verified ${Math.round((now - Date.parse(accountLink.verifiedAt)) / HOUR)} h ago`})` },
+      // ...and with no open token approval: a wallet another address can drain is not ready for anything.
+      { id: 'account', ok: accountFresh(accountLink, now) && !openApprovals(accountLink), text: `a real account or wallet linked read-only, verified within ${ACCOUNT_FRESH_HOURS} h, no open token approvals (${!accountLink || !accountLink.linked ? 'not linked' : !accountLink.viewOnly ? 'the key is not view-only' : openApprovals(accountLink) ? `${accountLink.security.approvals} OPEN TOKEN APPROVAL(S): revoke them` : `last verified ${Math.round((now - Date.parse(accountLink.verifiedAt)) / HOUR)} h ago`})` },
       { id: 'approval', ok: !!approval, text: "the owner's explicit approval, with the limits below" }
     ];
     const met = conditions.filter(c => c.ok).length;

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.6.0: security: wallet protection and a strict CSP
+
+- **Open token approvals detected.** `solanaApprovals` (read-only RPC) lists SPL token accounts with a delegate, another address allowed to move tokens. The account sync runs it on every tick. The details are sealed; only the count is published (`account-public.json` → `security.approvals`). An open approval:
+  - raises a red alert on the board;
+  - shows in the wallet panel ("✓ no open token approvals" when clean) and is listed in the unlocked account panel;
+  - is reported by the watchdog and the daily report;
+  - stops the real-money lock from counting the wallet.
+- **Secrets wiped on sight.** `looksLikeSecret` recognises a recovery phrase (12–24 words) or a private key (base58 of 64 bytes, or a JSON key file). The board wipes it from any field at once and explains why. Password fields are left alone.
+- **Strict CSP for scripts.** `script-src` allows only this repository's inline scripts by SHA-256 hash; `'unsafe-inline'` is gone for scripts. `scripts/csp.js --write` updates the pages and `server.py`, and `--check` (run by the tests) fails when a hash is stale. An end-to-end test injects a script and shows the browser refuses it.
+- SECURITY.md: wallet protection, and what only the owner can do. Service worker cache `metyu-shell-v7`.
+
 ## 2.5.2: a wallet link must stay verified
 
 - **Real-money lock:** the account condition counts only while the link is **re-verified within 24 hours**. The account sync re-verifies every tick. When it failed (a key revoked, a source down), the last `account-public.json` stayed published, and an old "linked" record kept counting.
