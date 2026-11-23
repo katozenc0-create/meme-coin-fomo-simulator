@@ -20,7 +20,12 @@ const CONNECT = "'self' https://gamma-api.polymarket.com https://clob.polymarket
 
 /** The text of every inline <script> (no src) in a page, exactly as the browser hashes it. */
 function inlineScripts(html) {
-  return [...html.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g)].filter(match => !/\ssrc\s*=/.test(match[1] || '')).map(match => match[2]);
+  // Case-insensitive, and tolerant of "</script >": every script element must be seen, or an
+  // unhashed one would slip past the policy check. A <script> we cannot pair is an error.
+  const matches = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
+  const opened = (html.match(/<script\b/gi) || []).length;
+  if (opened !== matches.length) throw new Error(`found ${opened} <script> tags but could pair only ${matches.length}`);
+  return matches.filter(match => !/\ssrc\s*=/i.test(match[1] || '')).map(match => match[2]);
 }
 const hashOf = text => `'sha256-${crypto.createHash('sha256').update(text, 'utf8').digest('base64')}'`;
 

@@ -181,4 +181,7 @@ test('CSP: only the repository\'s own inline scripts may run (hashes, no unsafe-
     for (const script of csp.inlineScripts(html)) assert.ok(scriptSrc.includes(csp.hashOf(script)), `${page}: an inline script without its hash`);
   }
   assert.ok(policy.includes("object-src 'none'") && policy.includes("base-uri 'none'") && policy.includes("form-action 'none'"));
+  // Upper case and "</script >" are seen too; a script tag that cannot be paired is an error.
+  assert.deepEqual(csp.inlineScripts('<SCRIPT>a()</SCRIPT ><script src="x.js"></script><Script type="module">b()</script>'), ['a()', 'b()']);
+  assert.throws(() => csp.inlineScripts('<script>a()'), /could pair only 0/);
 });
