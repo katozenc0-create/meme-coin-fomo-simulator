@@ -24,13 +24,14 @@ function gatesOf(model) {
 }
 
 /** The report as Markdown lines. Pure: parsed status files and `now` in. */
-function report({ exchange, polymarket, now = Date.now() }) {
+function report({ exchange, polymarket, account = null, now = Date.now() }) {
   const lines = [];
   const since = now - 24 * HOUR;
   lines.push(`# Metyu daily report · ${new Date(now).toISOString().slice(0, 16).replace('T', ' ')} UTC`, '');
-  const problems = assess({ exchange, polymarket, now });
+  const problems = assess({ exchange, polymarket, account, now });
   lines.push(`**Health:** ${problems.length ? `${problems.length} problem(s)` : 'OK'}`);
   for (const problem of problems) lines.push(`- ${problem}`);
+  lines.push(`**Real wallet/account:** ${!account ? 'not linked' : account.linked ? `${account.provider}, read-only, verified ${Math.round((now - Date.parse(account.verifiedAt)) / HOUR)} h ago` : `refused (${account.reason || 'not view-only'})`}`);
   lines.push('');
   if (exchange && exchange.account) {
     const a = exchange.account;
@@ -68,7 +69,7 @@ function main(argv = process.argv.slice(2)) {
   const dir = argv[0] || 'data';
   const at = argv.indexOf('--now');
   const now = at >= 0 ? Date.parse(argv[at + 1]) : Date.now();
-  process.stdout.write(`${report({ exchange: readJson(path.join(dir, 'exchange-status.json')), polymarket: readJson(path.join(dir, 'status.json')), now })}\n`);
+  process.stdout.write(`${report({ exchange: readJson(path.join(dir, 'exchange-status.json')), polymarket: readJson(path.join(dir, 'status.json')), account: readJson(path.join(dir, 'account-public.json')), now })}\n`);
   return 0;
 }
 

@@ -20,8 +20,14 @@ function readJson(file) {
 }
 
 /** The list of problems (empty = healthy). Pure: `now` and the parsed status files in, text out. */
-function assess({ exchange, polymarket, now = Date.now(), limits = LIMITS }) {
+function assess({ exchange, polymarket, account = null, now = Date.now(), limits = LIMITS }) {
   const problems = [];
+  // A linked account must keep being verified (the daily sync can fail quietly: a key revoked, a source down).
+  if (account && account.linked) {
+    const age = (now - Date.parse(account.verifiedAt)) / HOUR;
+    if (!(age < 24)) problems.push(`account link: last verified ${Number.isFinite(age) ? `${Math.round(age)} h` : 'never'} ago (the account sync keeps failing; the real-money lock no longer counts it)`);
+  }
+  if (account && account.linked === false && account.reason) problems.push(`account link refused: ${account.reason}`);
   const ageMin = iso => (iso ? (now - Date.parse(iso)) / MIN : Infinity);
   const silent = (name, status) => {
     if (!status) { problems.push(`${name}: no published status (the agent never ran or publishing failed)`); return true; }
@@ -65,7 +71,7 @@ function report(problems, now = Date.now()) {
 function main(argv = process.argv.slice(2), now = Date.now()) {
   const dir = argv[0] || 'data';
   const at = argv.indexOf('--report');
-  const problems = assess({ exchange: readJson(path.join(dir, 'exchange-status.json')), polymarket: readJson(path.join(dir, 'status.json')), now });
+  const problems = assess({ exchange: readJson(path.join(dir, 'exchange-status.json')), polymarket: readJson(path.join(dir, 'status.json')), account: readJson(path.join(dir, 'account-public.json')), now });
   const text = report(problems, now);
   if (at >= 0 && argv[at + 1]) fs.writeFileSync(argv[at + 1], text);
   process.stdout.write(text);
