@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-9aBrdvFDZ/yhDxnlvgg/JBCJi6RamL2fvSyluRpCZVw=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw=' 'sha256-owSG2x33RYWm6M6l13krZET8pOfwp6I6bau80/NYQdc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -37,6 +37,10 @@
     .w-verify .ok { color: var(--green); }
     .sec-alert { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--red); border-left-width: 4px; background: rgba(255,70,84,.09); color: var(--red); font: 700 12px/1.5 Consolas, monospace; }
     .sec-ok { color: var(--green); }
+    /* The simple board (the default): the live overview and the Metyu terminal only. Everything else
+       is one tap away ("All panels"), kept in the page so the wallet, account and agents still run. */
+    body.compact .board-extra { display: none !important; }
+    .layout-toggle { display: block; width: 100%; margin: 12px 0 0; padding: 12px; border: 1px dashed var(--line); background: transparent; color: var(--muted); font: 800 11px Consolas, monospace; letter-spacing: .06em; }
     /* The simple terminal: header, current trade, the last 8 trades, the result. The pipeline
        detail (agents, flow, stages, raw log) stays in the page for tools, out of sight. */
     .term.simple .term-agents, .term.simple .term-flow, .term.simple .stages, .term.simple .term-tailbox, .term.simple .term-logbox { display: none; }
@@ -227,106 +231,6 @@
       <h3>Last 24 hours</h3>
       <ul class="ov-list" id="ovDigest"></ul>
     </section>
-    <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
-    <p class="disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No orders and no keys that can move money: a wallet or exchange account is only ever read. Live data are public Coinbase and Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Coinbase &amp; Polymarket prices · wallet read-only · no orders · not financial advice</span></p>
-
-    <section class="panel" id="walletPanel" style="margin-bottom:12px">
-      <h2>My Solana wallet <span class="kind real">REAL · READ-ONLY</span></h2>
-      <p class="note" id="wStatus">Paste your wallet's PUBLIC address (for example from the Fomo app: Deposit → Solana). It stays on this device only; balances are read directly from the Solana network. Never paste a seed phrase or a private key.</p>
-      <form class="ac-form" id="wForm" autocomplete="off">
-        <input type="text" id="wAddress" placeholder="Solana address (32-44 characters)" aria-label="Solana wallet address" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" required>
-        <button class="btn" type="submit" id="wLink">Link</button>
-      </form>
-      <div id="wBody" hidden>
-        <div class="stats">
-          <div class="stat"><span>Total (USD)</span><strong id="wTotal">—</strong></div>
-          <div class="stat"><span>Wallet</span><strong id="wShort">—</strong></div>
-          <div class="stat"><span>Access</span><strong class="positive">address only ✓</strong></div>
-        </div>
-        <p class="w-verify" id="wVerify"><span id="wVerified">not verified yet</span><span>source: Solana blockchain (Jupiter, Solana RPC)</span><a id="wExplorer" target="_blank" rel="noopener noreferrer" href="#">Verify on Solscan ↗</a></p>
-        <p class="note negative" id="wWarn" hidden></p>
-        <p class="note" id="wApprovals" hidden></p>
-        <button class="btn secondary" type="button" id="wRefresh" style="margin-top:8px">Refresh</button>
-        <button class="btn secondary" type="button" id="wUnlink" style="margin-top:8px">Unlink</button>
-      </div>
-    </section>
-
-    <section class="panel" id="exchangePanel" style="margin-bottom:12px" hidden>
-      <h2>Crypto agent · 31 coins <span class="kind virtual">VIRTUAL · 24/7</span></h2>
-      <p class="note" id="exStatus">Checking for the exchange autopilot (node exchange-autopilot.js)…</p>
-      <p class="trades-summary" id="exForward" hidden></p>
-      <div class="stats" id="exStats" hidden>
-        <div class="stat"><span>Equity</span><strong id="exEquity">—</strong></div>
-        <div class="stat"><span>Realized P&amp;L</span><strong id="exRealized">—</strong></div>
-        <div class="stat"><span>Trades · win rate</span><strong id="exTrades">—</strong></div>
-        <div class="stat"><span>Open positions</span><strong id="exOpen">—</strong></div>
-        <div class="stat"><span>Evidence gates</span><strong id="exGates">—</strong></div>
-        <div class="stat"><span>Last tick</span><strong id="exTick">—</strong></div>
-      </div>
-      <div class="ex-head" id="exChartHead" hidden>
-        <select id="exSymbol" aria-label="Coin"></select>
-        <span class="ex-price" id="exPrice"></span>
-        <span class="badge" id="exTrend"></span>
-      </div>
-      <svg class="ex-chart" id="exChart" viewBox="0 0 600 240" role="img" aria-label="Hourly chart" hidden></svg>
-      <div class="ex-legend" id="exLegend" hidden>
-        <span><i style="background:var(--amber)"></i>EMA20</span><span><i style="background:var(--blue)"></i>EMA50</span>
-        <span><i style="background:var(--muted)"></i>support / resistance</span><span><i style="background:var(--red)"></i>stop · liquidation</span><span><i style="background:var(--green)"></i>target</span>
-      </div>
-      <ul class="ex-notes" id="exNotes"></ul>
-      <h3 id="exLiveHead">Real money: locked</h3>
-      <ul class="lock-list" id="exLive"></ul>
-      <p class="note" id="exLiveLimits"></p>
-      <p class="note" id="exShadow" hidden></p>
-      <h3>Open positions</h3>
-      <ul class="trades" id="exPositions"></ul>
-      <h3>Strategies · evidence gate (out of sample, after costs)</h3>
-      <ul class="ex-strats" id="exStrategies"></ul>
-      <h3>Last trades</h3>
-      <p class="trades-summary" id="exTradeSummary">No closed trades yet.</p>
-      <ul class="trades" id="exTradeList"></ul>
-      <ul class="feed" id="exFeed" style="max-height:220px"></ul>
-    </section>
-
-    <section class="panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
-      <h2>Prediction-market agent · Polymarket <span class="kind virtual">VIRTUAL · 24/7</span></h2>
-      <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
-      <p class="trades-summary" id="apForward" hidden></p>
-      <div class="stats" id="apStats" hidden>
-        <div class="stat"><span>Equity</span><strong id="apEquity">—</strong></div>
-        <div class="stat"><span>Realized P&amp;L</span><strong id="apRealized">—</strong></div>
-        <div class="stat"><span>Trades · win rate</span><strong id="apTrades">—</strong></div>
-        <div class="stat"><span>Open positions</span><strong id="apOpen">—</strong></div>
-        <div class="stat"><span>Evidence gate</span><strong id="apGate">—</strong></div>
-        <div class="stat"><span>Last training</span><strong id="apTrained">—</strong></div>
-        <div class="stat"><span>Last tick</span><strong id="apTick">—</strong></div>
-      </div>
-      <p class="trades-summary" id="apTradeSummary" hidden></p>
-      <ul class="trades" id="apTradeList"></ul>
-      <ul class="feed" id="apFeed" style="max-height:220px"></ul>
-    </section>
-
-    <section class="panel" id="accountPanel" style="margin-bottom:12px" hidden>
-      <h2>My account · verified · read-only</h2>
-      <p class="note" id="acStatus">Your real balances are published encrypted. Enter your board passphrase to open them on this device.</p>
-      <form class="ac-form" id="acForm" autocomplete="on">
-        <input type="text" name="username" value="metyu-board" autocomplete="username" hidden aria-hidden="true">
-        <input type="password" id="acPass" name="password" autocomplete="current-password" placeholder="Board passphrase" aria-label="Board passphrase" minlength="12" required>
-        <button class="btn" type="submit" id="acOpen">Unlock</button>
-      </form>
-      <div id="acBody" hidden>
-        <div class="stats">
-          <div class="stat"><span>Total (USD)</span><strong id="acTotal">—</strong></div>
-          <div class="stat"><span>Exchange</span><strong id="acProvider">—</strong></div>
-          <div class="stat"><span>Key</span><strong id="acKey">—</strong></div>
-          <div class="stat"><span>Verified</span><strong id="acVerified">—</strong></div>
-        </div>
-        <ul class="trades" id="acBalances"></ul>
-        <p class="note" id="acApprovals" hidden></p>
-        <button class="btn secondary" type="button" id="acLock" style="margin-top:8px">Lock</button>
-      </div>
-    </section>
-
     <section class="term simple" id="terminal" aria-label="Metyu terminal">
       <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span class="term-bar-title">Metyu terminal</span><label class="term-source">source <select id="tSource" aria-label="Terminal source"><option value="auto">auto</option></select></label><span class="term-chip on" id="tMode">paper · demo</span></div>
       <div class="term-head">
@@ -392,6 +296,107 @@
         </div>
       </div>
     </section>
+    <button type="button" class="layout-toggle" id="layoutBtn" aria-expanded="false">All panels ▾</button>
+    <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
+    <p class="board-extra disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No orders and no keys that can move money: a wallet or exchange account is only ever read. Live data are public Coinbase and Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Coinbase &amp; Polymarket prices · wallet read-only · no orders · not financial advice</span></p>
+
+    <section class="board-extra panel" id="walletPanel" style="margin-bottom:12px">
+      <h2>My Solana wallet <span class="kind real">REAL · READ-ONLY</span></h2>
+      <p class="note" id="wStatus">Paste your wallet's PUBLIC address (for example from the Fomo app: Deposit → Solana). It stays on this device only; balances are read directly from the Solana network. Never paste a seed phrase or a private key.</p>
+      <form class="ac-form" id="wForm" autocomplete="off">
+        <input type="text" id="wAddress" placeholder="Solana address (32-44 characters)" aria-label="Solana wallet address" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" required>
+        <button class="btn" type="submit" id="wLink">Link</button>
+      </form>
+      <div id="wBody" hidden>
+        <div class="stats">
+          <div class="stat"><span>Total (USD)</span><strong id="wTotal">—</strong></div>
+          <div class="stat"><span>Wallet</span><strong id="wShort">—</strong></div>
+          <div class="stat"><span>Access</span><strong class="positive">address only ✓</strong></div>
+        </div>
+        <p class="w-verify" id="wVerify"><span id="wVerified">not verified yet</span><span>source: Solana blockchain (Jupiter, Solana RPC)</span><a id="wExplorer" target="_blank" rel="noopener noreferrer" href="#">Verify on Solscan ↗</a></p>
+        <p class="note negative" id="wWarn" hidden></p>
+        <p class="note" id="wApprovals" hidden></p>
+        <button class="btn secondary" type="button" id="wRefresh" style="margin-top:8px">Refresh</button>
+        <button class="btn secondary" type="button" id="wUnlink" style="margin-top:8px">Unlink</button>
+      </div>
+    </section>
+
+    <section class="board-extra panel" id="exchangePanel" style="margin-bottom:12px" hidden>
+      <h2>Crypto agent · 31 coins <span class="kind virtual">VIRTUAL · 24/7</span></h2>
+      <p class="note" id="exStatus">Checking for the exchange autopilot (node exchange-autopilot.js)…</p>
+      <p class="trades-summary" id="exForward" hidden></p>
+      <div class="stats" id="exStats" hidden>
+        <div class="stat"><span>Equity</span><strong id="exEquity">—</strong></div>
+        <div class="stat"><span>Realized P&amp;L</span><strong id="exRealized">—</strong></div>
+        <div class="stat"><span>Trades · win rate</span><strong id="exTrades">—</strong></div>
+        <div class="stat"><span>Open positions</span><strong id="exOpen">—</strong></div>
+        <div class="stat"><span>Evidence gates</span><strong id="exGates">—</strong></div>
+        <div class="stat"><span>Last tick</span><strong id="exTick">—</strong></div>
+      </div>
+      <div class="ex-head" id="exChartHead" hidden>
+        <select id="exSymbol" aria-label="Coin"></select>
+        <span class="ex-price" id="exPrice"></span>
+        <span class="badge" id="exTrend"></span>
+      </div>
+      <svg class="ex-chart" id="exChart" viewBox="0 0 600 240" role="img" aria-label="Hourly chart" hidden></svg>
+      <div class="ex-legend" id="exLegend" hidden>
+        <span><i style="background:var(--amber)"></i>EMA20</span><span><i style="background:var(--blue)"></i>EMA50</span>
+        <span><i style="background:var(--muted)"></i>support / resistance</span><span><i style="background:var(--red)"></i>stop · liquidation</span><span><i style="background:var(--green)"></i>target</span>
+      </div>
+      <ul class="ex-notes" id="exNotes"></ul>
+      <h3 id="exLiveHead">Real money: locked</h3>
+      <ul class="lock-list" id="exLive"></ul>
+      <p class="note" id="exLiveLimits"></p>
+      <p class="note" id="exShadow" hidden></p>
+      <h3>Open positions</h3>
+      <ul class="trades" id="exPositions"></ul>
+      <h3>Strategies · evidence gate (out of sample, after costs)</h3>
+      <ul class="ex-strats" id="exStrategies"></ul>
+      <h3>Last trades</h3>
+      <p class="trades-summary" id="exTradeSummary">No closed trades yet.</p>
+      <ul class="trades" id="exTradeList"></ul>
+      <ul class="feed" id="exFeed" style="max-height:220px"></ul>
+    </section>
+
+    <section class="board-extra panel" id="autopilotPanel" style="margin-bottom:12px" hidden>
+      <h2>Prediction-market agent · Polymarket <span class="kind virtual">VIRTUAL · 24/7</span></h2>
+      <p class="note" id="apStatus">Checking for a running autopilot (node autopilot.js)…</p>
+      <p class="trades-summary" id="apForward" hidden></p>
+      <div class="stats" id="apStats" hidden>
+        <div class="stat"><span>Equity</span><strong id="apEquity">—</strong></div>
+        <div class="stat"><span>Realized P&amp;L</span><strong id="apRealized">—</strong></div>
+        <div class="stat"><span>Trades · win rate</span><strong id="apTrades">—</strong></div>
+        <div class="stat"><span>Open positions</span><strong id="apOpen">—</strong></div>
+        <div class="stat"><span>Evidence gate</span><strong id="apGate">—</strong></div>
+        <div class="stat"><span>Last training</span><strong id="apTrained">—</strong></div>
+        <div class="stat"><span>Last tick</span><strong id="apTick">—</strong></div>
+      </div>
+      <p class="trades-summary" id="apTradeSummary" hidden></p>
+      <ul class="trades" id="apTradeList"></ul>
+      <ul class="feed" id="apFeed" style="max-height:220px"></ul>
+    </section>
+
+    <section class="board-extra panel" id="accountPanel" style="margin-bottom:12px" hidden>
+      <h2>My account · verified · read-only</h2>
+      <p class="note" id="acStatus">Your real balances are published encrypted. Enter your board passphrase to open them on this device.</p>
+      <form class="ac-form" id="acForm" autocomplete="on">
+        <input type="text" name="username" value="metyu-board" autocomplete="username" hidden aria-hidden="true">
+        <input type="password" id="acPass" name="password" autocomplete="current-password" placeholder="Board passphrase" aria-label="Board passphrase" minlength="12" required>
+        <button class="btn" type="submit" id="acOpen">Unlock</button>
+      </form>
+      <div id="acBody" hidden>
+        <div class="stats">
+          <div class="stat"><span>Total (USD)</span><strong id="acTotal">—</strong></div>
+          <div class="stat"><span>Exchange</span><strong id="acProvider">—</strong></div>
+          <div class="stat"><span>Key</span><strong id="acKey">—</strong></div>
+          <div class="stat"><span>Verified</span><strong id="acVerified">—</strong></div>
+        </div>
+        <ul class="trades" id="acBalances"></ul>
+        <p class="note" id="acApprovals" hidden></p>
+        <button class="btn secondary" type="button" id="acLock" style="margin-top:8px">Lock</button>
+      </div>
+    </section>
+
 
     <div class="stats" id="demoStats">
       <div class="stat"><span>Equity</span><strong id="sEquity">$10,000</strong></div>
@@ -403,9 +408,9 @@
       <div class="stat optional"><span>Markets resolved</span><strong id="sResolved">0</strong></div>
     </div>
 
-    <h2 class="group-title" id="simulatorTitle">Simulator · demo markets and manual trading <span class="kind demo">DEMO</span></h2>
+    <h2 class="board-extra group-title" id="simulatorTitle">Simulator · demo markets and manual trading <span class="kind demo">DEMO</span></h2>
 
-    <section class="panel" id="demoControls">
+    <section class="board-extra panel" id="demoControls">
       <div class="controls primary">
         <div class="field"><label for="mode">Mode</label><select id="mode"><option value="demo" selected>Demo · simulated live markets</option><option value="live">Live · Polymarket prices (read-only)</option></select></div>
         <button class="btn" id="startBtn">Start board</button>
@@ -430,13 +435,13 @@
       </details>
     </section>
 
-    <section class="panel" id="lastTradesPanel" style="margin-bottom:12px">
+    <section class="board-extra panel" id="lastTradesPanel" style="margin-bottom:12px">
       <h2>Last 10 trades · P&amp;L</h2>
       <p class="trades-summary" id="lastTradesSummary">No closed trades yet.</p>
       <ul class="trades" id="lastTrades"></ul>
     </section>
 
-    <div class="layout">
+    <div class="layout board-extra">
       <section><div class="board" id="board"></div></section>
       <aside>
         <section class="panel equity"><h2>Equity curve</h2><svg viewBox="0 0 300 90" preserveAspectRatio="none"><polyline id="equityLine" points=""/></svg><p class="note" id="statusNote">Press Start board.</p></section>
@@ -1986,6 +1991,18 @@
       $('#speed').addEventListener('input', () => { $('#speedOut').textContent = `${$('#speed').value}x`; if (running && mode() === 'demo') schedule(); });
       window.addEventListener('pagehide', save);
 
+      // Simple board (overview + terminal) by default; "All panels" shows the rest. Remembered.
+      const LAYOUT_KEY = 'metyuBoard.layout';
+      function setLayout(layout) {
+        const compact = layout !== 'full';
+        document.body.classList.toggle('compact', compact);
+        $('#layoutBtn').textContent = compact ? 'All panels ▾' : 'Simple view ▴';
+        $('#layoutBtn').setAttribute('aria-expanded', String(!compact));
+        try { localStorage.setItem(LAYOUT_KEY, compact ? 'compact' : 'full'); } catch (error) { /* ignore */ }
+        if (compact && $('#terminal').hidden) setView('terminal');   // the simple board always shows the terminal
+      }
+      $('#layoutBtn').addEventListener('click', () => setLayout(document.body.classList.contains('compact') ? 'full' : 'compact'));
+
       // Terminal or cards: the same engine, two views. The choice is remembered.
       const VIEW_KEY = 'metyuBoard.view';
       function setView(view) {
@@ -2044,6 +2061,9 @@
       let savedView = 'terminal';
       try { savedView = localStorage.getItem(VIEW_KEY) || 'terminal'; } catch (error) { /* ignore */ }
       setView(savedView);
+      let savedLayout = 'compact';
+      try { savedLayout = localStorage.getItem(LAYOUT_KEY) || 'compact'; } catch (error) { /* ignore */ }
+      setLayout(savedLayout);
 
       let wasRunning = false;
       try { wasRunning = localStorage.getItem(RUNNING_KEY) === '1'; } catch (error) { /* ignore */ }
