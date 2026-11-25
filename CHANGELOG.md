@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.12.1: the real-money architecture (design only)
+
+- `docs/LIVE-TRADING-ARCHITECTURE.md`: how real trading through Fomo would work, in three stages. Stage 1: order tickets on the board, placed by hand in Fomo and reconciled read-only, with no keys. Stage 2: supervised automation on a dedicated Hyperliquid account, with a trade-only, expiring agent key on the owner's own machine and a separate, reviewed order adapter. Stage 3: scale. It lists the exit criteria for each stage and the decisions only the owner can make. Nothing is built; no order code.
+
 ## 2.12.0: link the Fomo perps account on the board
 
 - As the owner asked, the perps account can be linked **on the Live Board**, without a GitHub secret, just like the Solana wallet.
