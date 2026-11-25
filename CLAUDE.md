@@ -45,7 +45,7 @@ npm run test:e2e         # Playwright, iPhone and desktop (~42); slow, run it la
 - **Board changes:** check them at the GitHub Pages URL on an iPhone 13 viewport. Expect 0 failed requests and no horizontal scroll.
 
 ## Real-money plan
-See `docs/LIVE-TRADING-ARCHITECTURE.md` (design only: stage 1 order tickets executed by hand in Fomo, stage 2 a trade-only agent on the owner's machine). Nothing there is built without 6/6 and the owner's separate approval.
+See `docs/LIVE-TRADING-ARCHITECTURE.md` (design only; the owner chose no manual entry: stage 1 is supervised automation on a dedicated Hyperliquid account with a trade-only, expiring agent key on the owner's machine or a VPS; §3 lists the steps in order). Steps that only compute (tickets, the board panel, the approval record) may be built; the order adapter waits for 6/6 and the owner's separate approval.
 
 ## Daily routine
 See `docs/STEWARD.md`.

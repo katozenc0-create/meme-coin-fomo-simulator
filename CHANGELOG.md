@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.13.1: the real-money plan without manual entry
+
+- As the owner chose, `docs/LIVE-TRADING-ARCHITECTURE.md` drops the manual-entry stage. Stage 1 is now supervised automation on a dedicated Hyperliquid account: one trade-only, expiring agent key on the owner's computer or a small VPS, and a separate, reviewed order adapter that enforces `LIVE_LIMITS` itself. Stage 2 is scaling, on a new approval.
+- §3 lists the 10 steps in order, saying who does each and what it needs. Steps 4–6 (tickets, the board panel, the approval record) only compute and can be built now; the adapter waits for 6/6 and the owner's separate approval.
+
 ## 2.13.0: research: the funding carry passes the gate, but it is small
 
 - `research/funding-carry.js` reads 2 years of Hyperliquid's real hourly funding for 30 coins and tests a delta-neutral carry: hold the coin, short its perp, collect the funding. Costs are expensive on purpose (0.59% per round trip).
