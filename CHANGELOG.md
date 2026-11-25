@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.11.0: Fomo integration: the perps account, read-only
+
+- Fomo has no public trading API. Its perps trade on Hyperliquid, from the owner's account with a public 0x address. Metyu now **reads** that account, as it reads the Solana wallet: by its public address, with no key and no signing.
+- **`account-sync.js`:**
+  - With the new secret `HYPERLIQUID_ADDRESS`, `hyperliquidAccount` reads `clearinghouseState` (account value, withdrawable, open positions with side, size, entry, P&L, leverage and liquidation), `spotClearinghouseState` (USDC) and `extraAgents` (API agents allowed to trade for the account).
+  - It uses only `POST /info`.
+  - The perps account rides along with the Solana provider, or stands alone.
+- **Private by default:** the detail is sealed with the board passphrase. `account-public.json` gets only counts (`perps: { linked, positions, agents }`). The address is redacted from every log, and a 64-hex private key is refused as an address.
+- **Board:** the unlocked account panel shows a "Fomo perps (Hyperliquid account)" block: account value, withdrawable, spot USDC, each position, and a warning when API agents may trade for the account.
+- Still no order code. Metyu cannot place a trade in Fomo or on Hyperliquid.
+
 ## 2.10.0: the venue: Hyperliquid perps (read-only)
 
 - The owner chose the short-selling path, on a venue reachable from where they live (not Turkey: Turkish rules ban crypto derivatives and shorts for residents). Hyperliquid perps are the venue the Fomo app's perps route to, and they publish their data openly.

@@ -104,6 +104,22 @@ The agent only **reads** Hyperliquid, through its public `POST /info` endpoint: 
 
 There is still no order code, no key and no signing. A real order needs the full go-live checklist below, and on Hyperliquid also an **API wallet** with trading rights only. It is never the owner's main wallet or its seed phrase.
 
+### Linking the Fomo perps account (read-only)
+
+The Fomo app trades perps on Hyperliquid, from an account with a **public 0x address**. Add that address as the GitHub secret `HYPERLIQUID_ADDRESS`. The secret keeps the address private; the address itself cannot sign anything.
+
+The account sync then reads, through `POST /info` only:
+- margin and account value;
+- open positions;
+- spot USDC;
+- the **API agents approved to trade for the account**.
+
+The full detail is sealed with the board passphrase. Publicly, only counts are published: linked, the number of positions and the number of agents. No address, amount or coin is published.
+
+If an agent you did not approve appears, revoke it in the app. The Fomo app itself may use one.
+
+Never paste a private key, the Fomo recovery phrase or a Privy export anywhere. Metyu needs only the public address.
+
 ### The preflight (`scripts/preflight-live.js`)
 
 One command checks what a real-money release would need, against the code and the published state. It sends nothing.

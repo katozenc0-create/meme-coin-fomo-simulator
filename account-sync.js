@@ -14,6 +14,8 @@
 // Solana wallet (e.g. the Fomo app):    SOLANA_WALLET_ADDRESS [, SOLANA_RPC_URL]
 //   Only the PUBLIC address: balances are public on-chain data; an address cannot sign, so it can
 //   never move funds. Never give Metyu (or anyone) a seed phrase or a private key.
+// Fomo perps (Hyperliquid account):      HYPERLIQUID_ADDRESS (the PUBLIC 0x address)
+//   Read through Hyperliquid's public POST /info only: margin, positions, approved API agents.
 // Always:                               METYU_BOARD_PASSPHRASE (12+ characters)
 //
 //   node account-sync.js --out data/account.enc.json --public-out data/account-public.json
@@ -25,7 +27,7 @@ const Vault = require('./metyu-vault.js');
 
 const STABLE = new Set(['USD', 'USDC', 'USDT', 'DAI', 'PYUSD', 'FDUSD', 'TUSD', 'USDP']);
 // The wallet address is not a secret, but it links this repository to the owner's funds: kept private.
-const SECRET_ENV = ['COINBASE_API_KEY_NAME', 'COINBASE_API_PRIVATE_KEY', 'BINANCE_API_KEY', 'BINANCE_API_SECRET', 'METYU_BOARD_PASSPHRASE', 'SOLANA_WALLET_ADDRESS'];
+const SECRET_ENV = ['COINBASE_API_KEY_NAME', 'COINBASE_API_PRIVATE_KEY', 'BINANCE_API_KEY', 'BINANCE_API_SECRET', 'METYU_BOARD_PASSPHRASE', 'SOLANA_WALLET_ADDRESS', 'HYPERLIQUID_ADDRESS'];
 
 class RefusedKeyError extends Error {}
 
@@ -145,6 +147,50 @@ function solanaProvider({ address, rpcUrl, balancesUrl, priceUrl = Wallet.DEFAUL
   };
 }
 
+// ---------- Hyperliquid: the Fomo app's perps account, read by its public address ----------
+const HYPERLIQUID_INFO = 'https://api.hyperliquid.xyz/info';
+const HL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+/**
+ * The perps account behind the Fomo app: margin, open positions and the API agents approved to
+ * trade for it, read through the public POST /info endpoint with the public address. An address
+ * cannot sign; nothing here can move funds. The order endpoint (/exchange) is never called.
+ */
+async function hyperliquidAccount({ address, fetchImpl = fetch, timeoutMs = 15000 }) {
+  if (!HL_ADDRESS.test(String(address || ''))) throw new Error('HYPERLIQUID_ADDRESS is not a Hyperliquid (0x, 40 hex) address. Use the PUBLIC address, never a private key or a seed phrase.');
+  const info = async body => {
+    const response = await fetchImpl(HYPERLIQUID_INFO, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ ...body, user: address }), signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) throw new Error(`Hyperliquid HTTP ${response.status}`);
+    return response.json();
+  };
+  const num = value => (Number.isFinite(Number(value)) ? Number(value) : 0);
+  const state = await info({ type: 'clearinghouseState' });
+  if (!state || !state.marginSummary) throw new Error('unexpected Hyperliquid answer');
+  let spot = null;
+  try { spot = await info({ type: 'spotClearinghouseState' }); } catch (error) { spot = null; }
+  let agents = null;
+  try { agents = await info({ type: 'extraAgents' }); } catch (error) { agents = null; }
+  const positions = (state.assetPositions || []).map(entry => entry && entry.position).filter(Boolean).map(position => ({
+    coin: String(position.coin), side: num(position.szi) < 0 ? 'SHORT' : 'LONG', size: Math.abs(num(position.szi)), entry: num(position.entryPx),
+    value: num(position.positionValue), pnl: num(position.unrealizedPnl), leverage: position.leverage ? num(position.leverage.value) : null,
+    liquidation: position.liquidationPx === null || position.liquidationPx === undefined ? null : num(position.liquidationPx)
+  })).filter(position => position.size > 0);
+  const spotUsdc = spot && Array.isArray(spot.balances) ? spot.balances.filter(b => b.coin === 'USDC').reduce((sum, b) => sum + num(b.total), 0) : 0;
+  return {
+    accountValue: num(state.marginSummary.accountValue), withdrawable: num(state.withdrawable), marginUsed: num(state.marginSummary.totalMarginUsed),
+    spotUsdc, positions,
+    agents: Array.isArray(agents) ? agents.map(agent => ({ name: String(agent.name || ''), address: String(agent.address || ''), validUntil: agent.validUntil || null })) : null
+  };
+}
+function hyperliquidProvider({ address, fetchImpl = fetch }) {
+  if (!HL_ADDRESS.test(String(address || ''))) throw new Error('HYPERLIQUID_ADDRESS is not a Hyperliquid (0x, 40 hex) address. Use the PUBLIC address, never a private key or a seed phrase.');
+  return {
+    name: 'hyperliquid',
+    async permissions() { return { canView: true, canTrade: false, canWithdraw: false, canTransfer: false, raw: { type: 'public address', network: 'hyperliquid', canSign: false } }; },
+    async balances() { return []; },
+    perps: () => hyperliquidAccount({ address, fetchImpl })
+  };
+}
+
 /** The one rule that matters: a key that can move money is refused before anything else happens. */
 function assertViewOnly(permissions) {
   const problems = [];
@@ -178,10 +224,17 @@ async function priceBalances(balances, getJson) {
 }
 
 function providerFromEnv(env = process.env, { fetchImpl = fetch } = {}) {
-  if (env.COINBASE_API_KEY_NAME && env.COINBASE_API_PRIVATE_KEY) return coinbaseProvider({ keyName: env.COINBASE_API_KEY_NAME, privateKey: env.COINBASE_API_PRIVATE_KEY, fetchImpl });
-  if (env.BINANCE_API_KEY && env.BINANCE_API_SECRET) return binanceProvider({ apiKey: env.BINANCE_API_KEY, apiSecret: env.BINANCE_API_SECRET, baseUrl: env.BINANCE_BASE_URL || undefined, fetchImpl });
-  if (env.SOLANA_WALLET_ADDRESS) return solanaProvider({ address: env.SOLANA_WALLET_ADDRESS, rpcUrl: env.SOLANA_RPC_URL || undefined, fetchImpl });
-  return null;
+  let provider = null;
+  if (env.COINBASE_API_KEY_NAME && env.COINBASE_API_PRIVATE_KEY) provider = coinbaseProvider({ keyName: env.COINBASE_API_KEY_NAME, privateKey: env.COINBASE_API_PRIVATE_KEY, fetchImpl });
+  else if (env.BINANCE_API_KEY && env.BINANCE_API_SECRET) provider = binanceProvider({ apiKey: env.BINANCE_API_KEY, apiSecret: env.BINANCE_API_SECRET, baseUrl: env.BINANCE_BASE_URL || undefined, fetchImpl });
+  else if (env.SOLANA_WALLET_ADDRESS) provider = solanaProvider({ address: env.SOLANA_WALLET_ADDRESS, rpcUrl: env.SOLANA_RPC_URL || undefined, fetchImpl });
+  // The Fomo app's perps account rides along with any provider, or stands alone.
+  if (env.HYPERLIQUID_ADDRESS) {
+    const perps = hyperliquidProvider({ address: env.HYPERLIQUID_ADDRESS, fetchImpl });
+    if (!provider) return perps;
+    provider.perps = perps.perps;
+  }
+  return provider;
 }
 
 /**
@@ -202,13 +255,23 @@ async function syncAccount({ provider, passphrase, getJson, now = () => Date.now
     try { approvals = await provider.approvals(); } catch (error) { approvalsError = error.message; }
   }
   const security = { approvals: approvals ? approvals.length : null, checkedAt: approvals ? verifiedAt : null, ...(approvalsError ? { error: 'approval check unavailable' } : {}) };
+  // The Fomo perps account (Hyperliquid): sealed in full; publicly only counts, never an address or an amount.
+  let perps = null;
+  let perpsPublic = null;
+  if (typeof provider.perps === 'function') {
+    try {
+      perps = await provider.perps();
+      perpsPublic = { linked: true, positions: perps.positions.length, agents: perps.agents ? perps.agents.length : null, checkedAt: verifiedAt };
+    } catch (error) { perpsPublic = { linked: false, error: 'perps account unavailable' }; }
+  }
+  const perpsUsd = perps ? perps.accountValue + perps.spotUsdc : 0;
   const snapshot = {
     kind: 'account', provider: provider.name, verifiedAt, viewOnly: true, permissions: permissions.raw,
-    balances, totalUsd: balances.reduce((sum, b) => sum + (b.usd || 0), 0), unpriced: balances.filter(b => b.usd === null).map(b => b.asset),
-    ...(approvals ? { approvals } : {}), security
+    balances, totalUsd: balances.reduce((sum, b) => sum + (b.usd || 0), 0) + perpsUsd, unpriced: balances.filter(b => b.usd === null).map(b => b.asset),
+    ...(approvals ? { approvals } : {}), ...(perps ? { perps } : {}), security
   };
   const box = await Vault.seal(snapshot, passphrase, { label: 'metyu-account' });
-  return { box, snapshot, publicInfo: { kind: 'account-public', linked: true, provider: provider.name, verifiedAt, viewOnly: true, security } };
+  return { box, snapshot, publicInfo: { kind: 'account-public', linked: true, provider: provider.name, verifiedAt, viewOnly: true, security, ...(perpsPublic ? { perps: perpsPublic } : {}) } };
 }
 
 function writeJson(file, value) {
@@ -265,4 +328,4 @@ async function main(env = process.env, argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { redact, parseCoinbaseKey, coinbaseJwt, coinbaseProvider, binanceSignature, binanceProvider, solanaProvider, SOLANA_MINTS, assertViewOnly, RefusedKeyError, priceBalances, providerFromEnv, syncAccount, parseArgs, main };
+module.exports = { hyperliquidAccount, hyperliquidProvider, HYPERLIQUID_INFO, redact, parseCoinbaseKey, coinbaseJwt, coinbaseProvider, binanceSignature, binanceProvider, solanaProvider, SOLANA_MINTS, assertViewOnly, RefusedKeyError, priceBalances, providerFromEnv, syncAccount, parseArgs, main };
