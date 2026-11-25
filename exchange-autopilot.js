@@ -126,7 +126,8 @@ function realMoneyPath({ live = null, model = null, tickets = [], approval = nul
   const openGate = gates.some(s => s.gate && s.gate.open && !s.demoted);
   const steps = [
     { n: 1, text: 'Design (docs/LIVE-TRADING-ARCHITECTURE.md)', state: 'done' },
-    { n: 2, text: 'Owner: perps are legal where you live', state: 'owner' },
+    // The owner chose to skip this check (25 Nov 2026): legality stays the owner's own responsibility.
+    { n: 2, text: 'Legality of perps where you live: skipped by the owner (the owner\'s responsibility)', state: 'skipped' },
     { n: 3, text: 'Owner: choose the host (own computer or a small VPS)', state: 'owner' },
     { n: 4, text: 'Tickets: the orders that would be sent (computed only)', state: 'done' },
     { n: 5, text: 'Board panel for the tickets', state: 'done' },

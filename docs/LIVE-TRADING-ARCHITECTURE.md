@@ -77,7 +77,7 @@ Larger limits, and any leverage, only with the owner's new, explicit approval af
 | # | Step | Who | Needs |
 |---|---|---|---|
 | 1 | This design | Claude | nothing (done) |
-| 2 | Check that perps are legal where the owner lives | owner | — |
+| 2 | Check that perps are legal where the owner lives | owner | **skipped by the owner (25 Nov 2026)**: legality stays the owner's own responsibility |
 | 3 | Choose the host: own computer or a small VPS | owner | — |
 | 4 | `ticketOf(shadowOrder)` + tickets in the status (no sending) + tests | Claude | can be built now: it only computes |
 | 5 | Board: an "Orders that would be sent" panel from the tickets | Claude | step 4 |
