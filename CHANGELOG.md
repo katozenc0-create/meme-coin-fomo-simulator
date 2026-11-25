@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.12.0: link the Fomo perps account on the board
+
+- As the owner asked, the perps account can be linked **on the Live Board**, without a GitHub secret, just like the Solana wallet.
+  - Paste the public 0x address in the wallet panel ("Fomo perps account").
+  - It stays in that browser only (`localStorage`). The board reads Hyperliquid's public `POST /info` directly: account value, open positions, spot USDC, approved API agents.
+  - The overview shows a "Fomo perps" line next to the wallet.
+- **Shared code.** The address check and the reader moved to `metyu-wallet.js`, so the board and `account-sync.js` (the optional `HYPERLIQUID_ADDRESS` secret) use the same code.
+- **Safety:**
+  - a Solana address is refused with the reason;
+  - `looksLikeSecret` now also catches an EVM private key (64 hex), which any board field wipes at once with a loud warning;
+  - the address only ever goes to Hyperliquid;
+  - the order endpoint `/exchange` is never called (the preflight also guards this).
+- CSP `connect-src` adds `https://api.hyperliquid.xyz`. Service worker cache `metyu-shell-v10`.
+
 ## 2.11.1: a bad perps address never breaks the wallet link
 
 - The first `HYPERLIQUID_ADDRESS` value was refused as "not a 0x address" (the value itself is never shown). Because the refusal happened while choosing the provider, it also stopped the Solana wallet sync, and the account link went stale.

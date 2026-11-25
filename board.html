@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-74+7/PJ3QKZ0ETdm1HhR9nVzVsQfvDQoqFtfydbGMmQ=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-hFeMJTbCCsWDROFKjfjK9SJlAmjNwNnMTC/Vd9lM8fo=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -217,6 +217,7 @@
     <section class="panel overview" id="overview" aria-label="Metyu live overview" hidden>
       <div class="ov-head"><h2>Metyu · live overview</h2><span class="badge ov-fresh" id="ovFresh">—</span></div>
       <div class="ov-real" id="ovReal"><span><span class="kind real">REAL · READ-ONLY</span> Solana wallet</span><strong id="ovWallet">not linked</strong><span id="ovWalletSub">link a public address in the wallet panel</span></div>
+      <div class="ov-real" id="ovPerpsLine" hidden><span><span class="kind real">REAL · READ-ONLY</span> Fomo perps</span><strong id="ovPerps">—</strong><span id="ovPerpsSub"></span></div>
       <p class="ov-group">Virtual money · paper trading</p>
       <p class="note ov-market" id="ovMarket" hidden></p>
       <div class="stats ov-stats">
@@ -319,6 +320,24 @@
         <p class="note" id="wApprovals" hidden></p>
         <button class="btn secondary" type="button" id="wRefresh" style="margin-top:8px">Refresh</button>
         <button class="btn secondary" type="button" id="wUnlink" style="margin-top:8px">Unlink</button>
+      </div>
+      <h3 id="pHead">Fomo perps account <span class="kind real">REAL · READ-ONLY</span></h3>
+      <p class="note" id="pStatus">Paste the PUBLIC 0x address of your Fomo perps account (in the app: Deposit → Crypto, on an EVM network such as Arbitrum or Base). It stays on this device only; positions are read directly from Hyperliquid. Never paste a private key or a recovery phrase.</p>
+      <form class="ac-form" id="pForm" autocomplete="off">
+        <input type="text" id="pAddress" placeholder="0x… (42 characters)" aria-label="Perps account address" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" required>
+        <button class="btn" type="submit" id="pLink">Link</button>
+      </form>
+      <div id="pBody" hidden>
+        <div class="stats">
+          <div class="stat"><span>Account value</span><strong id="pValue">—</strong></div>
+          <div class="stat"><span>Open positions</span><strong id="pCount">—</strong></div>
+          <div class="stat"><span>Account</span><strong id="pShort">—</strong></div>
+        </div>
+        <p class="w-verify"><span id="pVerified">not read yet</span><span>source: Hyperliquid (public data)</span></p>
+        <p class="note" id="pAgents" hidden></p>
+        <ul class="trades" id="pPositions"></ul>
+        <button class="btn secondary" type="button" id="pRefresh" style="margin-top:8px">Refresh</button>
+        <button class="btn secondary" type="button" id="pUnlink" style="margin-top:8px">Unlink</button>
       </div>
     </section>
 
@@ -1346,6 +1365,92 @@
       });
       refreshWallet();
       setInterval(() => { if (walletAddress && !document.hidden) refreshWallet(); }, 120000);
+
+      // ---------- the Fomo perps account (Hyperliquid), read-only ----------
+      // Same rules as the wallet: the PUBLIC 0x address stays in this browser only; positions are read
+      // straight from Hyperliquid's public /info endpoint. Nothing can be signed or moved from here.
+      const PERPS_KEY = 'metyuBoard.perpsAddress';
+      let perpsAddress = null;
+      let perpsRead = null;      // { account, at } after a successful read
+      try { const stored = MetyuWallet.checkHyperliquidAddress(localStorage.getItem(PERPS_KEY)); perpsAddress = stored.address || null; } catch (error) { /* ignore */ }
+      const shortHex = address => `${address.slice(0, 6)}…${address.slice(-4)}`;
+      function showPerpsForm(message) {
+        perpsRead = null;
+        $('#pForm').hidden = false;
+        $('#pBody').hidden = true;
+        $('#pPositions').replaceChildren();
+        if (message) $('#pStatus').textContent = message;
+        renderPerpsLine();
+      }
+      function renderPerpsLine() {
+        $('#ovPerpsLine').hidden = !perpsAddress;
+        if (!perpsAddress) return;
+        if (!perpsRead) { $('#ovPerps').textContent = 'reading…'; $('#ovPerpsSub').textContent = `${shortHex(perpsAddress)} · reading Hyperliquid`; return; }
+        const account = perpsRead.account;
+        const pnl = account.positions.reduce((sum, position) => sum + position.pnl, 0);
+        $('#ovPerps').textContent = formatMoney(account.accountValue);
+        $('#ovPerpsSub').textContent = `${account.positions.length} open${account.positions.length ? ` · ${pnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(pnl))}` : ''} · ✓ read ${ago(Date.now() - perpsRead.at)} ago`;
+      }
+      async function refreshPerps() {
+        if (!perpsAddress) { showPerpsForm(); return; }
+        $('#pForm').hidden = true;
+        $('#pBody').hidden = false;
+        $('#pShort').textContent = shortHex(perpsAddress);
+        $('#pShort').title = perpsAddress;
+        $('#pStatus').textContent = 'Reading Hyperliquid…';
+        renderPerpsLine();
+        try {
+          const account = await MetyuWallet.hyperliquidAccount({ address: perpsAddress });
+          perpsRead = { account, at: Date.now() };
+          $('#pValue').textContent = formatMoney(account.accountValue);
+          $('#pCount').textContent = String(account.positions.length);
+          $('#pVerified').textContent = `✓ read at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} · withdrawable ${formatMoney(account.withdrawable)} · spot USDC ${formatMoney(account.spotUsdc)}`;
+          $('#pVerified').className = 'ok';
+          $('#pStatus').textContent = 'Linked on this device by its public address: Metyu reads the perps account and can never trade, sign or move funds. If the account value differs from the Perps balance in the app, this is not the right address.';
+          const agents = account.agents;
+          $('#pAgents').hidden = agents === null;
+          $('#pAgents').className = `note ${agents && agents.length ? 'negative' : 'sec-ok'}`;
+          $('#pAgents').textContent = agents === null ? '' : agents.length
+            ? `⚠ ${agents.length} API agent${agents.length === 1 ? '' : 's'} may trade for this account: ${agents.map(agent => `${agent.name || 'unnamed'} (${shortHex(agent.address)})`).join(', ')}. The Fomo app may use one; if you did not approve ${agents.length === 1 ? 'it' : 'them'}, revoke in the app.`
+            : '✓ No API agents approved: only you can trade this account.';
+          $('#pPositions').replaceChildren(...account.positions.map(position => {
+            const item = document.createElement('li');
+            const name = document.createElement('span');
+            name.className = 'market';
+            name.textContent = `${position.coin} ${position.side}${position.leverage ? ` ${position.leverage}x` : ''}`;
+            const value = document.createElement('span');
+            value.className = `pnl ${position.pnl > 0 ? 'positive' : position.pnl < 0 ? 'negative' : ''}`;
+            value.textContent = `${position.pnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(position.pnl))}`;
+            const detail = document.createElement('span');
+            detail.className = 'detail';
+            detail.textContent = `${position.size.toLocaleString(undefined, { maximumFractionDigits: 6 })} @ ${position.entry.toLocaleString()} · value ${formatMoney(position.value)}${position.liquidation ? ` · liq. ${position.liquidation.toLocaleString()}` : ''}`;
+            item.append(name, value, detail);
+            return item;
+          }));
+        } catch (error) {
+          $('#pStatus').textContent = `Could not read the perps account right now (${error.message}). It stays linked; try Refresh.`;
+          $('#pVerified').textContent = perpsRead ? `last read ${ago(Date.now() - perpsRead.at)} ago` : 'not read yet';
+          $('#pVerified').className = '';
+        }
+        renderPerpsLine();
+      }
+      $('#pForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const checked = MetyuWallet.checkHyperliquidAddress($('#pAddress').value);
+        $('#pAddress').value = '';
+        if (!checked.address) { showPerpsForm(`Not linked: ${checked.problem.hint}.`); return; }
+        perpsAddress = checked.address;
+        try { localStorage.setItem(PERPS_KEY, perpsAddress); } catch (error) { /* this session only */ }
+        refreshPerps();
+      });
+      $('#pRefresh').addEventListener('click', refreshPerps);
+      $('#pUnlink').addEventListener('click', () => {
+        perpsAddress = null;
+        try { localStorage.removeItem(PERPS_KEY); } catch (error) { /* ignore */ }
+        showPerpsForm('Unlinked: the address was removed from this device.');
+      });
+      refreshPerps();
+      setInterval(() => { if (perpsAddress && !document.hidden) refreshPerps(); }, 60000);
 
       // ---------- render ----------
       function spark(values, cls) {
