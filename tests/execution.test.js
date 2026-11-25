@@ -106,3 +106,78 @@ test('execution: the agent samples a few books per tick, in turn, and reports th
   await off.tick();
   assert.ok(!quiet.some(u => u.includes('/book')));
 });
+
+test('venue: Hyperliquid perps books and funding are parsed; coins it does not list are known', () => {
+  const hl = X.VENUES.hyperliquid;
+  assert.equal(X.venueCoin(hl, 'BTC-USD'), 'BTC');
+  assert.equal(X.venueCoin(hl, 'PEPE-USD'), 'kPEPE', 'thousand-unit contract');
+  assert.equal(X.venueCoin(hl, 'QNT-USD'), null, 'not listed');
+  assert.equal(X.venueCoin(X.VENUES.coinbase, 'QNT-USD'), 'QNT-USD');
+  const book = X.parseHyperliquidBook({ coin: 'BTC', levels: [[{ px: '99.9', sz: '2', n: 1 }, { px: '99.8', sz: '1', n: 1 }], [{ px: '100.1', sz: '3', n: 2 }]] });
+  assert.deepEqual(book, { bids: [[99.9, 2], [99.8, 1]], asks: [[100.1, 3]] });
+  assert.throws(() => X.parseHyperliquidBook({ levels: [[], []] }), /empty or crossed/);
+  const rates = X.parseHyperliquidFunding([{ universe: [{ name: 'BTC' }, { name: 'OLD', isDelisted: true }, { name: 'ETH' }] }, [{ funding: '0.0000125' }, { funding: '0.01' }, { funding: '-0.00002' }]]);
+  assert.deepEqual(rates, { BTC: .0000125, ETH: -.00002 });
+  assert.throws(() => X.parseHyperliquidFunding({ error: 'x' }), /unexpected Hyperliquid answer/);
+});
+
+test('venue: measured funding raises the funding cost (either sign), never lowers it', () => {
+  const n = X.EXECUTION.minSamples;
+  const with8h = rate => X.costsFor('AAA-USD', { 'AAA-USD': { funding: Array.from({ length: n }, () => rate) } });
+  assert.equal(with8h(.0000125).fundingPer8h, X.COSTS.fundingPer8h, '0.01% per 8 h: the floor');
+  close(with8h(.0000267).fundingPer8h, .0000267 * 8, 1e-15);
+  close(with8h(-.00004).fundingPer8h, .00004 * 8, 1e-15, 'paid by shorts when negative: assumed ours either way');
+  assert.equal(with8h(-.0000001).fundingPer8h, X.COSTS.fundingPer8h, 'received funding is never credited');
+  assert.equal(with8h(.01).fundingPer8h, X.EXECUTION.maxFundingPer8h, 'capped');
+  assert.equal(X.costsFor('AAA-USD', { 'AAA-USD': { funding: [.001] } }), X.COSTS, 'too few samples');
+});
+
+test('venue: on Hyperliquid the agent reads funding once per tick and books in turn, skipping unlisted coins', async () => {
+  let clock = Date.parse('2026-11-25T10:07:00Z');
+  const posts = [];
+  const getJson = async (url, body) => {
+    if (body !== undefined) {
+      assert.equal(url, 'https://api.hyperliquid.xyz/info', 'only the read-only info endpoint');
+      posts.push(body);
+      if (body.type === 'metaAndAssetCtxs') return [{ universe: [{ name: 'BTC' }, { name: 'ETH' }] }, [{ funding: '0.00004' }, { funding: '0.0000125' }]];
+      if (body.type === 'l2Book') return { levels: [[{ px: '99.99', sz: '1000' }], [{ px: '100.01', sz: '1000' }]] };
+      throw new Error('unexpected body');
+    }
+    const u = new URL(url);
+    if (u.pathname.endsWith('/book')) throw new Error('no Coinbase books on the perps venue');
+    const s = Date.parse(u.searchParams.get('start'));
+    const e = Date.parse(u.searchParams.get('end'));
+    const step = Number(u.searchParams.get('granularity')) * 1000;
+    const rows = [];
+    for (let t = Math.floor(s / step) * step; t < e && t + step <= clock; t += step) rows.push([t / 1000, 99, 101, 100, 100 + Math.sin(t / 3.6e6), 100]);
+    return rows.reverse();
+  };
+  const state = freshState();
+  state.execution = { 'BTC-USD': { samples: [{ at: 'old', halfSpread: 0, slippage: .5, live: 0 }] } };   // from another venue
+  const pilot = createExchangeAutopilot({ getJson, now: () => clock, state, options: { symbols: ['BTC-USD', 'QNT-USD', 'ETH-USD'], trainBars: 600, execProbes: 2, venue: 'hyperliquid' } });
+  for (let k = 0; k < 7; k += 1) { await pilot.tick(); clock += 15 * 60000; }
+  assert.equal(state.executionVenue, 'hyperliquid');
+  assert.equal(posts.filter(b => b.type === 'metaAndAssetCtxs').length, 7, 'funding once per tick');
+  const books = posts.filter(b => b.type === 'l2Book').map(b => b.coin);
+  assert.equal(books.length, 14);
+  assert.ok(!books.includes('QNT'), 'an unlisted coin is never asked for');
+  assert.ok(!state.execution['BTC-USD'].samples.some(x => x.at === 'old'), 'samples from another venue are dropped');
+  const report = executionOf(state);
+  assert.equal(report.venue, 'hyperliquid');
+  assert.deepEqual(report.unlisted.includes('QNT-USD'), true);
+  assert.equal(report.coins['BTC-USD'].fundingSamples, 7);
+  close(report.coins['BTC-USD'].fundingPer8h, .00004 * 8, 1e-15);
+  assert.equal(report.coins['ETH-USD'].fundingPer8h, X.COSTS.fundingPer8h);
+});
+
+test('venue: the CLI takes --venue (unknown names fall back to Coinbase); the transport POSTs a body', async () => {
+  const { parseArgs, makeGetJson } = require('../exchange-autopilot.js');
+  assert.equal(parseArgs(['--venue', 'hyperliquid']).venue, 'hyperliquid');
+  const seen = [];
+  const getJson = makeGetJson({ fetchImpl: async (url, request) => { seen.push({ url, request }); return { ok: true, json: async () => ({ ok: 1 }) }; } });
+  await getJson('https://api.hyperliquid.xyz/info', { type: 'l2Book', coin: 'BTC' });
+  await getJson('https://api.exchange.coinbase.com/products/BTC-USD/ticker');
+  assert.equal(seen[0].request.method, 'POST');
+  assert.equal(seen[0].request.body, '{"type":"l2Book","coin":"BTC"}');
+  assert.equal(seen[1].request.method, undefined, 'a plain read is a GET');
+});

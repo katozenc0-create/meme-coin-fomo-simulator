@@ -26,7 +26,7 @@ const HOUR = 3600000;
 // Calls that would place, cancel or sign something with real money. None may exist in Metyu.
 const ORDER_PATTERNS = [
   /\/orders\b/, /\bplaceOrder\b/, /\bcreateOrder\b/, /\bsubmitOrder\b/, /\bAddOrder\b/, /\bCancelOrder\b/,
-  /\/api\/v3\/order/, /\bsendTransaction\b/, /\bsignTransaction\b/, /\bsignAndSendTransaction\b/, /\bwithdraw\s*\(/i
+  /\/api\/v3\/order/, /hyperliquid\.xyz\/exchange/, /\bsendTransaction\b/, /\bsignTransaction\b/, /\bsignAndSendTransaction\b/, /\bwithdraw\s*\(/i
 ];
 const SECRET_PATTERNS = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'a PEM private key'],
@@ -80,13 +80,21 @@ function readinessChecks({ exchange, account = null, now = Date.now() }) {
   const measured = execution ? Object.values(execution.coins).filter(c => c.samples >= execution.minSamples).length : 0;
   const coins = exchange && exchange.model && exchange.model.symbols ? exchange.model.symbols.length : X.SYMBOLS.length;
   checks.push({ id: 'costs-measured', ok: measured >= coins, hard: false, text: `order-book costs measured for ${measured}/${coins} coins` });
-  // Spot reality: a spot account can only buy and sell what it holds; a SHORT needs futures or margin.
+  // Could the trades be placed at all? On spot, a SHORT needs futures or margin; on a perps venue
+  // (the owner's choice), a trade needs the venue to list the coin.
   const trades = (exchange && exchange.history) || [];
-  const shorts = trades.filter(t => t.side === 'SHORT');
-  const longs = trades.filter(t => t.side === 'LONG');
   const sum = list => list.reduce((total, t) => total + t.pnl, 0);
-  checks.push({ id: 'spot-executable', ok: trades.length > 0 && shorts.length / trades.length <= .5, hard: false,
-    text: trades.length ? `${shorts.length} of the last ${trades.length} trades were SHORT (${money(sum(shorts))}); a spot account could have placed only the ${longs.length} LONG (${money(sum(longs))}). A real-money release needs a venue that allows shorts, or the strategies' long side alone must pass the gate.` : 'no trades yet' });
+  const unlisted = execution && execution.venue && execution.venue !== 'coinbase' ? execution.unlisted || [] : null;
+  if (unlisted) {
+    const missing = trades.filter(t => unlisted.includes(t.symbol));
+    checks.push({ id: 'venue-executable', ok: trades.length > 0 && missing.length / trades.length <= .05, hard: false,
+      text: trades.length ? `venue ${execution.venueName} (shorts allowed): ${trades.length - missing.length} of the last ${trades.length} trades were on listed coins${unlisted.length ? `; not listed: ${unlisted.join(', ')}${missing.length ? ` (${missing.length} trades, ${money(sum(missing))})` : ''}` : ''}` : `venue ${execution.venueName}: no trades yet` });
+  } else {
+    const shorts = trades.filter(t => t.side === 'SHORT');
+    const longs = trades.filter(t => t.side === 'LONG');
+    checks.push({ id: 'spot-executable', ok: trades.length > 0 && shorts.length / trades.length <= .5, hard: false,
+      text: trades.length ? `${shorts.length} of the last ${trades.length} trades were SHORT (${money(sum(shorts))}); a spot account could have placed only the ${longs.length} LONG (${money(sum(longs))}). A real-money release needs a venue that allows shorts, or the strategies' long side alone must pass the gate.` : 'no trades yet' });
+  }
   return checks;
 }
 const money = value => `${value < 0 ? '−' : '+'}$${Math.abs(value).toFixed(2)}`;

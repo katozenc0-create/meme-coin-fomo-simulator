@@ -15,6 +15,7 @@ Metyu is a 24/7 paper-trading ecosystem: a crypto exchange agent and a Polymarke
 |---|---|
 | `metyu-exchange.js` | Pure crypto engine (UMD): indicators, strategies, backtest, `train` (walk-forward + `evidenceOfTrades`), `admit` (risk rules), `leverageTier`, `liveReadiness`, `SYMBOLS` (16 core + 15 satellite) |
 | `metyu-exchange.js` execution | `parseBook`, `bookImpact`, `costsFor`: each coin's slippage from its measured order book (floor 0.05%, never lower) |
+| Venue | Hyperliquid perps, read-only (`POST /info`: books, funding); `/exchange` is never called (the preflight fails the build if it appears) |
 | `metyu-history.js` | 13 past market episodes (2018–2024) and the weekly stress test of the current strategies (information only) |
 | `exchange-autopilot.js` | Crypto agent: tick, exits on 1-minute bars, retrain, shadow orders, `statusOf` (what the board reads) |
 | `metyu-agent.js`, `autopilot.js` | Polymarket engine and agent (calibration model, `walkForward`, `loadResolvedMarkets`) |

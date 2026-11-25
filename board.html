@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-8b+DqC2R+yJKGNBPDI9lsTC3s6RLHpJEgX/noONLfT8=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw=' 'sha256-rOS3fw2BZ+LnlpkMWNFziQ9pombcFbY++4BhSdAgxoI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -1062,9 +1062,12 @@
           const pct = value => `${(value * 100).toFixed(value < .0001 ? 3 : 2)}%`;
           const dearer = measured.filter(([, c]) => c.charged > execution.floor).sort((a, b) => b[1].charged - a[1].charged);
           const liveMedian = measured.map(([, c]) => c.live).sort((a, b) => a - b)[Math.floor(measured.length / 2)];
-          $('#exExec').textContent = `Execution check (real Coinbase order books, $${execution.probeUsd.toLocaleString()} paper size, ${measured.length} coins measured): `
+          const fundingDearer = measured.filter(([, c]) => c.fundingPer8h > execution.fundingFloor).length;
+          $('#exExec').textContent = `Execution check (real ${execution.venueName || 'Coinbase spot'} order books, $${execution.probeUsd.toLocaleString()} paper size, ${measured.length} coins measured): `
             + (dearer.length ? `${dearer.length} cost more than the ${pct(execution.floor)} floor and are charged their measured cost (worst ${dearer.slice(0, 3).map(([symbol, c]) => `${symbol} ${pct(c.charged)}`).join(', ')}).` : `every coin costs no more than the ${pct(execution.floor)} floor.`)
-            + ` A $${execution.liveProbeUsd} order would pay a median ${pct(liveMedian)}.`;
+            + ` A $${execution.liveProbeUsd} order would pay a median ${pct(liveMedian)}.`
+            + (execution.fundingFloor !== undefined && measured.some(([, c]) => c.fundingSamples) ? ` Funding: ${fundingDearer ? `${fundingDearer} coin${fundingDearer === 1 ? '' : 's'} charged above` : 'all at'} the ${pct(execution.fundingFloor)} per 8 h floor.` : '')
+            + (execution.unlisted && execution.unlisted.length ? ` Not listed there: ${execution.unlisted.join(', ')}.` : '');
           $('#exExec').className = `note ${dearer.length ? 'negative' : 'sec-ok'}`;
         }
         // History test: the current strategies replayed through the big past episodes (2018-2024).

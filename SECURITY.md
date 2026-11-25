@@ -96,6 +96,14 @@ Even then, the first orders are capped at **$25 per order, $100 open, $50 maximu
 
 Every normal-book entry is mirrored as the order the first real-money release would send. It uses the limits above and is settled at the same exit, but **nothing is sent**: there is no order code in Metyu. The board shows the result (`Shadow orders`), including how many orders could be placed on a spot account. A spot account cannot short, and today the proven strategy trades mostly shorts in a downtrend.
 
+### The venue: Hyperliquid perps (the owner's choice, 25 Nov 2026)
+
+The owner chose a venue that allows shorts and lives outside Turkey. Turkish rules (CMB Communiqué III-35/B.2) ban crypto derivatives, leverage and short selling for residents. Whether perps are legal where the owner lives is the owner's own check; Metyu does not decide it.
+
+The agent only **reads** Hyperliquid, through its public `POST /info` endpoint: order books (`l2Book`) and funding rates (`metaAndAssetCtxs`). Its order endpoint, `/exchange`, is never called. The preflight's code check fails the build if `hyperliquid.xyz/exchange` appears in any source file.
+
+There is still no order code, no key and no signing. A real order needs the full go-live checklist below, and on Hyperliquid also an **API wallet** with trading rights only. It is never the owner's main wallet or its seed phrase.
+
 ### The preflight (`scripts/preflight-live.js`)
 
 One command checks what a real-money release would need, against the code and the published state. It sends nothing.
