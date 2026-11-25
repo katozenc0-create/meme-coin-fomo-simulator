@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.7.0: fresh data on the board
+
+- **No stale CDN copy.** raw.githubusercontent.com serves the branch files with `max-age=300` and ignores the query string, so the board could show the agent's state up to 5 minutes late. `metyu-fresh.js` asks the GitHub API which commit `autopilot-data` points at (the SHA only, revalidated by its ETag) and reads the files at that commit, an immutable URL that is never stale. The board now sees a publish within about 90 seconds.
+- **Within GitHub's limits.** At most one API check every 90 s (≤ 40 an hour, under the 60/hour unauthenticated limit), shared by every file; a rate limit pauses the checks until GitHub resets it. Any failure falls back to the branch URL, as before.
+- **Less mobile data.** A file at a commit never changes, so the browser may keep it; only a new publish downloads again.
+- CSP `connect-src` adds `https://api.github.com` (read-only, nothing but the public repository name is sent). Service worker cache `metyu-shell-v9`.
+
 ## 2.6.1: the simple board
 
 - As the owner asked, the board opens with **only two panels**: the live overview and the Metyu terminal, right under it.
