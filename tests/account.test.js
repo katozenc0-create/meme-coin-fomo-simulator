@@ -433,8 +433,8 @@ test('Fomo perps (Hyperliquid): read by the public address through /info only; s
   assert.equal(account.accountValue, 512.5);
   assert.equal(account.spotUsdc, 20);
   assert.equal(account.agents.length, 1);
-  await assert.rejects(() => A.hyperliquidAccount({ address: 'not-an-address', fetchImpl }), /PUBLIC address, never a private key/);
-  assert.throws(() => A.hyperliquidProvider({ address: '0x' + 'ab'.repeat(32) }), /not a Hyperliquid/, 'a 64-hex private key is refused');
+  await assert.rejects(() => A.hyperliquidAccount({ address: 'not-an-address', fetchImpl }), /not usable: it is not a 0x address/);
+  assert.throws(() => A.hyperliquidProvider({ address: '0x' + 'ab'.repeat(32) }), /PRIVATE KEY/, 'a 64-hex private key is refused');
   // With a Solana wallet: the perps ride along; publicly only counts.
   const env = { SOLANA_WALLET_ADDRESS: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', HYPERLIQUID_ADDRESS: address };
   const provider = A.providerFromEnv(env, { fetchImpl });
@@ -457,4 +457,43 @@ test('Fomo perps (Hyperliquid): read by the public address through /info only; s
   const partial = await A.syncAccount({ provider, passphrase: 'a long board passphrase', getJson: async () => ({}) });
   assert.deepEqual(partial.publicInfo.perps, { linked: false, error: 'perps account unavailable' });
   assert.equal(A.redact(`x ${address} y`, env), 'x [HYPERLIQUID_ADDRESS] y', 'the address is redacted from logs');
+});
+
+test('HYPERLIQUID_ADDRESS: forgiving about spaces, quotes and 0x; loud about keys; never repeats the value', async () => {
+  const good = '0x' + 'ab'.repeat(20);
+  assert.equal(A.checkHyperliquidAddress(`  ${good}\n`).address, good, 'spaces and a newline are trimmed');
+  assert.equal(A.checkHyperliquidAddress(`"${good}"`).address, good, 'quotes are removed');
+  assert.equal(A.checkHyperliquidAddress('ab'.repeat(20)).address, good, 'a missing 0x is added');
+  const kind = value => A.checkHyperliquidAddress(value).problem && A.checkHyperliquidAddress(value).problem.kind;
+  assert.equal(kind(''), 'empty');
+  assert.equal(kind('0x' + 'cd'.repeat(32)), 'private-key');
+  assert.equal(kind('cd'.repeat(32)), 'private-key');
+  assert.equal(kind('abandon ability able about above absent absorb abstract absurd abuse access accident'), 'secret');
+  assert.equal(kind('9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'), 'solana');
+  assert.equal(kind('0x' + 'ab'.repeat(19)), 'length');
+  assert.equal(kind('hello'), 'format');
+  for (const value of ['0x' + 'cd'.repeat(32), '0x' + 'ab'.repeat(19), '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM']) {
+    assert.ok(!A.checkHyperliquidAddress(value).problem.hint.includes(value), 'the hint never repeats the value');
+  }
+  assert.match(A.checkHyperliquidAddress('0x' + 'cd'.repeat(32)).problem.hint, /PRIVATE KEY.*Delete the secret NOW and move your funds/);
+  // A bad perps secret never stops the Solana link; the public file says which kind of problem.
+  const env = { SOLANA_WALLET_ADDRESS: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', HYPERLIQUID_ADDRESS: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM' };
+  const provider = A.providerFromEnv(env, { fetchImpl: async () => { throw new Error('no network in this test'); } });
+  assert.equal(provider.name, 'solana');
+  provider.balances = async () => [{ asset: 'SOL', free: 1, locked: 0, price: 150 }];
+  provider.approvals = async () => [];
+  const warnings = [];
+  const original = console.warn;
+  console.warn = message => warnings.push(String(message));
+  try {
+    const { publicInfo } = await A.syncAccount({ provider, passphrase: 'a long board passphrase', getJson: async () => ({}) });
+    assert.equal(publicInfo.linked, true, 'the wallet is still linked');
+    assert.deepEqual(publicInfo.perps, { linked: false, error: 'address solana' });
+  } finally { console.warn = original; }
+  assert.ok(warnings.some(w => /Solana address; the perps account needs the 0x/.test(w)));
+  assert.ok(!warnings.some(w => w.includes('9WzDXw')), 'the value is never printed');
+  // Alone, a bad value is an error naming the kind.
+  assert.throws(() => A.providerFromEnv({ HYPERLIQUID_ADDRESS: '0x' + 'cd'.repeat(32) }), /PRIVATE KEY/);
+  // The guard on the address passed to the reader itself.
+  await assert.rejects(() => A.hyperliquidAccount({ address: 'cd'.repeat(32), fetchImpl: async () => ({}) }), /PRIVATE KEY/);
 });

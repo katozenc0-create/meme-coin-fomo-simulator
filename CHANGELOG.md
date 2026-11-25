@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.11.1: a bad perps address never breaks the wallet link
+
+- The first `HYPERLIQUID_ADDRESS` value was refused as "not a 0x address" (the value itself is never shown). Because the refusal happened while choosing the provider, it also stopped the Solana wallet sync, and the account link went stale.
+- `checkHyperliquidAddress` now:
+  - forgives surrounding spaces, newlines, quotes and a missing `0x`;
+  - names what is wrong without ever repeating the value: empty, a Solana address, a wrong length, not hex, or loudly a **private key** or **recovery phrase**, with the advice to delete the secret and move the funds;
+  - lets a bad perps value only mark the perps part as not linked (`account-public.json` → `perps: { linked: false, error: "address <kind>" }`); the wallet keeps syncing.
+- The daily report shows the Fomo perps account line.
+
 ## 2.11.0: Fomo integration: the perps account, read-only
 
 - Fomo has no public trading API. Its perps trade on Hyperliquid, from the owner's account with a public 0x address. Metyu now **reads** that account, as it reads the Solana wallet: by its public address, with no key and no signing.

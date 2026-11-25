@@ -34,6 +34,8 @@ function report({ exchange, polymarket, account = null, now = Date.now() }) {
   const security = account && account.security;
   const approvalsText = !security || security.approvals === null || security.approvals === undefined ? 'approvals not checked' : security.approvals ? `⚠ ${security.approvals} OPEN TOKEN APPROVAL(S)` : 'no open token approvals';
   lines.push(`**Real wallet/account:** ${!account ? 'not linked' : account.linked ? `${account.provider}, read-only, verified ${Math.round((now - Date.parse(account.verifiedAt)) / HOUR)} h ago, ${approvalsText}` : `refused (${account.reason || 'not view-only'})`}`);
+  const perps = account && account.perps;
+  if (perps) lines.push(`**Fomo perps account:** ${perps.linked ? `linked, ${perps.positions} open position(s)${perps.agents ? `, ⚠ ${perps.agents} API agent(s) may trade for it` : ''}` : `NOT linked (${perps.error})`}`);
   lines.push('');
   if (exchange && exchange.account) {
     const a = exchange.account;
