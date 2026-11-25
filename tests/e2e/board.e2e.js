@@ -999,7 +999,8 @@ test('overview: the path to real money and the orders that would be sent (never 
   assert.match(await text(page, '#ovPathHead'), /^Path to real money · step 6 of 10: A checkable approval record that expires$/);
   await page.click('#ovPathHead');
   assert.match(await text(page, '#ovSteps'), /1\. Design.*2\. Legality of perps where you live: skipped by the owner \(the owner's responsibility\).*7\. A strategy passes the evidence gate, and 6\/6 conditions \(now \d\/6\).*10\. Deploy on the host; the first real order at \$25 \(later\)/);
-  assert.equal(await page.locator('#ovSteps li.done').count(), 3);
+  assert.equal(await page.locator('#ovSteps li.done').count(), 4);
+  assert.match(await text(page, '#ovSteps'), /3\. Host: a small cloud VPS/);
   // A shadow order (a gated signal) becomes a ticket that is shown as NOT SENT, with the reasons.
   state.shadow.open.x1 = { id: 'x1', symbol: 'ETH-USD', side: 'SHORT', usd: 25, entry: 2000, stop: 2100, target: 1800, openedAt: new Date().toISOString() };
   status = statusOf(state);

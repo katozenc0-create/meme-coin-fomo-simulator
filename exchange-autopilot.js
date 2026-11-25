@@ -128,7 +128,8 @@ function realMoneyPath({ live = null, model = null, tickets = [], approval = nul
     { n: 1, text: 'Design (docs/LIVE-TRADING-ARCHITECTURE.md)', state: 'done' },
     // The owner chose to skip this check (25 Nov 2026): legality stays the owner's own responsibility.
     { n: 2, text: 'Legality of perps where you live: skipped by the owner (the owner\'s responsibility)', state: 'skipped' },
-    { n: 3, text: 'Owner: choose the host (own computer or a small VPS)', state: 'owner' },
+    // The owner chose a small cloud VPS (25 Nov 2026); it is rented only when step 8 comes.
+    { n: 3, text: 'Host: a small cloud VPS, a few dollars a month (the owner\'s choice; rented at step 8)', state: 'done' },
     { n: 4, text: 'Tickets: the orders that would be sent (computed only)', state: 'done' },
     { n: 5, text: 'Board panel for the tickets', state: 'done' },
     { n: 6, text: 'A checkable approval record that expires', state: approval ? 'done' : 'todo' },

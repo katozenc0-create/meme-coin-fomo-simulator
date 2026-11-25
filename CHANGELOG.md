@@ -5,6 +5,7 @@
 - **Tickets** (`ticketOf`): each shadow order (a normal-book signal under `LIVE_LIMITS`) becomes the order the future adapter would send. A ticket holds the Hyperliquid coin, side, dollars, an IOC limit 0.3% from the signal price, stop, target and a 15-minute expiry, plus **what blocks it**: the real-money lock, an unlisted coin, and always "no order adapter (step 9)". It is computed only, and `sent` is always false.
 - **The ten steps** (`realMoneyPath`) from `docs/LIVE-TRADING-ARCHITECTURE.md`, with where things stand: done, the owner's step, waiting for the evidence, or later.
 - Step 2 (legality of perps where the owner lives) is marked **skipped by the owner**: the responsibility stays with the owner.
+- Step 3: the owner chose **a small cloud VPS** as the host. It is rented only when step 8 comes (nothing runs there before a gate opens).
 - **Board overview:** "Real money · orders that would be sent" lists the latest tickets marked NOT SENT with their reasons, or says why there are none. A "Path to real money" line names the current step and expands to the ten steps. Both are on the simple board.
 
 ## 2.13.1: the real-money plan without manual entry

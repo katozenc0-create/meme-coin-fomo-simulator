@@ -797,7 +797,8 @@ test('real money path: tickets are computed from shadow orders, never sent, and 
   assert.equal(path.steps[6].state, 'waiting');
   assert.match(path.steps[6].text, /now 3\/6/);
   assert.equal(realMoneyPath({ live: locked, approval: { at: 'x' } }).current, 7, 'then the evidence');
-  assert.deepEqual(path.steps.filter(step => step.state === 'owner').map(step => step.n), [3]);
+  assert.deepEqual(path.steps.filter(step => step.state === 'owner').map(step => step.n), [], 'no open owner decision before the evidence');
+  assert.match(path.steps[2].text, /cloud VPS/);
   assert.equal(path.steps[1].state, 'skipped', 'the owner skipped the legality check; it stays their responsibility');
   // Published in the status, from the shadow book only.
   const state = freshState();
