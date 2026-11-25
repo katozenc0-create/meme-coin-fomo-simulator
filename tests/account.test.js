@@ -17,7 +17,10 @@ test('vault: seal/open round trip; wrong passphrase, tampering and weak passphra
   const box = await Vault.seal(value, PASS, { iterations: 100000 });
   assert.equal(box.v, 1);
   assert.equal(box.alg, 'PBKDF2-SHA256/AES-256-GCM');
-  assert.ok(!JSON.stringify(box).includes('BTC'), 'ciphertext only');
+  // Ciphertext only, checked with quoted keys that base64 can never contain (a random ciphertext
+  // could spell 'BTC', which made the old check fail about once in a few thousand runs).
+  assert.ok(!['"asset"', '"total"', '"note"'].some(text => JSON.stringify(box).includes(text)), 'ciphertext only');
+  assert.ok(!['ct', 'salt', 'iv'].some(key => /[^A-Za-z0-9+/=]/.test(box[key])), 'base64 fields only');
   assert.deepEqual(await Vault.open(box, PASS), value);
   await assert.rejects(Vault.open(box, 'wrong passphrase!!'), /wrong passphrase or damaged data/);
   const flipped = Buffer.from(box.ct, 'base64');

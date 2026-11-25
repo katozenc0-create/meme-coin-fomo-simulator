@@ -194,7 +194,7 @@ test('backtest walks the same rules over history and train judges the gate only 
   }
   const model = X.train(series, { now: 5 });
   assert.equal(model.trainedAt, 5);
-  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakoutBtc', 'breakout', 'reversion', 'trend4h']);
+  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakout', 'reversion', 'trend4h']);
   assert.equal(model.strategies.trend4h.timeframe, 4, 'the 4-hour trend is trained on 4-hour bars');
   assert.equal(model.strategies.trend.timeframe, 1);
   for (const s of Object.values(model.strategies)) {
@@ -751,27 +751,25 @@ test('a model from the old evidence gate (no weekly blocks) is retrained at once
   assert.ok(Object.values(state.model.strategies).every(s => Number.isInteger(s.gate.weeks)), 'the new gate counts weeks');
 });
 
-test('market direction: BTC 4h trend known only at bar close; the breakout trades only with it', () => {
+test('market direction: BTC 4h trend known only at bar close, with breadth and how long it has held', () => {
   const up = walk(11, .003, .01, 1400);        // a rising Bitcoin
   const series = X.marketTrendSeries(up);
   assert.ok(series.length > X.WARMUP);
-  // Before any 4-hour bar has closed there is no reading; after warm-up the reading is known at closeAt.
-  assert.equal(X.marketTrendAt(series, up[0].t), null);
-  const late = series[series.length - 1];
-  assert.equal(X.marketTrendAt(series, late.closeAt), late.trend);
-  assert.equal(X.marketTrendAt(series, late.closeAt - 1), series[series.length - 2].trend, 'a bar still forming is never used');
-  assert.equal(late.trend, 'up');
-  // The plain breakout and the market-aligned one on the same coin.
-  const coin = walk(12, .001, .02, 1400);
-  const plain = X.backtest(coin, 'breakout', { stopAtr: 2, targetAtr: 4 }, { symbol: 'AAA-USD' });
-  const aligned = X.backtest(coin, 'breakoutBtc', { stopAtr: 2, targetAtr: 4 }, { symbol: 'AAA-USD', market: series });
-  const none = X.backtest(coin, 'breakoutBtc', { stopAtr: 2, targetAtr: 4 }, { symbol: 'AAA-USD' });
-  assert.equal(none.length, 0, 'no market data: the aligned strategy never trades');
-  assert.ok(plain.length > 0);
-  assert.ok(aligned.length <= plain.length);
-  for (const trade of aligned) {
-    assert.equal(X.marketTrendAt(series, trade.openedAt), trade.side === 'LONG' ? 'up' : 'down', 'only with the market');
-  }
+  assert.equal(X.marketTrendAt(series, up[0].t), null, 'no reading before a 4-hour bar has closed');
+  const last = series[series.length - 1];
+  assert.equal(X.marketTrendAt(series, last.closeAt), last.trend);
+  assert.equal(X.marketTrendAt(series, last.closeAt - 1), series[series.length - 2].trend, 'a bar still forming is never used');
+  assert.equal(last.trend, 'up');
+  const summary = X.marketSummary(up, { 'BTC-USD': 'up', 'ETH-USD': 'down', 'SOL-USD': 'down', 'XRP-USD': 'range', 'BAD-USD': null });
+  assert.equal(summary.btc4h, 'up');
+  assert.deepEqual(summary.breadth, { up: 1, down: 2, range: 1 });
+  assert.equal(summary.coins, 4);
+  let first = series.length - 1;
+  while (first > 0 && series[first - 1].trend === 'up') first -= 1;
+  assert.equal(summary.since, series[first].closeAt, 'since the first 4-hour close of the current run');
+  assert.deepEqual(X.marketSummary([], {}), { btc4h: null, since: null, breadth: { up: 0, down: 0, range: 0 }, coins: 0 });
+  // A strategy may read the market through the backtest context; without data it gets null.
+  assert.equal(X.marketContext([]), null);
+  assert.equal(X.marketContext(series).market(last.closeAt), 'up');
   assert.equal(X.RULES.familySize, Object.keys(X.STRATEGIES).length * 2, 'the gate corrects for every strategy in both tiers');
-  assert.ok(Object.keys(X.STRATEGIES).indexOf('breakoutBtc') < Object.keys(X.STRATEGIES).indexOf('breakout'), 'tried before the plain breakout');
 });

@@ -262,7 +262,7 @@ Each reading comes with plain-language notes you can check against the chart on 
 - They are judged only on the last 40% (about 40 weeks), which the choice never saw.
 - The gate is honest about two things. These follow Bailey and López de Prado on [backtest overfitting](https://papers.ssrn.com/abstract=2326253) and the [deflated Sharpe ratio](https://papers.ssrn.com/abstract=2460551):
   - **Dependence.** Crypto moves together, so one week's shorts across 16 coins are close to one observation, not 16. The interval comes from a **weekly block bootstrap**.
-  - **Multiple testing.** 5 strategies × 2 tiers are judged at once, so the interval that must clear zero is Bonferroni-corrected (99.5% for 10 tests).
+  - **Multiple testing.** 4 strategies × 2 tiers are judged at once, so the interval that must clear zero is Bonferroni-corrected (99.4% for 8 tests).
 - A gate opens only with 30+ out-of-sample trades over **12+ different weeks** and that corrected interval above zero, after all costs. A gate-approved strategy trades the normal book.
 - With `--learn`, an undecided strategy trades the tagged **learning book** as a forward test. Undecided means the plain weekly 95% interval still reaches above zero, or there are too few trades or weeks.
 - A strategy whose weekly 95% interval lies entirely below zero is proven to lose after costs and is not traded at all.

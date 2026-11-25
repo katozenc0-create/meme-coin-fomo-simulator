@@ -466,6 +466,9 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
       trend: reading.trend || null, rsi: reading.rsi || null, support: reading.support || null, resistance: reading.resistance || null, notes: reading.notes
     };
   }
+  // The market at a glance: Bitcoin's 4-hour direction and how many coins trend up, down or sideways.
+  const market = series['BTC-USD'] && series['BTC-USD'].length
+    ? X.marketSummary(series['BTC-USD'], Object.fromEntries(Object.entries(charts).map(([symbol, chart]) => [symbol, chart.trend])), now) : null;
   const equity = state.account.cash + positions.reduce((sum, held) => sum + Math.max(0, held.margin + held.pnl), 0);
   const drawdownNow = state.account.peak > 0 ? Math.max(0, 1 - equity / state.account.peak) : 0;
   return {
@@ -477,6 +480,7 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
       satellite: state.model.satellite ? { symbols: state.model.satellite.symbols, strategies: strategiesStatus(state.model.satellite, state.history, 'satellite', drawdownNow) } : null
     } : null,
     health: healthOf(state, now),
+    market: market ? { ...market, since: market.since ? new Date(market.since).toISOString() : null } : null,
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) },
     // Real money stays locked; this is how far away the conditions are (all trades, both books).

@@ -68,7 +68,7 @@
     timeStopHours: 72,
     minTrades: 30,            // the evidence gate's bar, the same as the Prediction Lab's
     minWeeks: 12,             // ...and at least 12 different weeks with trades: trades in one week move together
-    familySize: 10,           // strategies x tiers tested at once (5 x 2): the gate's interval is corrected for them
+    familySize: 8,            // strategies x tiers tested at once (4 x 2): the gate's interval is corrected for them
     liveReviewTrades: 20,     // live watchdog: the last 20 closed trades of a strategy (both books, in R)...
     liveDemoteR: -.25         // ...averaging below -0.25R demote it to the learning book until they recover
   });
@@ -422,30 +422,14 @@
   // The same trend pullback on 4-hour bars (built from the hourly ones). Tested on 8 coins the
   // hypothesis was not chosen on, it held out of sample (63 trades, +0.23R, 95% [+0.04, +0.43]);
   // over the whole history it is undecided. The evidence gate decides, as for every strategy.
-  // The range breakout, only WITH the market: a long when Bitcoin's 4-hour trend is up, a short
-  // when it is down (BTC leads crypto). Formed on the 2018-2024 history episodes (metyu-history.js),
-  // which all lie before the training window: there the plain breakout averaged +0.08R over 984
-  // trades and this one +0.19R over 453, losing less in flat ranges. A new hypothesis: the evidence
-  // gate judges it on the training window like every other strategy (the family is now 5 x 2).
-  // It must come before the plain breakout: its trades are a subset of the breakout's, and only one
-  // position is opened per coin.
-  const breakoutWithMarket = {
-    label: 'Breakout with the market (BTC 4h trend agrees)',
-    timeframe: 1,
-    grid: BASE_STRATEGIES.breakout.grid,
-    signal(candles, ind, i, params, context) {
-      const signal = BASE_STRATEGIES.breakout.signal(candles, ind, i, params);
-      if (!signal || !context || typeof context.market !== 'function') return null;   // no market data: no trade
-      const market = context.market(candles[i].t + HOUR);                               // known when bar i closes
-      if (!((signal.side === 'LONG' && market === 'up') || (signal.side === 'SHORT' && market === 'down'))) return null;
-      return { ...signal, reason: `${signal.reason}; BTC 4h trend ${market}` };
-    }
-  };
-  const TIMEFRAMES = Object.freeze({ trend: 1, breakoutBtc: 1, breakout: 1, reversion: 1, trend4h: 4 });
-  const STRATEGIES = Object.freeze({
-    trend: BASE_STRATEGIES.trend, breakoutBtc: breakoutWithMarket, breakout: BASE_STRATEGIES.breakout, reversion: BASE_STRATEGIES.reversion,
-    trend4h: { label: 'Trend pullback (4h)', timeframe: 4, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal }
-  });
+  // Tried and rejected (26 Nov 2026, research/README.md): the range breakout only WITH the market
+  // (Bitcoin's 4-hour trend). On the 2018-2024 history episodes it looked better (+0.19R over 453
+  // trades vs +0.08R), but on the training window it lost more than the plain breakout (core
+  // -0.17R over 773 trades, 95% interval below zero). It was removed rather than kept: every extra
+  // strategy makes the gate's correction stricter for all the others. The market reader below
+  // stays: the board shows the market's direction, and later hypotheses can use it.
+  const TIMEFRAMES = Object.freeze({ trend: 1, breakout: 1, reversion: 1, trend4h: 4 });
+  const STRATEGIES = Object.freeze({ ...BASE_STRATEGIES, trend4h: { label: 'Trend pullback (4h)', timeframe: 4, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal } });
 
   /**
    * The market's direction: Bitcoin's trend (readChart) on 4-hour bars, each known at its bar's
@@ -468,6 +452,23 @@
     return found;
   }
   const marketContext = series => (series && series.length ? { market: t => marketTrendAt(series, t) } : null);
+
+  /**
+   * The market at a glance: Bitcoin's 4-hour trend (and since when), plus breadth, the number of
+   * coins whose own hourly chart reads up, down or range. `trends` is { symbol: 'up'|'down'|'range' }.
+   */
+  function marketSummary(btcHourly, trends = {}, now = Infinity) {
+    const series = marketTrendSeries(btcHourly, now);
+    const last = series.length ? series[series.length - 1] : null;
+    let since = null;
+    if (last && last.trend) {
+      since = last.closeAt;
+      for (let i = series.length - 2; i >= 0 && series[i].trend === last.trend; i -= 1) since = series[i].closeAt;
+    }
+    const breadth = { up: 0, down: 0, range: 0 };
+    for (const trend of Object.values(trends)) if (trend in breadth) breadth[trend] += 1;
+    return { btc4h: last ? last.trend : null, since, breadth, coins: breadth.up + breadth.down + breadth.range };
+  }
   const timeframeOf = (name, strategies = STRATEGIES) => (strategies[name] && strategies[name].timeframe) || TIMEFRAMES[name] || 1;
 
   /** Hourly bars -> N-hour bars aligned to UTC (only complete buckets when `now` is given). */
@@ -631,8 +632,8 @@
   /**
    * The evidence gate, honest about two things (Bailey & Lopez de Prado on backtest overfitting):
    *  - dependence: the interval comes from a WEEKLY block bootstrap (see blockBootstrapCI);
-   *  - multiple testing: `tests` hypotheses are judged at once (5 strategies x 2 tiers), so the
-   *    interval that must clear zero is Bonferroni-corrected (95% -> 99.5% for 10 tests).
+   *  - multiple testing: `tests` hypotheses are judged at once (4 strategies x 2 tiers), so the
+   *    interval that must clear zero is Bonferroni-corrected (95% -> 99.4% for 8 tests).
    * trades: [{ r, openedAt (ms or ISO) }]. `ci95` (weekly, uncorrected) says whether a strategy is
    * still undecided (learning book) or proven to lose; `ci` (corrected) opens the gate.
    */
@@ -807,7 +808,7 @@
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
     ACCOUNT_FRESH_HOURS, accountFresh,
-    TIMEFRAMES, timeframeOf, aggregateCandles, marketTrendSeries, marketTrendAt, marketContext, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
+    TIMEFRAMES, timeframeOf, aggregateCandles, marketTrendSeries, marketTrendAt, marketContext, marketSummary, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,
