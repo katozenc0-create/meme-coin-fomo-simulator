@@ -72,6 +72,7 @@ function stressTest(candles, strategies, { episodes = EPISODES, costs = X.COSTS,
     const bySymbol = candles[episode.id] || {};
     const perStrategy = {};
     const coins = [];
+    const market = X.marketTrendSeries(bySymbol['BTC-USD']);   // the market's direction, for strategies that need it
     for (const [symbol, hourly] of Object.entries(bySymbol)) {
       let used = false;
       for (const [name, info] of Object.entries(strategies)) {
@@ -80,7 +81,7 @@ function stressTest(candles, strategies, { episodes = EPISODES, costs = X.COSTS,
         const start = bars.findIndex(bar => bar.t >= from);
         if (start < X.WARMUP) continue;                          // not enough warm-up: skip, never guess
         used = true;
-        const trades = X.backtest(bars, name, info.params, { from: start, costs, symbol });
+        const trades = X.backtest(bars, name, info.params, { from: start, costs, symbol, market });
         (perStrategy[name] = perStrategy[name] || []).push(...trades);
       }
       if (used) coins.push(symbol);

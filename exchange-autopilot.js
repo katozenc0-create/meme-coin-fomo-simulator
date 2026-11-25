@@ -211,8 +211,10 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       const core = tierBars('core');
       const satellite = tierBars('satellite');
       if (Object.keys(core).length < 2) throw new Error('not enough coins with history');
-      const trained = X.train(core, { costs, now: now() });
-      trained.satellite = Object.keys(satellite).length >= 2 ? X.train(satellite, { costs, now: now() }) : null;
+      // Both tiers read the market's direction from Bitcoin (a core coin).
+      const market = bySymbol['BTC-USD'] || null;
+      const trained = X.train(core, { costs, now: now(), market });
+      trained.satellite = Object.keys(satellite).length >= 2 ? X.train(satellite, { costs, now: now(), market }) : null;
       trained.symbols = Object.keys(bySymbol);
       state.model = trained;
       const summaryOf = model => Object.entries(model.strategies).map(([name, s]) => `${name} ${s.gate.open ? 'OPEN' : 'closed'} (${s.gate.trades} trades, mean ${s.gate.meanR >= 0 ? '+' : ''}${s.gate.meanR.toFixed(2)}R [${s.gate.ci[0].toFixed(2)}, ${s.gate.ci[1].toFixed(2)}])`).join(' · ');
@@ -362,6 +364,8 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       say(state.paused ? 'PAUSE' : 'RESUME', state.paused ? 'paused by the owner: no new positions; open ones are still managed to their exits' : 'resumed by the owner: new positions allowed again');
     }
     let signals = 0;
+    // The market's direction (Bitcoin's 4-hour trend) for strategies that trade only with it.
+    const context = X.marketContext(X.marketTrendSeries(series['BTC-USD'], t));
     // Strategies grouped by timeframe: each group acts once per closed bar of its own timeframe.
     const groups = {};
     for (const name of Object.keys(strategies)) (groups[X.timeframeOf(name, strategies)] = groups[X.timeframeOf(name, strategies)] || []).push(name);
@@ -381,7 +385,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       for (const name of names) {
         const trained = tierModel && tierModel.strategies[name];
         const params = trained ? trained.params : strategies[name].grid[0];
-        const signal = strategies[name].signal(candles, ind, candles.length - 1, params);
+        const signal = strategies[name].signal(candles, ind, candles.length - 1, params, context);
         if (!signal) continue;
         signals += 1;
         const review = X.liveReview(state.history, name, rules, tier);
@@ -462,6 +466,9 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
       trend: reading.trend || null, rsi: reading.rsi || null, support: reading.support || null, resistance: reading.resistance || null, notes: reading.notes
     };
   }
+  // The market at a glance: Bitcoin's 4-hour direction and how many coins trend up, down or sideways.
+  const market = series['BTC-USD'] && series['BTC-USD'].length
+    ? X.marketSummary(series['BTC-USD'], Object.fromEntries(Object.entries(charts).map(([symbol, chart]) => [symbol, chart.trend])), now) : null;
   const equity = state.account.cash + positions.reduce((sum, held) => sum + Math.max(0, held.margin + held.pnl), 0);
   const drawdownNow = state.account.peak > 0 ? Math.max(0, 1 - equity / state.account.peak) : 0;
   return {
@@ -473,6 +480,7 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
       satellite: state.model.satellite ? { symbols: state.model.satellite.symbols, strategies: strategiesStatus(state.model.satellite, state.history, 'satellite', drawdownNow) } : null
     } : null,
     health: healthOf(state, now),
+    market: market ? { ...market, since: market.since ? new Date(market.since).toISOString() : null } : null,
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) },
     // Real money stays locked; this is how far away the conditions are (all trades, both books).

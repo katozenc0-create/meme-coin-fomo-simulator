@@ -66,6 +66,26 @@ Sample A's 7-day near-miss was tested on four new independent samples, with the 
 
 Brier scores of the earlier samples, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
 
+## Crypto: the market-aligned breakout (26 Nov 2026, rejected)
+
+The history stress test (`metyu-history.js`) replayed the current crypto strategies through 13 past episodes (2018 to mid-2024) on BTC, ETH, LTC, BCH and LINK. The trend and breakout strategies earned in crashes and bear markets and lost in flat ranges.
+
+On those episodes only, two filters were compared using Bitcoin's 4-hour trend: "not in a range" and "in the market's direction". The aligned filter helped the range breakout most:
+
+| Range breakout on the episodes | Trades | Mean R |
+|---|---|---|
+| plain | 984 | +0.08 |
+| only with BTC's 4h trend | 453 | +0.19 |
+
+The hypothesis was fixed **before** looking at the training window and then judged by the evidence gate on the last ~2 years (out-of-sample part), as every strategy is:
+
+| Tier | Trades | Weeks | Mean R | 95% weekly interval |
+|---|---|---|---|---|
+| core (16 coins) | 773 | 33 | −0.17 | [−0.33, −0.01] |
+| satellite (15 coins) | 598 | 36 | −0.12 | [−0.25, 0.00] |
+
+On the core coins the aligned breakout lost more than the plain one (−0.11R), and its interval lies below zero. **It did not replicate.** It was removed rather than kept, because every extra strategy makes the gate's multiple-testing correction stricter for all the others. The lesson matches the Polymarket one: a filter that looks good on one set of years is a new hypothesis, and most do not survive a second, independent set.
+
 ## How the earlier "edges" fell apart
 
 Each of these looked significant at first, and each was an artifact:

@@ -422,8 +422,53 @@
   // The same trend pullback on 4-hour bars (built from the hourly ones). Tested on 8 coins the
   // hypothesis was not chosen on, it held out of sample (63 trades, +0.23R, 95% [+0.04, +0.43]);
   // over the whole history it is undecided. The evidence gate decides, as for every strategy.
+  // Tried and rejected (26 Nov 2026, research/README.md): the range breakout only WITH the market
+  // (Bitcoin's 4-hour trend). On the 2018-2024 history episodes it looked better (+0.19R over 453
+  // trades vs +0.08R), but on the training window it lost more than the plain breakout (core
+  // -0.17R over 773 trades, 95% interval below zero). It was removed rather than kept: every extra
+  // strategy makes the gate's correction stricter for all the others. The market reader below
+  // stays: the board shows the market's direction, and later hypotheses can use it.
   const TIMEFRAMES = Object.freeze({ trend: 1, breakout: 1, reversion: 1, trend4h: 4 });
   const STRATEGIES = Object.freeze({ ...BASE_STRATEGIES, trend4h: { label: 'Trend pullback (4h)', timeframe: 4, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal } });
+
+  /**
+   * The market's direction: Bitcoin's trend (readChart) on 4-hour bars, each known at its bar's
+   * close. `marketTrendAt(series, t)` is the reading of the last 4-hour bar closed by time t.
+   */
+  function marketTrendSeries(btcHourly, now = Infinity) {
+    if (!Array.isArray(btcHourly) || !btcHourly.length) return [];
+    const bars = aggregateCandles(btcHourly, 4, now);
+    const ind = computeIndicators(bars);
+    return bars.map((bar, i) => ({ closeAt: bar.t + 4 * HOUR, trend: i >= WARMUP - 1 ? readChart(bars, ind, i).trend : null }));
+  }
+  function marketTrendAt(series, t) {
+    let lo = 0;
+    let hi = series.length - 1;
+    let found = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (series[mid].closeAt <= t) { found = series[mid].trend; lo = mid + 1; } else hi = mid - 1;
+    }
+    return found;
+  }
+  const marketContext = series => (series && series.length ? { market: t => marketTrendAt(series, t) } : null);
+
+  /**
+   * The market at a glance: Bitcoin's 4-hour trend (and since when), plus breadth, the number of
+   * coins whose own hourly chart reads up, down or range. `trends` is { symbol: 'up'|'down'|'range' }.
+   */
+  function marketSummary(btcHourly, trends = {}, now = Infinity) {
+    const series = marketTrendSeries(btcHourly, now);
+    const last = series.length ? series[series.length - 1] : null;
+    let since = null;
+    if (last && last.trend) {
+      since = last.closeAt;
+      for (let i = series.length - 2; i >= 0 && series[i].trend === last.trend; i -= 1) since = series[i].closeAt;
+    }
+    const breadth = { up: 0, down: 0, range: 0 };
+    for (const trend of Object.values(trends)) if (trend in breadth) breadth[trend] += 1;
+    return { btc4h: last ? last.trend : null, since, breadth, coins: breadth.up + breadth.down + breadth.range };
+  }
   const timeframeOf = (name, strategies = STRATEGIES) => (strategies[name] && strategies[name].timeframe) || TIMEFRAMES[name] || 1;
 
   /** Hourly bars -> N-hour bars aligned to UTC (only complete buckets when `now` is given). */
@@ -554,12 +599,13 @@
    * enters at bar i+1's open; then replayPosition decides the exit on the bars after that. One
    * position at a time. Returns the trades with their R multiple (P&L / risk) after costs.
    */
-  function backtest(candles, strategyName, params, { from = WARMUP, to = candles.length, costs = COSTS, ind = computeIndicators(candles), symbol = '' } = {}) {
+  function backtest(candles, strategyName, params, { from = WARMUP, to = candles.length, costs = COSTS, ind = computeIndicators(candles), symbol = '', market = null } = {}) {
     const strategy = STRATEGIES[strategyName];
+    const context = marketContext(market);
     const trades = [];
     let i = Math.max(from, WARMUP);
     while (i < to - 1) {
-      const signal = strategy.signal(candles, ind, i, params);
+      const signal = strategy.signal(candles, ind, i, params, context);
       if (!signal) { i += 1; continue; }
       const next = candles[i + 1];
       // Re-anchor the stop and target to the next bar's open (the real entry), keeping the distances.
@@ -611,7 +657,9 @@
    * mean R on the first `split` of every coin's history (needs 10+ trades), then the evidence gate
    * judged ONLY on the trades in the remaining, unseen part.
    */
-  function train(candlesBySymbol, { split = .6, costs = COSTS, now = Date.now(), tests = RULES.familySize } = {}) {
+  function train(candlesBySymbol, { split = .6, costs = COSTS, now = Date.now(), tests = RULES.familySize, market = null } = {}) {
+    // The market's direction from Bitcoin's hourly bars (given, or found among the coins).
+    const marketSeries = marketTrendSeries(market || candlesBySymbol['BTC-USD']);
     const seriesByTf = {};
     const seriesFor = tf => {
       if (!seriesByTf[tf]) {
@@ -628,11 +676,11 @@
       if (!series.length) continue;
       let chosen = null;
       for (const params of STRATEGIES[name].grid) {
-        const rs = series.flatMap(s => backtest(s.candles, name, params, { from: WARMUP, to: s.cut, costs, ind: s.ind, symbol: s.symbol })).map(trade => trade.r);
+        const rs = series.flatMap(s => backtest(s.candles, name, params, { from: WARMUP, to: s.cut, costs, ind: s.ind, symbol: s.symbol, market: marketSeries })).map(trade => trade.r);
         const score = rs.length >= 10 ? mean(rs) : -Infinity;
         if (!chosen || score > chosen.score) chosen = { params, score, inSample: rs.length };
       }
-      const outTrades = series.flatMap(s => backtest(s.candles, name, chosen.params, { from: s.cut, to: s.candles.length, costs, ind: s.ind, symbol: s.symbol }));
+      const outTrades = series.flatMap(s => backtest(s.candles, name, chosen.params, { from: s.cut, to: s.candles.length, costs, ind: s.ind, symbol: s.symbol, market: marketSeries }));
       const gate = evidenceOfTrades(outTrades, { tests });
       strategies[name] = { label: STRATEGIES[name].label, timeframe: timeframeOf(name), params: chosen.params, inSampleTrades: chosen.inSample, inSampleMeanR: finite(chosen.score) ? chosen.score : null, gate };
     }
@@ -760,7 +808,7 @@
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
     ACCOUNT_FRESH_HOURS, accountFresh,
-    TIMEFRAMES, timeframeOf, aggregateCandles, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
+    TIMEFRAMES, timeframeOf, aggregateCandles, marketTrendSeries, marketTrendAt, marketContext, marketSummary, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
     normaliseCandles, parseCoinbaseCandles, parseKrakenCandles, closedCandles, fetchCandles,

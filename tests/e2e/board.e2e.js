@@ -853,3 +853,21 @@ test('history test: how today\'s strategies did in the big past episodes, inform
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });
+
+test('overview shows the market at a glance: BTC 4h direction, how long, and breadth', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  const status = { ...statusOf(state), market: { btc4h: 'down', since: new Date(Date.now() - 3 * X.DAY).toISOString(), breadth: { up: 0, down: 29, range: 2 }, coins: 31 } };
+  const page = await env.page({ width: 390, height: 844 }, { view: 'terminal', layout: 'compact' });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#ovMarket').hidden);
+  assert.equal(await text(page, '#ovMarket'), 'Market: BTC 4h downtrend for 3 days · coins 29 down · 2 range · 0 up');
+  assert.ok(await page.locator('#ovMarket').isVisible(), 'on the simple board too');
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});

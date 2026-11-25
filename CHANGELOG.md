@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.1: the market at a glance; a hypothesis tested and rejected
+
+- **Market reader.** `marketTrendSeries`, `marketTrendAt` and `marketSummary` read Bitcoin's 4-hour trend, each known only at its bar's close, plus breadth (coins trending up, down or sideways). The overview shows one line, for example "Market: BTC 4h downtrend for 3 days · coins 29 down · 2 range · 0 up". Strategies can read the market through the backtest and live context.
+- **Tested and rejected: the market-aligned breakout.** The range breakout taken only in BTC's 4h direction looked better on the 2018–2024 episodes (+0.19R vs +0.08R). On the training window it lost more than the plain breakout (core −0.17R over 773 trades, 95% interval below zero), so it was not added; the gate's family stays 4 × 2. Written up in `research/README.md`.
+- Test fix: the vault test's "ciphertext only" check now looks for quoted keys that base64 cannot contain. The old check (the text "BTC") could match a random ciphertext.
+
 ## 2.8.0: market history: the strategies tested in 13 past episodes
 
 - **`metyu-history.js`**: a catalogue of the crypto market's big past episodes (2018 to mid-2024), each dated and typed as a crash, bear market, bull run or flat range, with a short factual note. Examples: the 2018 bubble burst, the COVID crash, May 2021, Terra/LUNA, Celsius/3AC, FTX, the USDC depeg, the 2023 range, the spot ETF rally and the 2024 yen carry unwind.

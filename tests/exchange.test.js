@@ -750,3 +750,26 @@ test('a model from the old evidence gate (no weekly blocks) is retrained at once
   assert.equal(state.model.trainedAt, clock, 'retrained');
   assert.ok(Object.values(state.model.strategies).every(s => Number.isInteger(s.gate.weeks)), 'the new gate counts weeks');
 });
+
+test('market direction: BTC 4h trend known only at bar close, with breadth and how long it has held', () => {
+  const up = walk(11, .003, .01, 1400);        // a rising Bitcoin
+  const series = X.marketTrendSeries(up);
+  assert.ok(series.length > X.WARMUP);
+  assert.equal(X.marketTrendAt(series, up[0].t), null, 'no reading before a 4-hour bar has closed');
+  const last = series[series.length - 1];
+  assert.equal(X.marketTrendAt(series, last.closeAt), last.trend);
+  assert.equal(X.marketTrendAt(series, last.closeAt - 1), series[series.length - 2].trend, 'a bar still forming is never used');
+  assert.equal(last.trend, 'up');
+  const summary = X.marketSummary(up, { 'BTC-USD': 'up', 'ETH-USD': 'down', 'SOL-USD': 'down', 'XRP-USD': 'range', 'BAD-USD': null });
+  assert.equal(summary.btc4h, 'up');
+  assert.deepEqual(summary.breadth, { up: 1, down: 2, range: 1 });
+  assert.equal(summary.coins, 4);
+  let first = series.length - 1;
+  while (first > 0 && series[first - 1].trend === 'up') first -= 1;
+  assert.equal(summary.since, series[first].closeAt, 'since the first 4-hour close of the current run');
+  assert.deepEqual(X.marketSummary([], {}), { btc4h: null, since: null, breadth: { up: 0, down: 0, range: 0 }, coins: 0 });
+  // A strategy may read the market through the backtest context; without data it gets null.
+  assert.equal(X.marketContext([]), null);
+  assert.equal(X.marketContext(series).market(last.closeAt), 'up');
+  assert.equal(X.RULES.familySize, Object.keys(X.STRATEGIES).length * 2, 'the gate corrects for every strategy in both tiers');
+});
