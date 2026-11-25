@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw=' 'sha256-owSG2x33RYWm6M6l13krZET8pOfwp6I6bau80/NYQdc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-YtcruN0zwUpt5x9ul3ucAT0klWNBhg5i7gnCWYoNOIU=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -453,6 +453,7 @@
   <script src="metyu-agent.js"></script>
   <script src="metyu-vault.js"></script>
   <script src="metyu-wallet.js"></script>
+  <script src="metyu-fresh.js"></script>
   <script>
     (() => {
       const M = window.Metyu;
@@ -825,26 +826,32 @@
       // (owner.github.io/repo), the autopilot-data branch that the GitHub Actions workflow writes.
       // ?autopilot=<url> overrides both.
       const ON_PAGES = location.hostname.endsWith('.github.io');
+      // On GitHub Pages the files are read at the autopilot-data branch's latest commit (an immutable
+      // URL, never a stale CDN copy), then at the branch URL if that fails. See metyu-fresh.js.
+      // The owner and repository come from the page address: only plain GitHub names are used, so a
+      // crafted address can never steer the board's requests anywhere else.
+      const plainName = name => (/^[A-Za-z0-9_.-]{1,100}$/.test(name) && !/^\.+$/.test(name) ? name : null);
+      const PAGES_OWNER = plainName(location.hostname.split('.')[0]);
+      const PAGES_REPO = PAGES_OWNER ? plainName(location.pathname.split('/').filter(Boolean)[0] || `${PAGES_OWNER}.github.io`) : null;
+      let freshData = null;
+      try { if (ON_PAGES && PAGES_REPO) freshData = MetyuFresh.createResolver({ owner: PAGES_OWNER, repo: PAGES_REPO }); } catch (error) { freshData = null; }
+      const publishedUrls = async file => (freshData ? freshData.urls(file) : PAGES_REPO ? [`https://raw.githubusercontent.com/${PAGES_OWNER}/${PAGES_REPO}/autopilot-data/${file}`] : []);
+      const readOptions = source => ({ headers: { Accept: 'application/json' }, cache: MetyuFresh.cacheModeFor(source) });
       function accountLinkedRemotely() {
         const live = exchangeStatus && exchangeStatus.live;
         return !!(live && live.conditions.some(condition => condition.id === 'account' && condition.ok));
       }
-      function autopilotSources() {
+      async function autopilotSources() {
         const override = new URLSearchParams(location.search).get('autopilot');
         if (override) return [override];
-        const sources = ON_PAGES ? [] : ['/api/autopilot/status'];   // GitHub Pages has no local server
-        if (location.hostname.endsWith('.github.io')) {
-          const owner = location.hostname.split('.')[0];
-          const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
-          sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/status.json`);
-        }
-        return sources;
+        if (ON_PAGES) return publishedUrls('status.json');   // GitHub Pages has no local server
+        return ['/api/autopilot/status'];
       }
       async function refreshAutopilot() {
         let status = null;
-        for (const source of autopilotSources()) {
+        for (const source of await autopilotSources()) {
           try {
-            const response = await fetch(source, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            const response = await fetch(source, readOptions(source));
             if (!response.ok) continue;
             status = await response.json();
             break;
@@ -908,16 +915,11 @@
       // ---------- exchange autopilot (crypto, virtual money, read-only view) ----------
       // Same places as the Polymarket autopilot: ?exchange=<url>, the local server, or on GitHub Pages
       // the autopilot-data branch (exchange-status.json) written by the GitHub Actions workflow.
-      function exchangeSources() {
+      async function exchangeSources() {
         const override = new URLSearchParams(location.search).get('exchange');
         if (override) return [override];
-        const sources = ON_PAGES ? [] : ['/api/exchange/status'];
-        if (location.hostname.endsWith('.github.io')) {
-          const owner = location.hostname.split('.')[0];
-          const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
-          sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/exchange-status.json`);
-        }
-        return sources;
+        if (ON_PAGES) return publishedUrls('exchange-status.json');
+        return ['/api/exchange/status'];
       }
       const usd = value => (!Number.isFinite(value) ? '—' : value >= 1000 ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : value >= 1 ? `$${value.toFixed(value >= 100 ? 2 : 3)}` : `$${value.toPrecision(4)}`);
       const rText = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}R`;
@@ -1003,9 +1005,9 @@
       }
       async function refreshExchange() {
         let status = null;
-        for (const source of exchangeSources()) {
+        for (const source of await exchangeSources()) {
           try {
-            const response = await fetch(source, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            const response = await fetch(source, readOptions(source));
             if (!response.ok) continue;
             const answer = await response.json();
             if (answer && answer.available) { status = answer; break; }   // e.g. a local server without exchange data: try the next source
@@ -1122,23 +1124,18 @@
       // account-sync.js seals the balances with the owner's passphrase on the GitHub runner; only
       // ciphertext is public. It is opened here, in memory: the passphrase and the balances are never
       // stored, and the view locks itself when the page has been in the background for 5 minutes.
-      function accountSources() {
+      async function accountSources() {
         const override = new URLSearchParams(location.search).get('account');
         if (override) return [override];
-        const sources = ON_PAGES ? [] : ['/api/account'];
+        if (!ON_PAGES) return ['/api/account'];
         // The sealed box exists only when the account sync has linked an account: ask for it only then.
-        if (ON_PAGES && accountLinkedRemotely()) {
-          const owner = location.hostname.split('.')[0];
-          const repo = location.pathname.split('/').filter(Boolean)[0] || `${owner}.github.io`;
-          sources.push(`https://raw.githubusercontent.com/${owner}/${repo}/autopilot-data/account.enc.json`);
-        }
-        return sources;
+        return accountLinkedRemotely() ? publishedUrls('account.enc.json') : [];
       }
       let accountBox = null;
       async function loadAccountBox() {
-        for (const source of accountSources()) {
+        for (const source of await accountSources()) {
           try {
-            const response = await fetch(source, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            const response = await fetch(source, readOptions(source));
             if (!response.ok) continue;
             const box = await response.json();
             if (box && box.v === 1 && box.ct) { accountBox = box; break; }

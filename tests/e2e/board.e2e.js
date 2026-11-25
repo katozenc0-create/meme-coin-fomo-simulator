@@ -779,3 +779,49 @@ test('the simple board: the live overview and the terminal only; "All panels" sh
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });
+
+test('GitHub Pages: reads the state at the branch head commit (no stale CDN copy), falls back to the branch URL', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const path = require('node:path');
+  const make = minutesAgo => {
+    const state = freshState();
+    state.createdAt = new Date(Date.now() - X.DAY / 2).toISOString();
+    state.lastTick = new Date(Date.now() - minutesAgo * 60000).toISOString();
+    return statusOf(state);
+  };
+  const sha = 'c'.repeat(40);
+  const run = async apiWorks => {
+    const page = await env.page({ width: 390, height: 844 });
+    const seen = [];
+    page.on('request', request => seen.push(request.url()));
+    // Serve this checkout as if it were https://someone.github.io/metyu/ (no service worker in this test:
+    // its script fetch is not reliably routed, and the pwa tests cover it).
+    await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'serviceWorker', { get: () => ({ register: () => Promise.resolve() }), configurable: true }));
+    await page.route('https://someone.github.io/metyu/**', route => {
+      const file = new URL(route.request().url()).pathname.replace(/^\/metyu\//, '') || 'board.html';
+            return route.fulfill({ path: path.join(__dirname, '..', '..', file) });
+    });
+    await page.route('https://api.exchange.coinbase.com/**', route => route.abort());
+    await page.route('https://api.github.com/repos/someone/metyu/commits/autopilot-data', route => (apiWorks ? route.fulfill({ status: 200, body: sha, headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' } }) : route.fulfill({ status: 403, body: '{}', headers: { 'access-control-allow-origin': '*' } })));
+    await page.route(`https://raw.githubusercontent.com/someone/metyu/${sha}/exchange-status.json`, route => route.fulfill({ json: make(2), headers: { 'access-control-allow-origin': '*' } }));
+    // The branch URL is the CDN's copy, 12 minutes behind.
+    await page.route('https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json', route => route.fulfill({ json: make(12), headers: { 'access-control-allow-origin': '*' } }));
+    await page.route(/^https:\/\/raw\.githubusercontent\.com\/someone\/metyu\/[^/]+\/status\.json$/, route => route.fulfill({ status: 404, body: '' }));
+    await page.goto('https://someone.github.io/metyu/board.html');
+    await page.waitForFunction(() => !document.querySelector('#exchangePanel').hidden);
+    return { page, seen };
+  };
+
+  const fresh = await run(true);
+  assert.match(await text(fresh.page, '#exStatus'), /Live · real time/, 'the fresh commit copy, not the CDN one');
+  assert.ok(fresh.seen.includes(`https://raw.githubusercontent.com/someone/metyu/${sha}/exchange-status.json`));
+  assert.ok(!fresh.seen.includes('https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json'), 'the stale branch copy is not needed');
+  assert.equal(fresh.seen.filter(url => url.startsWith('https://api.github.com/')).length, 1, 'one tiny API check serves all the files');
+  assert.deepEqual(fresh.page.errors, []);
+
+  const limited = await run(false);   // rate-limited or offline API: the branch URL, as before
+  assert.match(await text(limited.page, '#exStatus'), /Running 24\/7 · scheduled/);
+  assert.ok(limited.seen.includes('https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json'));
+  assert.deepEqual(limited.page.errors, []);
+});
