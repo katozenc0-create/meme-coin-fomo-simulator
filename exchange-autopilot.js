@@ -21,7 +21,7 @@ const History = require('./metyu-history.js');
 
 const HOUR = X.HOUR;
 const DEFAULTS = Object.freeze({
-  bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR, stressDays: 0, stressRetryMs: 6 * HOUR,
+  bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR, stressDays: 0, stressRetryMs: 6 * HOUR, execProbes: 0,
   learn: false, pause: false, resetHalt: '', liveBars: 900, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
 });
 const MINUTE = 60000;
@@ -32,7 +32,7 @@ function freshState(options = {}) {
   return {
     version: 1, kind: 'exchange', createdAt: null, lastTick: null,
     account: { bankroll, cash: bankroll, peak: bankroll, halted: false, realized: 0, trades: 0, wins: 0, day: null, dayStartEquity: bankroll },
-    positions: {}, history: [], log: [], model: null, trainings: [], lastTrainAttempt: 0, stress: null, lastStressAttempt: 0,
+    positions: {}, history: [], log: [], model: null, trainings: [], lastTrainAttempt: 0, stress: null, lastStressAttempt: 0, execution: {}, executionCursor: 0,
     lastSignalBar: {}, lastLossAt: {}, marks: {}, nextId: 1,
     shadow: freshShadow()
   };
@@ -156,17 +156,19 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
   const fmt = value => (value >= 100 ? value.toFixed(2) : value >= 1 ? value.toFixed(4) : value.toPrecision(4));
   const money = value => `${value < 0 ? '-' : '+'}$${Math.abs(value).toFixed(2)}`;
 
+  // Each coin's costs: the fixed ones, with slippage raised to its measured order book (never lowered).
+  const costsOf = symbol => X.costsFor(symbol, state.execution || {}, costs);
   const priceOf = symbol => (state.marks[symbol] ? state.marks[symbol].price : NaN);
   const markOf = held => {
     const price = priceOf(held.symbol);
-    return Number.isFinite(price) ? X.markPosition(held, price, now(), costs).equity : held.margin;
+    return Number.isFinite(price) ? X.markPosition(held, price, now(), costsOf(held.symbol)).equity : held.margin;
   };
   const equity = () => state.account.cash + Object.values(state.positions).reduce((sum, held) => sum + Math.max(0, markOf(held)), 0);
 
   function close(id, price, reason, at = now()) {
     const held = state.positions[id];
     if (!held) return null;
-    const result = X.settle(held, price, at, costs);
+    const result = X.settle(held, price, at, costsOf(held.symbol));
     const shadowTrade = shadowClose(state, id, result.exitFill, at, reason, costs.feeRate);
     if (shadowTrade) say('SHADOW', `${held.symbol} ${held.side} closed (not sent) · ${reason} · ${shadowTrade.pnl >= 0 ? '+' : '-'}$${Math.abs(shadowTrade.pnl).toFixed(2)}`);
     state.account.cash += held.margin + result.pnl;
@@ -213,8 +215,10 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       if (Object.keys(core).length < 2) throw new Error('not enough coins with history');
       // Both tiers read the market's direction from Bitcoin (a core coin).
       const market = bySymbol['BTC-USD'] || null;
-      const trained = X.train(core, { costs, now: now(), market });
-      trained.satellite = Object.keys(satellite).length >= 2 ? X.train(satellite, { costs, now: now(), market }) : null;
+      // Each coin is judged at its own measured costs (when known): thin books cost more.
+      const costsBySymbol = Object.fromEntries(Object.keys(bySymbol).map(symbol => [symbol, costsOf(symbol)]));
+      const trained = X.train(core, { costs, now: now(), market, costsBySymbol });
+      trained.satellite = Object.keys(satellite).length >= 2 ? X.train(satellite, { costs, now: now(), market, costsBySymbol }) : null;
       trained.symbols = Object.keys(bySymbol);
       state.model = trained;
       const summaryOf = model => Object.entries(model.strategies).map(([name, s]) => `${name} ${s.gate.open ? 'OPEN' : 'closed'} (${s.gate.trades} trades, mean ${s.gate.meanR >= 0 ? '+' : ''}${s.gate.meanR.toFixed(2)}R [${s.gate.ci[0].toFixed(2)}, ${s.gate.ci[1].toFixed(2)}])`).join(' · ');
@@ -256,7 +260,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       try {
         const quarters = (await X.fetchCandles(getJson, held.symbol, { granularity: 900, bars: 300, now: t })).candles
           .filter(bar => bar.t + QUARTER <= (finished.length ? finished[0].t : t));
-        const result = X.replayPosition(held, quarters, { now: t, costs, timeStopHours: rules.timeStopHours });
+        const result = X.replayPosition(held, quarters, { now: t, costs: costsOf(held.symbol), timeStopHours: rules.timeStopHours });
         if (quarters.length) held.checkedUntil = Math.max(resumeAt, quarters[quarters.length - 1].t + QUARTER);
         if (apply(result, QUARTER)) return;
       } catch (error) {
@@ -265,12 +269,12 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       }
     }
     if (finished.length) {
-      const result = X.replayPosition(held, finished, { now: t, costs, timeStopHours: rules.timeStopHours });
+      const result = X.replayPosition(held, finished, { now: t, costs: costsOf(held.symbol), timeStopHours: rules.timeStopHours });
       held.checkedUntil = Math.max(held.checkedUntil || 0, finished[finished.length - 1].t + MINUTE);
       if (apply(result, MINUTE)) return;
     }
     const forming = (minutes || []).filter(bar => bar.t + MINUTE > t && bar.t >= (held.checkedUntil || 0));
-    if (forming.length) apply(X.replayPosition(held, forming, { now: t, costs, trail: false }), MINUTE);
+    if (forming.length) apply(X.replayPosition(held, forming, { now: t, costs: costsOf(held.symbol), trail: false }), MINUTE);
   }
 
   function admitAndOpen({ symbol, tier = 'core', strategy, label, signal, bar, atrValue, price, book, reading, leverage = { scale: 1, reason: 'base risk' } }) {
@@ -281,7 +285,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     // The signal was priced off the bar's close; the fill is the live price. Too far away: stale.
     if (Math.abs(price - bar.c) > opts.maxSignalDriftAtr * atrValue) { say('SKIP', `${symbol} ${signal.side} (${strategy}): price moved more than 1 ATR since the signal bar`); return null; }
     const shift = price - bar.c;
-    const sized = X.sizePosition({ side: signal.side, price, stop: signal.stop + shift, target: signal.target + shift, riskAmount: verdict.riskAmount, maxMargin: verdict.maxMargin, maxLeverage: verdict.maxLeverage, costs });
+    const sized = X.sizePosition({ side: signal.side, price, stop: signal.stop + shift, target: signal.target + shift, riskAmount: verdict.riskAmount, maxMargin: verdict.maxMargin, maxLeverage: verdict.maxLeverage, costs: costsOf(symbol) });
     if (!sized) { say('SKIP', `${symbol} ${signal.side} (${strategy}): cannot size within the margin and liquidation limits`); return null; }
     const id = `x${state.nextId}`;
     state.nextId += 1;
@@ -322,10 +326,34 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     }
   }
 
+  /**
+   * Execution realism: a few coins' Coinbase order books per tick, in turn (each coin about every
+   * 2 hours with 4 per tick and 31 coins). Public data, read-only; the samples set each coin's costs.
+   */
+  async function sampleBooks() {
+    if (!opts.execProbes) return 0;
+    state.execution = state.execution || {};
+    let done = 0;
+    for (let k = 0; k < Math.min(opts.execProbes, opts.symbols.length); k += 1) {
+      const symbol = opts.symbols[(state.executionCursor || 0) % opts.symbols.length];
+      state.executionCursor = ((state.executionCursor || 0) + 1) % opts.symbols.length;
+      try {
+        const book = X.parseBook(await getJson(`https://api.exchange.coinbase.com/products/${symbol}/book?level=2`));
+        const entry = state.execution[symbol] || { samples: [] };
+        entry.samples.unshift(X.bookSample(book, new Date(now()).toISOString()));
+        entry.samples.length = Math.min(entry.samples.length, X.EXECUTION.samples);
+        state.execution[symbol] = entry;
+        done += 1;
+      } catch (error) { say('ERROR', `order book for ${symbol}: ${error.message}`); }
+    }
+    return done;
+  }
+
   let lastSeries = {};
   async function tick() {
     const t = now();
     if (!state.createdAt) state.createdAt = new Date(t).toISOString();
+    await sampleBooks();
     const trained = await retrainIfDue();
     await stressIfDue(trained);
 
@@ -448,9 +476,24 @@ function healthOf(state, now = Date.now()) {
 }
 
 /** What the Live Board shows: account, model gates, positions, trades, log, forward test, charts. */
+/** Per coin: the measured book (medians) and the slippage the agent now charges. */
+function executionOf(state, costs = X.COSTS) {
+  const out = {};
+  for (const [symbol, entry] of Object.entries(state.execution || {})) {
+    const samples = entry.samples || [];
+    if (!samples.length) continue;
+    out[symbol] = {
+      samples: samples.length, at: samples[0].at,
+      halfSpread: X.median(samples.map(x => x.halfSpread)), slippage: X.median(samples.map(x => x.slippage)), live: X.median(samples.map(x => x.live)),
+      charged: X.costsFor(symbol, state.execution, costs).slippage
+    };
+  }
+  return { floor: costs.slippage, probeUsd: X.EXECUTION.probeUsd, liveProbeUsd: X.EXECUTION.liveProbeUsd, minSamples: X.EXECUTION.minSamples, coins: out };
+}
+
 function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.chartBars, costs = X.COSTS, accountLink = null } = {}) {
   const positions = Object.values(state.positions).map(held => {
-    const mark = state.marks[held.symbol] ? X.markPosition(held, state.marks[held.symbol].price, now, costs) : null;
+    const mark = state.marks[held.symbol] ? X.markPosition(held, state.marks[held.symbol].price, now, X.costsFor(held.symbol, state.execution || {}, costs)) : null;
     return { ...held, openedAt: new Date(held.openedAt).toISOString(), mark: mark ? mark.price : null, pnl: mark ? mark.pnl : 0 };
   });
   const charts = {};
@@ -481,6 +524,7 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     } : null,
     health: healthOf(state, now),
     market: market ? { ...market, since: market.since ? new Date(market.since).toISOString() : null } : null,
+    execution: executionOf(state, costs),
     marks: state.marks, positions, history: state.history.slice(0, 100), log: state.log.slice(0, 100), trainings: state.trainings.slice(0, 30),
     forward: { learning: forwardEvidence(state.history, { learning: true, now }), gated: forwardEvidence(state.history, { learning: false, now }) },
     // Real money stays locked; this is how far away the conditions are (all trades, both books).
@@ -513,7 +557,7 @@ function saveState(file, state) {
 
 // ---------- CLI ----------
 function parseArgs(argv) {
-  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, 'stress-days': 0, symbols: null, 'account-public': null, pause: false };
+  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, 'stress-days': 0, 'exec-probes': 0, symbols: null, 'account-public': null, pause: false };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'once') args.once = true;
@@ -540,7 +584,7 @@ async function main() {
   const state = loadState(args.state, { bankroll: args.bankroll });
   const getJson = makeGetJson();
   const pause = args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || '');
-  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, resetHalt: process.env.METYU_RESET_HALT || '', trainBars: args['train-bars'], retrainHours: args.retrain, stressDays: Math.max(0, Number(args['stress-days']) || 0), ...(args.symbols ? { symbols: args.symbols } : {}) } });
+  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, resetHalt: process.env.METYU_RESET_HALT || '', trainBars: args['train-bars'], retrainHours: args.retrain, stressDays: Math.max(0, Number(args['stress-days']) || 0), execProbes: Math.max(0, Math.min(10, Number(args['exec-probes']) || 0)), ...(args.symbols ? { symbols: args.symbols } : {}) } });
   console.log(`Metyu exchange autopilot · virtual money only · ${Object.keys(state.positions).length} open · learning book ${args.learn ? 'on' : 'off'} · state ${args.state}`);
   for (;;) {
     try {
@@ -560,4 +604,5 @@ async function main() {
 
 if (require.main === module) main().catch(error => { console.error(error.message); process.exit(1); });
 
-module.exports = { shadowOpen, shadowClose, shadowSummary, freshShadow, createExchangeAutopilot, learnable, healthOf, applyHaltReset, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };
+module.exports = {
+  executionOf, shadowOpen, shadowClose, shadowSummary, freshShadow, createExchangeAutopilot, learnable, healthOf, applyHaltReset, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };
