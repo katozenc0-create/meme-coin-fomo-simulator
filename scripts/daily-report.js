@@ -51,6 +51,10 @@ function report({ exchange, polymarket, account = null, now = Date.now() }) {
     const f = exchange.forward && exchange.forward.gated;
     if (f) lines.push(`- Forward test (normal book): ${f.trades} trades over ${f.weeks ?? '?'} weeks, mean ${f.meanR.toFixed(2)}R`);
     if (exchange.live) lines.push(`- Real money: LOCKED, ${exchange.live.met}/${exchange.live.total}; next: ${(exchange.live.conditions.find(c => !c.ok) || { text: 'all met: owner decides' }).text}`);
+    if (exchange.stress && exchange.stress.verdicts) {
+      const v = Object.entries(exchange.stress.verdicts).map(([name, x]) => `${name} earns in ${x.earnsIn.join('/') || '—'}, loses in ${x.losesIn.join('/') || '—'}`).join('; ');
+      lines.push(`- History test (${exchange.stress.episodes.length} episodes 2018–2024, ${Math.round((now - Date.parse(exchange.stress.at)) / (24 * HOUR))} d ago): ${v}`);
+    }
     if (exchange.shadow) lines.push(`- Shadow orders: ${exchange.shadow.orders} mirrored, ${exchange.shadow.trades} closed, ${money(exchange.shadow.pnl)}, sent ${exchange.shadow.sent}`);
     const alarms = (exchange.log || []).filter(e => Date.parse(e.at) >= since && ['ERROR', 'HALT', 'DEMOTE', 'RESET'].includes(e.kind));
     if (alarms.length) lines.push(`- Alarms (24 h): ${alarms.length}; latest: ${alarms[0].kind} ${alarms[0].text.slice(0, 120)}`);

@@ -146,12 +146,14 @@ test('daily report: health, crypto equity and last 24 h, gates, the real-money l
     forward: { gated: { trades: 6, weeks: 1, meanR: .68 } },
     live: { met: 2, total: 6, conditions: [{ id: 'days', ok: true, text: 'days' }, { id: 'trades', ok: false, text: '30+ closed normal-book trades (now 6)' }] },
     shadow: { orders: 3, trades: 3, pnl: -.41, sent: 0 },
+    stress: { at: ago(72), episodes: new Array(13).fill({}), verdicts: { trend: { earnsIn: ['crash', 'bear'], losesIn: ['bull', 'range'] } } },
     log: [{ at: ago(1), kind: 'DEMOTE', text: 'trend4h: last 20 live trades average -0.30R' }]
   };
   const polymarket = { lastTick: ago(.2), account: { realized: -212.3, halted: false }, positions: [{}, {}], history: [], model: { gate: { open: false, trades: 58, meanReturn: .11 } } };
   const text = daily.report({ exchange, polymarket, now });
   assert.match(text, /^# Metyu daily report · 2026-11-20 08:00 UTC/);
   assert.match(text, /\*\*Health:\*\* OK/);
+  assert.match(text, /History test \(13 episodes 2018–2024, 3 d ago\): trend earns in crash\/bear, loses in bull\/range/);
   assert.match(text, /\*\*Real wallet\/account:\*\* not linked/);
   assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), security: { approvals: 0 } }, now }), /verified 1 h ago, no open token approvals/);
   assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), security: { approvals: 2 } }, now }), /⚠ 2 OPEN TOKEN APPROVAL\(S\)/);

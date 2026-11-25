@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-YtcruN0zwUpt5x9ul3ucAT0klWNBhg5i7gnCWYoNOIU=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-3hfCeWhFs4DLGFvniCZCgjK3H+vxMXIx7F2wKo9cm7Q=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -344,6 +344,9 @@
         <span><i style="background:var(--muted)"></i>support / resistance</span><span><i style="background:var(--red)"></i>stop · liquidation</span><span><i style="background:var(--green)"></i>target</span>
       </div>
       <ul class="ex-notes" id="exNotes"></ul>
+      <h3 id="exStressHead" hidden>History test</h3>
+      <ul class="lock-list" id="exStress" hidden></ul>
+      <p class="note" id="exStressNote" hidden></p>
       <h3 id="exLiveHead">Real money: locked</h3>
       <ul class="lock-list" id="exLive"></ul>
       <p class="note" id="exLiveLimits"></p>
@@ -1049,6 +1052,23 @@
         const satelliteGates = status.model && status.model.satellite ? Object.values(status.model.satellite.strategies) : [];
         $('#exGates').textContent = strategies.length ? `${openGates}/${strategies.length} open${satelliteGates.length ? ` · new coins ${satelliteGates.filter(s => s.gate.open).length}/${satelliteGates.length}` : ''}` : 'not trained';
         $('#exTick').textContent = status.lastTick ? new Date(status.lastTick).toLocaleTimeString() : '—';
+        // History test: the current strategies replayed through the big past episodes (2018-2024).
+        const stress = status.stress && status.stress.kinds ? status.stress : null;
+        for (const id of ['#exStressHead', '#exStress', '#exStressNote']) $(id).hidden = !stress;
+        if (stress) {
+          const KIND_LABEL = { crash: 'Crashes', bear: 'Bear markets', bull: 'Bull runs', range: 'Flat ranges' };
+          $('#exStressHead').textContent = `History test · ${stress.episodes.length} past episodes (2018–2024)`;
+          $('#exStress').replaceChildren(...Object.entries(stress.kinds).map(([kind, byStrategy]) => {
+            const item = document.createElement('li');
+            const names = stress.episodes.filter(e => e.kind === kind).map(e => e.name);
+            const parts = Object.entries(byStrategy).map(([name, r]) => `${name} ${rText(r.meanR)} (${r.trades})`);
+            const total = Object.values(byStrategy).reduce((sum, r) => sum + r.sumR, 0);
+            item.className = total > 0 ? 'ok' : '';
+            item.textContent = `${KIND_LABEL[kind] || kind}: ${parts.join(' · ')} — ${names.join(', ')}`;
+            return item;
+          }));
+          $('#exStressNote').textContent = `Mean R per trade (trades) of today's strategies, on BTC, ETH, LTC, BCH and LINK, all costs included. Information only: it opens no gate and sizes no trade. Tested ${(() => { const hours = (Date.now() - Date.parse(stress.at)) / 3600000; return hours < 48 ? `${Math.max(1, Math.round(hours))} h` : `${Math.round(hours / 24)} days`; })()} ago; repeated weekly.`;
+        }
         // Chart: keep the chosen coin; default to the first coin with a position, else BTC.
         const symbols = Object.keys(status.charts || {});
         const select = $('#exSymbol');
