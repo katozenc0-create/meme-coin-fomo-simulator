@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.8.0: market history: the strategies tested in 13 past episodes
+
+- **`metyu-history.js`**: a catalogue of the crypto market's big past episodes (2018 to mid-2024), each dated and typed as a crash, bear market, bull run or flat range, with a short factual note. Examples: the 2018 bubble burst, the COVID crash, May 2021, Terra/LUNA, Celsius/3AC, FTX, the USDC depeg, the 2023 range, the spot ETF rally and the 2024 yen carry unwind.
+- **Stress test**: every week, and whenever training picks new parameters, the agent replays its current strategies through each episode on real Coinbase hourly bars (BTC, ETH, LTC, BCH, LINK), all costs included. Only trades opened inside an episode count. All episodes lie before the 2-year training window, so this is out-of-sample.
+- **First result** (current parameters): the trend and breakout strategies earn in crashes and bear markets (crash: breakout +0.41R over 185 trades, trend +0.24R over 128) and lose in flat ranges (trend −0.20R, breakout −0.23R); range reversion loses in most kinds. The edge Metyu shows today comes from falling markets, which explains why it is mostly short now.
+- Shown on the board (crypto panel, "History test"), in the daily report and in the log (`STRESS`). Information only: no gate, size or rule changes.
+- Training every 12 hours instead of 24 (`--retrain 12`).
+
 ## 2.7.0: fresh data on the board
 
 - **No stale CDN copy.** raw.githubusercontent.com serves the branch files with `max-age=300` and ignores the query string, so the board could show the agent's state up to 5 minutes late. `metyu-fresh.js` asks the GitHub API which commit `autopilot-data` points at (the SHA only, revalidated by its ETag) and reads the files at that commit, an immutable URL that is never stale. The board now sees a publish within about 90 seconds.

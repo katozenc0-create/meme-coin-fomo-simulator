@@ -257,7 +257,7 @@ Each reading comes with plain-language notes you can check against the chart on 
 - a 6-hour cool-down on a coin after a loss on it;
 - a kill-switch at −15% from the peak closes everything.
 
-**Training and the evidence gate:** once a day the autopilot fetches about **2 years** of hourly bars per coin (`--train-bars 17520`) and runs a walk-forward:
+**Training and the evidence gate:** every 12 hours (`--retrain 12`) the autopilot fetches about **2 years** of hourly bars per coin (`--train-bars 17520`) and runs a walk-forward:
 - Each strategy's parameters are chosen on the first 60% of every coin's history.
 - They are judged only on the last 40% (about 40 weeks), which the choice never saw.
 - The gate is honest about two things. These follow Bailey and López de Prado on [backtest overfitting](https://papers.ssrn.com/abstract=2326253) and the [deflated Sharpe ratio](https://papers.ssrn.com/abstract=2460551):
@@ -266,6 +266,8 @@ Each reading comes with plain-language notes you can check against the chart on 
 - A gate opens only with 30+ out-of-sample trades over **12+ different weeks** and that corrected interval above zero, after all costs. A gate-approved strategy trades the normal book.
 - With `--learn`, an undecided strategy trades the tagged **learning book** as a forward test. Undecided means the plain weekly 95% interval still reaches above zero, or there are too few trades or weeks.
 - A strategy whose weekly 95% interval lies entirely below zero is proven to lose after costs and is not traded at all.
+
+**History test (`metyu-history.js`, `--stress-days 7`):** once a week, and whenever the training chooses new parameters, the agent replays today's strategies through 13 big past episodes on real Coinbase hourly bars of BTC, ETH, LTC, BCH and LINK, with all costs. The episodes run from the 2018 bubble burst, the COVID crash, LUNA and FTX to the 2023 summer range and the 2024 ETF rally, grouped as crashes, bear markets, bull runs and flat ranges. All of them lie before the 2-year training window, so they are honest out-of-sample tests of how each strategy behaves in each kind of market. The board and the daily report show where each strategy earns and where it loses. It is information only: it opens no gate and sizes no trade.
 
 **What two years of data said (20 November 2026):** no gate is open. Over ~250 days, the 4-hour trend pullback looked proven: 157 trades, +0.24R, interval [+0.09, +0.41]. But those 157 trades came from only 12 weeks of one downtrend, and the weekly interval already crossed zero. Over 2 years (459 trades, 40 weeks) its mean is −0.02R. The earlier edge was the regime, not the strategy. This is why the gate counts weeks.
 

@@ -825,3 +825,31 @@ test('GitHub Pages: reads the state at the branch head commit (no stale CDN copy
   assert.ok(limited.seen.includes('https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json'));
   assert.deepEqual(limited.page.errors, []);
 });
+
+test('history test: how today\'s strategies did in the big past episodes, information only', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  const r = (trades, meanR) => ({ trades, wins: Math.round(trades / 2), meanR, sumR: trades * meanR, shorts: 1 });
+  state.stress = {
+    at: new Date(Date.now() - 3 * X.DAY).toISOString(), coins: ['BTC-USD', 'ETH-USD'],
+    episodes: [{ id: '2022-ftx', name: 'FTX collapse', kind: 'crash' }, { id: '2023-range', name: '2023 summer range', kind: 'range' }],
+    kinds: { crash: { trend: r(128, .24), breakout: r(185, .41) }, range: { trend: r(130, -.2), breakout: r(182, -.23) } },
+    verdicts: { trend: { earnsIn: ['crash'], losesIn: ['range'] } }, paramsKey: 'x'
+  };
+  const status = statusOf(state);
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#exStress').hidden);
+  assert.equal(await text(page, '#exStressHead'), 'History test · 2 past episodes (2018–2024)');
+  assert.match(await text(page, '#exStress'), /Crashes: trend \+0\.24R \(128\) · breakout \+0\.41R \(185\) — FTX collapse/);
+  assert.match(await text(page, '#exStress'), /Flat ranges: trend -0\.20R \(130\) · breakout -0\.23R \(182\) — 2023 summer range/);
+  assert.equal(await page.locator('#exStress li.ok').count(), 1, 'the episodes where the strategies earned are marked');
+  assert.match(await text(page, '#exStressNote'), /Information only: it opens no gate and sizes no trade\. Tested 3 days ago; repeated weekly\./);
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});

@@ -17,10 +17,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const X = require('./metyu-exchange.js');
+const History = require('./metyu-history.js');
 
 const HOUR = X.HOUR;
 const DEFAULTS = Object.freeze({
-  bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR,
+  bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR, stressDays: 0, stressRetryMs: 6 * HOUR,
   learn: false, pause: false, resetHalt: '', liveBars: 900, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
 });
 const MINUTE = 60000;
@@ -31,7 +32,7 @@ function freshState(options = {}) {
   return {
     version: 1, kind: 'exchange', createdAt: null, lastTick: null,
     account: { bankroll, cash: bankroll, peak: bankroll, halted: false, realized: 0, trades: 0, wins: 0, day: null, dayStartEquity: bankroll },
-    positions: {}, history: [], log: [], model: null, trainings: [], lastTrainAttempt: 0,
+    positions: {}, history: [], log: [], model: null, trainings: [], lastTrainAttempt: 0, stress: null, lastStressAttempt: 0,
     lastSignalBar: {}, lastLossAt: {}, marks: {}, nextId: 1,
     shadow: freshShadow()
   };
@@ -291,11 +292,40 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     return held;
   }
 
+  /**
+   * The history stress test (metyu-history.js): the current strategies replayed through the big
+   * past episodes (2018-2024). Information only: it never opens a gate or sizes a trade. Due every
+   * `stressDays` days, or at once when the training chose other parameters; never in the same tick
+   * as a training (one heavy job per tick).
+   */
+  const paramsKey = model => JSON.stringify(Object.entries(model.strategies).map(([name, s]) => [name, s.params]));
+  async function stressIfDue(trainedThisTick) {
+    const model = state.model;
+    if (!opts.stressDays || !model || trainedThisTick) return false;
+    const stress = state.stress;
+    const due = !stress || stress.paramsKey !== paramsKey(model) || now() - Date.parse(stress.at) >= opts.stressDays * X.DAY;
+    if (!due || now() - (state.lastStressAttempt || 0) < opts.stressRetryMs) return false;
+    state.lastStressAttempt = now();
+    try {
+      const errors = [];
+      const result = await History.runStressTest(getJson, model.strategies, { costs, now: now(), onError: text => errors.push(text) });
+      if (!result.coins.length) throw new Error(`no history data${errors.length ? ` (${errors[0]})` : ''}`);
+      state.stress = { ...result, paramsKey: paramsKey(model), errors: errors.length };
+      const verdict = Object.entries(result.verdicts).map(([name, v]) => `${name}: earns in ${v.earnsIn.join('/') || '—'}, loses in ${v.losesIn.join('/') || '—'}`).join(' · ');
+      say('STRESS', `history test: ${result.episodes.length} past episodes (2018-2024) on ${result.coins.length} coins · ${verdict}`);
+      return true;
+    } catch (error) {
+      say('ERROR', `history stress test failed: ${error.message}`);
+      return false;
+    }
+  }
+
   let lastSeries = {};
   async function tick() {
     const t = now();
     if (!state.createdAt) state.createdAt = new Date(t).toISOString();
-    await retrainIfDue();
+    const trained = await retrainIfDue();
+    await stressIfDue(trained);
 
     // 1. Fresh hourly bars and live prices for every coin.
     const series = {};
@@ -450,6 +480,8 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     // lock counts those trades only; the learning book's research trades never count toward it.
     live: X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now }),
     shadow: shadowSummary(state.shadow),
+    // How the current strategies did in the big past episodes (information only; see metyu-history.js).
+    stress: state.stress ? { at: state.stress.at, coins: state.stress.coins, episodes: state.stress.episodes, kinds: state.stress.kinds, verdicts: state.stress.verdicts } : null,
     // The linked wallet's security check (counts only, no address): the board warns from it.
     accountSecurity: accountLink && accountLink.linked ? { ...(accountLink.security || {}), verifiedAt: accountLink.verifiedAt } : null,
     charts
@@ -473,7 +505,7 @@ function saveState(file, state) {
 
 // ---------- CLI ----------
 function parseArgs(argv) {
-  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, symbols: null, 'account-public': null, pause: false };
+  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, 'stress-days': 0, symbols: null, 'account-public': null, pause: false };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'once') args.once = true;
@@ -500,7 +532,7 @@ async function main() {
   const state = loadState(args.state, { bankroll: args.bankroll });
   const getJson = makeGetJson();
   const pause = args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || '');
-  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, resetHalt: process.env.METYU_RESET_HALT || '', trainBars: args['train-bars'], retrainHours: args.retrain, ...(args.symbols ? { symbols: args.symbols } : {}) } });
+  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, resetHalt: process.env.METYU_RESET_HALT || '', trainBars: args['train-bars'], retrainHours: args.retrain, stressDays: Math.max(0, Number(args['stress-days']) || 0), ...(args.symbols ? { symbols: args.symbols } : {}) } });
   console.log(`Metyu exchange autopilot · virtual money only · ${Object.keys(state.positions).length} open · learning book ${args.learn ? 'on' : 'off'} · state ${args.state}`);
   for (;;) {
     try {
