@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.9.0: execution realism: costs from real order books
+
+- Real-money preparation: the paper results must not be better than real trading could be. A first measurement of all 31 Coinbase order books, for a $5,000 paper-size order, found:
+  - the core coins cost at most about 0.08% per side;
+  - several newer coins cost 0.10–0.30% (PEPE 0.14–0.30%, ZRO 0.20%, RENDER 0.16–0.19%, ALGO 0.15%, FET 0.15%), against the 0.05% the agent assumed.
+- **Measured costs.** Every tick the agent reads 4 order books in turn (`--exec-probes 4`; about every 2 hours per coin): half the spread, plus the depth a $5,000 order walks. After 6 samples, the median of the last 48 replaces the 0.05% slippage floor when it is higher. It is used for sizing, marks, exits and the walk-forward training, so the evidence gate judges each coin at its real cost. A book too thin to fill counts at the 1% cap.
+- Costs never go below the floor, so the gate can only get stricter. Shown on the board (crypto panel, "Execution check") and in the daily report; `status.execution` lists every coin.
+
 ## 2.8.1: the market at a glance; a hypothesis tested and rejected
 
 - **Market reader.** `marketTrendSeries`, `marketTrendAt` and `marketSummary` read Bitcoin's 4-hour trend, each known only at its bar's close, plus breadth (coins trending up, down or sideways). The overview shows one line, for example "Market: BTC 4h downtrend for 3 days · coins 29 down · 2 range · 0 up". Strategies can read the market through the backtest and live context.

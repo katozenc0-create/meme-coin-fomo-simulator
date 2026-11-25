@@ -51,6 +51,12 @@ function report({ exchange, polymarket, account = null, now = Date.now() }) {
     const f = exchange.forward && exchange.forward.gated;
     if (f) lines.push(`- Forward test (normal book): ${f.trades} trades over ${f.weeks ?? '?'} weeks, mean ${f.meanR.toFixed(2)}R`);
     if (exchange.live) lines.push(`- Real money: LOCKED, ${exchange.live.met}/${exchange.live.total}; next: ${(exchange.live.conditions.find(c => !c.ok) || { text: 'all met: owner decides' }).text}`);
+    const execution = exchange.execution && exchange.execution.coins ? exchange.execution : null;
+    if (execution) {
+      const measured = Object.entries(execution.coins).filter(([, c]) => c.samples >= execution.minSamples);
+      const dearer = measured.filter(([, c]) => c.charged > execution.floor).sort((x, y) => y[1].charged - x[1].charged);
+      lines.push(`- Execution check: ${measured.length} coins measured, ${dearer.length} charged above the ${(execution.floor * 100).toFixed(2)}% floor${dearer.length ? ` (worst ${dearer.slice(0, 3).map(([symbol, c]) => `${symbol} ${(c.charged * 100).toFixed(2)}%`).join(', ')})` : ''}`);
+    }
     if (exchange.stress && exchange.stress.verdicts) {
       const v = Object.entries(exchange.stress.verdicts).map(([name, x]) => `${name} earns in ${x.earnsIn.join('/') || '—'}, loses in ${x.losesIn.join('/') || '—'}`).join('; ');
       lines.push(`- History test (${exchange.stress.episodes.length} episodes 2018–2024, ${Math.round((now - Date.parse(exchange.stress.at)) / (24 * HOUR))} d ago): ${v}`);

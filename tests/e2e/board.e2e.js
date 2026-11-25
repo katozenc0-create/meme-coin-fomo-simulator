@@ -871,3 +871,21 @@ test('overview shows the market at a glance: BTC 4h direction, how long, and bre
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });
+
+test('execution check: real order-book costs per coin, never below the floor', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  const samples = (slippage, live) => ({ samples: Array.from({ length: 8 }, () => ({ at: state.lastTick, halfSpread: live, slippage, live })) });
+  state.execution = { 'PEPE-USD': samples(.0022, .0014), 'ZRO-USD': samples(.0019, .0007), 'BTC-USD': samples(.00001, .00001) };
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: statusOf(state) }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#exExec').hidden);
+  assert.equal(await text(page, '#exExec'), 'Execution check (real Coinbase order books, $5,000 paper size, 3 coins measured): 2 cost more than the 0.05% floor and are charged their measured cost (worst PEPE-USD 0.22%, ZRO-USD 0.19%). A $100 order would pay a median 0.07%.');
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});

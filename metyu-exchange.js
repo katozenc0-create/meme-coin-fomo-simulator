@@ -51,6 +51,18 @@
     maintenance: .005         // 0.5% maintenance margin: liquidation when equity falls below it
   });
 
+  // Execution realism: the fixed slippage above is a FLOOR. The agent measures each coin's real
+  // Coinbase order book (half the spread plus the depth walked by an order of `probeUsd`, the size
+  // of a paper trade) and charges the median of its recent samples when that is higher. Costs can
+  // only go up from the floor, so the evidence gate can only get stricter, never looser.
+  const EXECUTION = Object.freeze({
+    probeUsd: 5000,           // a paper trade's notional, roughly
+    liveProbeUsd: 100,        // a first real order would be far smaller ($25, LIVE_LIMITS)
+    samples: 48,              // recent book samples kept per coin
+    minSamples: 6,            // the measured cost is used once a coin has this many samples
+    maxSlippage: .01          // a sanity cap per side (a broken book never makes a coin look free or absurd)
+  });
+
   const RULES = Object.freeze({
     riskPct: .01,             // a stop-out loses ~1% of equity (gated book), times the leverage tier below
     learnRiskPct: .0025,      // ~0.25% in the learning book
@@ -72,6 +84,54 @@
     liveReviewTrades: 20,     // live watchdog: the last 20 closed trades of a strategy (both books, in R)...
     liveDemoteR: -.25         // ...averaging below -0.25R demote it to the learning book until they recover
   });
+
+  // ---------- execution realism ----------
+  /** A Coinbase level-2 book ({ bids: [[price, size, n]], asks }) as numbers, best first. */
+  function parseBook(data) {
+    const side = rows => (Array.isArray(rows) ? rows.map(row => [Number(row[0]), Number(row[1])]).filter(([price, size]) => price > 0 && size > 0) : []);
+    const book = { bids: side(data && data.bids).sort((a, b) => b[0] - a[0]), asks: side(data && data.asks).sort((a, b) => a[0] - b[0]) };
+    if (!book.bids.length || !book.asks.length || book.bids[0][0] >= book.asks[0][0]) throw new Error('empty or crossed order book');
+    return book;
+  }
+  /**
+   * What an order of `usd` would really pay against the book: its average fill versus the mid
+   * price, as a fraction (half the spread included). `filled` is false when the book is too thin.
+   */
+  function bookImpact(book, side, usd) {
+    const mid = (book.bids[0][0] + book.asks[0][0]) / 2;
+    const levels = side === 'buy' ? book.asks : book.bids;
+    let left = usd; let cost = 0; let qty = 0;
+    for (const [price, size] of levels) {
+      const take = Math.min(size, left / price);
+      qty += take; cost += take * price; left -= take * price;
+      if (left <= usd * 1e-9) break;
+    }
+    const average = qty > 0 ? cost / qty : mid;
+    return { mid, halfSpread: (book.asks[0][0] - book.bids[0][0]) / 2 / mid, slippage: Math.abs(average - mid) / mid, filled: left <= usd * 1e-6 };
+  }
+  /** One book sample: the paper-size cost (buy and sell averaged) and the small live-size one. */
+  function bookSample(book, at, execution = EXECUTION) {
+    const buy = bookImpact(book, 'buy', execution.probeUsd);
+    const sell = bookImpact(book, 'sell', execution.probeUsd);
+    const live = bookImpact(book, 'buy', execution.liveProbeUsd);
+    // A book too thin to fill the probe counts at the cap: the paper trade could not be done there.
+    const paper = buy.filled && sell.filled ? (buy.slippage + sell.slippage) / 2 : execution.maxSlippage;
+    const keep = value => Math.round(value * 1e7) / 1e7;   // 0.00001% steps: plenty, and a small state file
+    return { at, halfSpread: keep(buy.halfSpread), slippage: keep(Math.min(execution.maxSlippage, paper)), live: keep(Math.min(execution.maxSlippage, live.slippage)) };
+  }
+  const median = values => {
+    if (!values.length) return NaN;
+    const sorted = values.slice().sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+  /** The costs of one coin: the fixed ones, with slippage raised to its measured median (never lowered). */
+  function costsFor(symbol, execution = {}, base = COSTS, rules = EXECUTION) {
+    const samples = (execution[symbol] && execution[symbol].samples) || [];
+    if (samples.length < rules.minSamples) return base;
+    const measured = median(samples.map(sample => sample.slippage));
+    return Number.isFinite(measured) && measured > base.slippage ? { ...base, slippage: Math.min(rules.maxSlippage, measured) } : base;
+  }
 
   // ---------- small helpers ----------
   const finite = value => Number.isFinite(value);
@@ -657,7 +717,9 @@
    * mean R on the first `split` of every coin's history (needs 10+ trades), then the evidence gate
    * judged ONLY on the trades in the remaining, unseen part.
    */
-  function train(candlesBySymbol, { split = .6, costs = COSTS, now = Date.now(), tests = RULES.familySize, market = null } = {}) {
+  function train(candlesBySymbol, { split = .6, costs = COSTS, now = Date.now(), tests = RULES.familySize, market = null, costsBySymbol = null } = {}) {
+    // Each coin's own costs when they are known (measured order books), else the common ones.
+    const costOf = symbol => (costsBySymbol && costsBySymbol[symbol]) || costs;
     // The market's direction from Bitcoin's hourly bars (given, or found among the coins).
     const marketSeries = marketTrendSeries(market || candlesBySymbol['BTC-USD']);
     const seriesByTf = {};
@@ -676,11 +738,11 @@
       if (!series.length) continue;
       let chosen = null;
       for (const params of STRATEGIES[name].grid) {
-        const rs = series.flatMap(s => backtest(s.candles, name, params, { from: WARMUP, to: s.cut, costs, ind: s.ind, symbol: s.symbol, market: marketSeries })).map(trade => trade.r);
+        const rs = series.flatMap(s => backtest(s.candles, name, params, { from: WARMUP, to: s.cut, costs: costOf(s.symbol), ind: s.ind, symbol: s.symbol, market: marketSeries })).map(trade => trade.r);
         const score = rs.length >= 10 ? mean(rs) : -Infinity;
         if (!chosen || score > chosen.score) chosen = { params, score, inSample: rs.length };
       }
-      const outTrades = series.flatMap(s => backtest(s.candles, name, chosen.params, { from: s.cut, to: s.candles.length, costs, ind: s.ind, symbol: s.symbol, market: marketSeries }));
+      const outTrades = series.flatMap(s => backtest(s.candles, name, chosen.params, { from: s.cut, to: s.candles.length, costs: costOf(s.symbol), ind: s.ind, symbol: s.symbol, market: marketSeries }));
       const gate = evidenceOfTrades(outTrades, { tests });
       strategies[name] = { label: STRATEGIES[name].label, timeframe: timeframeOf(name), params: chosen.params, inSampleTrades: chosen.inSample, inSampleMeanR: finite(chosen.score) ? chosen.score : null, gate };
     }
@@ -808,6 +870,7 @@
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
     ACCOUNT_FRESH_HOURS, accountFresh,
+    EXECUTION, parseBook, bookImpact, bookSample, costsFor, median,
     TIMEFRAMES, timeframeOf, aggregateCandles, marketTrendSeries, marketTrendAt, marketContext, marketSummary, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
