@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.13.0: research: the funding carry passes the gate, but it is small
+
+- `research/funding-carry.js` reads 2 years of Hyperliquid's real hourly funding for 30 coins and tests a delta-neutral carry: hold the coin, short its perp, collect the funding. Costs are expensive on purpose (0.59% per round trip).
+- **Always holding** earned 5.6%/yr on notional across all coins, and 6.7%/yr on BTC/ETH/SOL. The corrected weekly interval is above zero in both calendar years. It is the first return source here that passes the gate.
+- **It is small:** about 3%/yr on capital at 1x, and year 2 was half of year 1. It is written up in `research/README.md` as a low-risk way to prove the real-money pipeline, not a way to high profits. Nothing trades it yet.
+
 ## 2.12.1: the real-money architecture (design only)
 
 - `docs/LIVE-TRADING-ARCHITECTURE.md`: how real trading through Fomo would work, in three stages. Stage 1: order tickets on the board, placed by hand in Fomo and reconciled read-only, with no keys. Stage 2: supervised automation on a dedicated Hyperliquid account, with a trade-only, expiring agent key on the owner's own machine and a separate, reviewed order adapter. Stage 3: scale. It lists the exit criteria for each stage and the decisions only the owner can make. Nothing is built; no order code.
