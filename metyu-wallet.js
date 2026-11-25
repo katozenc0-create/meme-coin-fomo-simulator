@@ -241,10 +241,16 @@
    * quotes and a missing 0x are forgiven), else { problem: { kind, hint } }. A private key or a
    * recovery phrase is called out loudly: it must be deleted and the funds moved.
    */
-  function checkHyperliquidAddress(value) {
+  /** The public 0x address in a value (spaces, quotes and a missing 0x forgiven), else null. Nothing else is ever kept. */
+  function hyperliquidAddressOf(value) {
     const text = String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
-    if (HL_ADDRESS.test(text)) return { address: text };
-    if (/^[0-9a-fA-F]{40}$/.test(text)) return { address: `0x${text}` };
+    const match = /^(?:0x)?([0-9a-fA-F]{40})$/.exec(text);
+    return match ? `0x${match[1]}` : null;
+  }
+  function checkHyperliquidAddress(value) {
+    const address = hyperliquidAddressOf(value);
+    if (address) return { address };
+    const text = String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
     const say = (kind, hint) => ({ problem: { kind, hint } });
     if (!text) return say('empty', 'the address is empty');
     if (/^(0x)?[0-9a-fA-F]{64}$/.test(text)) return say('private-key', 'it looks like a PRIVATE KEY (64 hex characters). Delete it wherever you saved it and move your funds to a new wallet NOW: anyone who saw it can take them. Metyu needs only the public 0x address (40 hex characters).');
@@ -288,5 +294,5 @@
   }
 
   return { SOLANA_ADDRESS, TOKEN_PROGRAMS, MINTS, DEFAULT_BALANCES, DEFAULT_RPC, DEFAULT_PRICES, DEFAULT_TOKENS, normaliseAddress, shortAddress, solanaBalances, solanaApprovals, looksLikeSecret,
-    HYPERLIQUID_INFO, checkHyperliquidAddress, hyperliquidAccount };
+    HYPERLIQUID_INFO, hyperliquidAddressOf, checkHyperliquidAddress, hyperliquidAccount };
 }));

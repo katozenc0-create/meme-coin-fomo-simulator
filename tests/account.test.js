@@ -466,6 +466,8 @@ test('HYPERLIQUID_ADDRESS: forgiving about spaces, quotes and 0x; loud about key
   assert.equal(A.checkHyperliquidAddress('ab'.repeat(20)).address, good, 'a missing 0x is added');
   const kind = value => A.checkHyperliquidAddress(value).problem && A.checkHyperliquidAddress(value).problem.kind;
   assert.equal(kind(''), 'empty');
+  assert.equal(A.checkHyperliquidAddress(' 0x' + 'ab'.repeat(20)).address, require('../metyu-wallet.js').hyperliquidAddressOf('0x' + 'ab'.repeat(20)));
+  assert.equal(require('../metyu-wallet.js').hyperliquidAddressOf('0x' + 'cd'.repeat(32)), null, 'a private key is never an address');
   const W = require('../metyu-wallet.js');
   assert.equal(W.looksLikeSecret('0x' + 'cd'.repeat(32)), 'private-key', 'an EVM private key is a secret');
   assert.equal(W.looksLikeSecret('0x' + 'ab'.repeat(20)), null, 'a public 0x address is not');

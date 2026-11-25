@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-hFeMJTbCCsWDROFKjfjK9SJlAmjNwNnMTC/Vd9lM8fo=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+EtgEHG0uhneO+ZNAHQgwmQwuMqyGSa8lXWaieK4pmA=' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -1372,7 +1372,7 @@
       const PERPS_KEY = 'metyuBoard.perpsAddress';
       let perpsAddress = null;
       let perpsRead = null;      // { account, at } after a successful read
-      try { const stored = MetyuWallet.checkHyperliquidAddress(localStorage.getItem(PERPS_KEY)); perpsAddress = stored.address || null; } catch (error) { /* ignore */ }
+      try { perpsAddress = MetyuWallet.hyperliquidAddressOf(localStorage.getItem(PERPS_KEY)); } catch (error) { /* ignore */ }
       const shortHex = address => `${address.slice(0, 6)}…${address.slice(-4)}`;
       function showPerpsForm(message) {
         perpsRead = null;
@@ -1436,11 +1436,13 @@
       }
       $('#pForm').addEventListener('submit', event => {
         event.preventDefault();
-        const checked = MetyuWallet.checkHyperliquidAddress($('#pAddress').value);
+        const typed = $('#pAddress').value;
         $('#pAddress').value = '';
-        if (!checked.address) { showPerpsForm(`Not linked: ${checked.problem.hint}.`); return; }
-        perpsAddress = checked.address;
-        try { localStorage.setItem(PERPS_KEY, perpsAddress); } catch (error) { /* this session only */ }
+        // Only a public 0x address is ever kept; anything else is explained and dropped.
+        const address = MetyuWallet.hyperliquidAddressOf(typed);
+        if (!address) { showPerpsForm(`Not linked: ${MetyuWallet.checkHyperliquidAddress(typed).problem.hint}.`); return; }
+        perpsAddress = address;
+        try { localStorage.setItem(PERPS_KEY, address); } catch (error) { /* this session only */ }
         refreshPerps();
       });
       $('#pRefresh').addEventListener('click', refreshPerps);
