@@ -15,6 +15,8 @@ test('preflight: order code, signing code and secrets in a source file are caugh
   assert.equal(run('await client.createOrder(symbol, "market", "buy", 1)')['no-order-code'].ok, false);
   assert.equal(run('const tx = await wallet.signTransaction(t)')['no-order-code'].ok, false);
   assert.equal(run("kraken('private/AddOrder', params)")['no-order-code'].ok, false);
+  assert.equal(run("post('https://api.hyperliquid.xyz/exchange', action)")['no-order-code'].ok, false);
+  assert.equal(run("post('https://api.hyperliquid.xyz/info', { type: 'l2Book' })")['no-order-code'].ok, true, 'the read-only info endpoint is fine');
   assert.match(run('x\nawait exchange.withdraw (asset)')['no-order-code'].text, /x\.js:2/);
   assert.equal(run('const orderBook = parseBook(data); // the public book is fine')['no-order-code'].ok, true);
   assert.equal(run('-----BEGIN EC PRIVATE KEY-----')['no-secrets'].ok, false);
@@ -42,6 +44,12 @@ test('preflight: readiness from the published state, with the spot reality of th
   assert.match(checks['costs-measured'].text, /1\/2 coins/);
   assert.equal(checks['spot-executable'].ok, false);
   assert.match(checks['spot-executable'].text, /3 of the last 4 trades were SHORT \(\+\$25\.00\); a spot account could have placed only the 1 LONG \(−\$4\.00\)/);
+  // On a perps venue (shorts allowed) the question is whether the venue lists the coins.
+  const perps = { ...exchange, execution: { ...exchange.execution, venue: 'hyperliquid', venueName: 'Hyperliquid perps', unlisted: ['QNT-USD'] }, history: [...exchange.history.map(t => ({ ...t, symbol: 'BTC-USD' })), { side: 'SHORT', pnl: -2, symbol: 'QNT-USD' }] };
+  const venue = Object.fromEntries(P.readinessChecks({ exchange: perps, account, now }).map(c => [c.id, c]));
+  assert.equal(venue['spot-executable'], undefined);
+  assert.match(venue['venue-executable'].text, /venue Hyperliquid perps \(shorts allowed\): 4 of the last 5 trades were on listed coins; not listed: QNT-USD \(1 trades, −\$2\.00\)/);
+  assert.equal(venue['venue-executable'].ok, false, '20% of trades on an unlisted coin');
   // A shadow order that was ever sent is a hard failure.
   const sent = P.report({ code: P.codeChecks({ files: { 'a.js': 'ok' } }), readiness: P.readinessChecks({ exchange: { ...exchange, shadow: { orders: 1, sent: 1 } }, account, now }), now });
   assert.deepEqual(sent.failed.map(c => c.id), ['shadow-not-sent']);

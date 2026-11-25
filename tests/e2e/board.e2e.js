@@ -885,7 +885,25 @@ test('execution check: real order-book costs per coin, never below the floor', a
   await page.route(published, route => route.fulfill({ json: statusOf(state) }));
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
   await page.waitForFunction(() => !document.querySelector('#exExec').hidden);
-  assert.equal(await text(page, '#exExec'), 'Execution check (real Coinbase order books, $5,000 paper size, 3 coins measured): 2 cost more than the 0.05% floor and are charged their measured cost (worst PEPE-USD 0.22%, ZRO-USD 0.19%). A $100 order would pay a median 0.07%.');
+  assert.equal(await text(page, '#exExec'), 'Execution check (real Coinbase spot order books, $5,000 paper size, 3 coins measured): 2 cost more than the 0.05% floor and are charged their measured cost (worst PEPE-USD 0.22%, ZRO-USD 0.19%). A $100 order would pay a median 0.07%.');
   assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});
+
+test('execution check on the perps venue: its books, funding above the floor, unlisted coins', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  state.executionVenue = 'hyperliquid';
+  const samples = (slippage, live, rate) => ({ samples: Array.from({ length: 8 }, () => ({ at: state.lastTick, halfSpread: live, slippage, live })), funding: Array.from({ length: 8 }, () => rate) });
+  state.execution = { 'RENDER-USD': samples(.00106, .0003, .0000125), 'ZRO-USD': samples(.0007, .0002, .0000267), 'BTC-USD': samples(.00001, .00001, .0000125) };
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: statusOf(state) }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#exExec').hidden);
+  assert.equal(await text(page, '#exExec'), 'Execution check (real Hyperliquid perps order books, $5,000 paper size, 3 coins measured): 2 cost more than the 0.05% floor and are charged their measured cost (worst RENDER-USD 0.11%, ZRO-USD 0.07%). A $100 order would pay a median 0.02%. Funding: 1 coin charged above the 0.01% per 8 h floor. Not listed there: QNT-USD.');
   assert.deepEqual(page.errors, []);
 });

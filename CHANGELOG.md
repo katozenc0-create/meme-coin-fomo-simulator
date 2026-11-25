@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.10.0: the venue: Hyperliquid perps (read-only)
+
+- The owner chose the short-selling path, on a venue reachable from where they live (not Turkey: Turkish rules ban crypto derivatives and shorts for residents). Hyperliquid perps are the venue the Fomo app's perps route to, and they publish their data openly.
+- **`--venue hyperliquid`:**
+  - **Order books.** The execution check reads Hyperliquid's own order books (`l2Book`) instead of Coinbase spot.
+  - **Funding.** One `metaAndAssetCtxs` request per tick records every coin's funding rate. After 6 readings, the median absolute rate times 8 replaces the 0.01% per 8 h floor when higher. Received funding is never credited.
+  - **Listing.** QNT is not listed on Hyperliquid. It is never asked for, and the board, `status.execution.unlisted` and the preflight name it.
+  - **Venue switch.** Samples from another venue are dropped when the venue changes.
+- **Transport:** `getJson(url, body)` POSTs a JSON body, used only for the read-only `/info` endpoint.
+- **Preflight:**
+  - fails the build if `hyperliquid.xyz/exchange` (the order endpoint) appears in the source;
+  - on a perps venue, replaces the spot check with venue coverage: how many recent trades were on coins the venue lists.
+- **Shadow orders** record whether the venue lists the coin (`venueOk`) next to the old spot flag.
+- **First reading (25 Nov 2026):**
+  - Hyperliquid's books are deeper than Coinbase spot for most coins; every coin fills a $5,000 order within 20 levels.
+  - Only RENDER and ALGO (~0.10%), ZRO and TIA (0.06–0.07%) cost more than the 0.05% floor.
+  - Funding is mostly 0.00125% an hour (0.01% per 8 h, which shorts receive); ZRO is at 0.021% per 8 h.
+
 ## 2.9.1: the real-money preflight
 
 - **`scripts/preflight-live.js`**: one checklist for a real-money release, run against the code and the published state; it sends nothing.

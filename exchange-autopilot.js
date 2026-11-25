@@ -21,7 +21,7 @@ const History = require('./metyu-history.js');
 
 const HOUR = X.HOUR;
 const DEFAULTS = Object.freeze({
-  bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR, stressDays: 0, stressRetryMs: 6 * HOUR, execProbes: 0,
+  bankroll: 10000, symbols: X.SYMBOLS, trainBars: 3000, retrainHours: 24, trainRetryMs: HOUR, stressDays: 0, stressRetryMs: 6 * HOUR, execProbes: 0, venue: 'coinbase',
   learn: false, pause: false, resetHalt: '', liveBars: 900, historyLimit: 2000, logLimit: 400, chartBars: 120, maxSignalDriftAtr: 1
 });
 const MINUTE = 60000;
@@ -56,13 +56,17 @@ function shadowOpen(state, held, at, say, fmt) {
   const openUsd = Object.values(shadow.open).reduce((sum, order) => sum + order.usd, 0);
   const usd = Math.min(limits.maxOrderUsd, limits.maxOpenUsd - openUsd);
   const spotOk = held.side === 'LONG';
+  // On a perps venue (the owner's choice: shorts allowed) an order can be placed when the venue lists the coin.
+  const venue = X.VENUES[state.executionVenue];
+  const perps = !!(venue && venue.coins);
+  const venueOk = perps ? !!X.venueCoin(venue, held.symbol) : spotOk;
   let skip = null;
   if (shadow.dayPnl <= -limits.maxDailyLossUsd) skip = `daily loss limit ($${limits.maxDailyLossUsd}) reached`;
   else if (usd < SHADOW_MIN_ORDER_USD) skip = `open limit ($${limits.maxOpenUsd}) full`;
   if (skip) { say('SHADOW', `${held.symbol} ${held.side}: not mirrored · ${skip}`); return null; }
-  const order = { id: held.id, symbol: held.symbol, side: held.side, usd, qty: usd / held.entry, entry: held.entry, stop: held.initialStop, openedAt: new Date(at).toISOString(), spotOk };
+  const order = { id: held.id, symbol: held.symbol, side: held.side, usd, qty: usd / held.entry, entry: held.entry, stop: held.initialStop, openedAt: new Date(at).toISOString(), spotOk, venueOk, venue: perps ? venue.id : 'spot' };
   shadow.open[held.id] = order;
-  say('SHADOW', `${held.symbol} ${held.side} $${usd.toFixed(2)} @ ${fmt(held.entry)} 1x (not sent) · ${spotOk ? 'spot: executable' : 'spot: NOT executable (a short needs futures or margin)'}`);
+  say('SHADOW', `${held.symbol} ${held.side} $${usd.toFixed(2)} @ ${fmt(held.entry)} 1x (not sent) · ${perps ? `${venue.name}: ${venueOk ? 'executable' : 'NOT listed'}` : spotOk ? 'spot: executable' : 'spot: NOT executable (a short needs futures or margin)'}`);
   return order;
 }
 
@@ -91,18 +95,23 @@ function shadowSummary(shadow) {
     limits: X.LIVE_LIMITS, sent: 0,
     open: Object.values(s.open || {}), openUsd: Object.values(s.open || {}).reduce((sum, order) => sum + order.usd, 0),
     trades: closed.length, wins: closed.filter(trade => trade.pnl > 0).length, pnl: closed.reduce((sum, trade) => sum + trade.pnl, 0),
-    dayPnl: s.dayPnl || 0, orders: all.length, spotExecutable: all.filter(order => order.spotOk).length,
+    dayPnl: s.dayPnl || 0, orders: all.length, spotExecutable: all.filter(order => order.spotOk).length, venueExecutable: all.filter(order => order.venueOk ?? order.spotOk).length,
     recent: closed.slice(0, 20)
   };
 }
 
 /** Node transport: JSON over fetch with a timeout and one retry. */
 function makeGetJson({ fetchImpl = fetch, timeoutMs = 15000, retries = 1 } = {}) {
-  return async function getJson(url) {
+  // A body makes it a POST: only for read-only query endpoints (Hyperliquid's /info). Metyu never
+  // calls an order endpoint; scripts/preflight-live.js fails the build if one appears.
+  return async function getJson(url, body) {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        const response = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'metyu-paper-trader' }, signal: AbortSignal.timeout(timeoutMs) });
+        const request = body === undefined
+          ? { headers: { Accept: 'application/json', 'User-Agent': 'metyu-paper-trader' }, signal: AbortSignal.timeout(timeoutMs) }
+          : { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'metyu-paper-trader' }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) };
+        const response = await fetchImpl(url, request);
         if (!response.ok) throw new Error(`HTTP ${response.status} from ${new URL(url).host}`);
         return await response.json();
       } catch (error) {
@@ -332,14 +341,33 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
    */
   async function sampleBooks() {
     if (!opts.execProbes) return 0;
+    const venue = X.VENUES[opts.venue] || X.VENUES.coinbase;
+    // Samples from another venue say nothing about this one: start again when the venue changes.
+    if (state.executionVenue !== venue.id) { state.execution = {}; state.executionVenue = venue.id; state.executionCursor = 0; }
     state.execution = state.execution || {};
-    let done = 0;
-    for (let k = 0; k < Math.min(opts.execProbes, opts.symbols.length); k += 1) {
-      const symbol = opts.symbols[(state.executionCursor || 0) % opts.symbols.length];
-      state.executionCursor = ((state.executionCursor || 0) + 1) % opts.symbols.length;
+    // Funding: one request gives every coin's current rate (perps only).
+    if (venue.id === 'hyperliquid') {
       try {
-        const book = X.parseBook(await getJson(`https://api.exchange.coinbase.com/products/${symbol}/book?level=2`));
+        const rates = X.parseHyperliquidFunding(await getJson(venue.info, { type: 'metaAndAssetCtxs' }));
+        for (const symbol of opts.symbols) {
+          const coin = X.venueCoin(venue, symbol);
+          if (!coin || !(coin in rates)) continue;
+          const entry = state.execution[symbol] || (state.execution[symbol] = { samples: [] });
+          entry.funding = [rates[coin], ...(entry.funding || [])].slice(0, X.EXECUTION.samples);
+        }
+      } catch (error) { say('ERROR', `funding rates from ${venue.name}: ${error.message}`); }
+    }
+    const listed = opts.symbols.filter(symbol => X.venueCoin(venue, symbol));
+    let done = 0;
+    for (let k = 0; k < Math.min(opts.execProbes, listed.length); k += 1) {
+      const symbol = listed[(state.executionCursor || 0) % listed.length];
+      state.executionCursor = ((state.executionCursor || 0) + 1) % listed.length;
+      try {
+        const book = venue.id === 'hyperliquid'
+          ? X.parseHyperliquidBook(await getJson(venue.info, { type: 'l2Book', coin: X.venueCoin(venue, symbol) }))
+          : X.parseBook(await getJson(`https://api.exchange.coinbase.com/products/${symbol}/book?level=2`));
         const entry = state.execution[symbol] || { samples: [] };
+        entry.samples = entry.samples || [];
         entry.samples.unshift(X.bookSample(book, new Date(now()).toISOString()));
         entry.samples.length = Math.min(entry.samples.length, X.EXECUTION.samples);
         state.execution[symbol] = entry;
@@ -477,18 +505,25 @@ function healthOf(state, now = Date.now()) {
 
 /** What the Live Board shows: account, model gates, positions, trades, log, forward test, charts. */
 /** Per coin: the measured book (medians) and the slippage the agent now charges. */
-function executionOf(state, costs = X.COSTS) {
+function executionOf(state, costs = X.COSTS, symbols = X.SYMBOLS) {
+  const venue = X.VENUES[state.executionVenue] || X.VENUES.coinbase;
   const out = {};
   for (const [symbol, entry] of Object.entries(state.execution || {})) {
     const samples = entry.samples || [];
-    if (!samples.length) continue;
+    const funding = entry.funding || [];
+    if (!samples.length && !funding.length) continue;
+    const charged = X.costsFor(symbol, state.execution, costs);
     out[symbol] = {
-      samples: samples.length, at: samples[0].at,
-      halfSpread: X.median(samples.map(x => x.halfSpread)), slippage: X.median(samples.map(x => x.slippage)), live: X.median(samples.map(x => x.live)),
-      charged: X.costsFor(symbol, state.execution, costs).slippage
+      samples: samples.length, at: samples.length ? samples[0].at : null,
+      halfSpread: samples.length ? X.median(samples.map(x => x.halfSpread)) : null, slippage: samples.length ? X.median(samples.map(x => x.slippage)) : null, live: samples.length ? X.median(samples.map(x => x.live)) : null,
+      charged: charged.slippage,
+      ...(funding.length ? { fundingSamples: funding.length, funding: X.median(funding), fundingPer8h: charged.fundingPer8h } : {})
     };
   }
-  return { floor: costs.slippage, probeUsd: X.EXECUTION.probeUsd, liveProbeUsd: X.EXECUTION.liveProbeUsd, minSamples: X.EXECUTION.minSamples, coins: out };
+  return {
+    venue: venue.id, venueName: venue.name, floor: costs.slippage, fundingFloor: costs.fundingPer8h, probeUsd: X.EXECUTION.probeUsd, liveProbeUsd: X.EXECUTION.liveProbeUsd, minSamples: X.EXECUTION.minSamples,
+    unlisted: symbols.filter(symbol => !X.venueCoin(venue, symbol)), coins: out
+  };
 }
 
 function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.chartBars, costs = X.COSTS, accountLink = null } = {}) {
@@ -557,7 +592,7 @@ function saveState(file, state) {
 
 // ---------- CLI ----------
 function parseArgs(argv) {
-  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, 'stress-days': 0, 'exec-probes': 0, symbols: null, 'account-public': null, pause: false };
+  const args = { state: 'data/exchange.json', 'status-out': null, interval: 900, bankroll: undefined, once: false, learn: false, 'train-bars': 3000, retrain: 24, 'stress-days': 0, 'exec-probes': 0, venue: 'coinbase', symbols: null, 'account-public': null, pause: false };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
     if (key === 'once') args.once = true;
@@ -584,7 +619,7 @@ async function main() {
   const state = loadState(args.state, { bankroll: args.bankroll });
   const getJson = makeGetJson();
   const pause = args.pause || /^(1|true|yes|on)$/i.test(process.env.METYU_PAUSE || '');
-  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, resetHalt: process.env.METYU_RESET_HALT || '', trainBars: args['train-bars'], retrainHours: args.retrain, stressDays: Math.max(0, Number(args['stress-days']) || 0), execProbes: Math.max(0, Math.min(10, Number(args['exec-probes']) || 0)), ...(args.symbols ? { symbols: args.symbols } : {}) } });
+  const pilot = createExchangeAutopilot({ getJson, state, options: { bankroll: args.bankroll, learn: args.learn, pause, resetHalt: process.env.METYU_RESET_HALT || '', trainBars: args['train-bars'], retrainHours: args.retrain, stressDays: Math.max(0, Number(args['stress-days']) || 0), execProbes: Math.max(0, Math.min(10, Number(args['exec-probes']) || 0)), venue: X.VENUES[args.venue] ? args.venue : 'coinbase', ...(args.symbols ? { symbols: args.symbols } : {}) } });
   console.log(`Metyu exchange autopilot · virtual money only · ${Object.keys(state.positions).length} open · learning book ${args.learn ? 'on' : 'off'} · state ${args.state}`);
   for (;;) {
     try {

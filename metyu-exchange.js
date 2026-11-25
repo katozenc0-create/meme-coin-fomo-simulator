@@ -60,8 +60,36 @@
     liveProbeUsd: 100,        // a first real order would be far smaller ($25, LIVE_LIMITS)
     samples: 48,              // recent book samples kept per coin
     minSamples: 6,            // the measured cost is used once a coin has this many samples
-    maxSlippage: .01          // a sanity cap per side (a broken book never makes a coin look free or absurd)
+    maxSlippage: .01,         // a sanity cap per side (a broken book never makes a coin look free or absurd)
+    maxFundingPer8h: .005     // a sanity cap on the measured funding (0.5% per 8 hours)
   });
+  // Where real money would trade: the owner chose a venue that allows shorts. Hyperliquid perpetuals
+  // (which the Fomo app routes its perps to) publish their order books and funding rates openly.
+  // Metyu READS them (POST /info); it has no order code, and /exchange is never called.
+  const HL_COINS = Object.freeze(Object.fromEntries(SYMBOLS.filter(symbol => symbol !== 'QNT-USD')
+    .map(symbol => [symbol, symbol === 'PEPE-USD' ? 'kPEPE' : symbol.replace('-USD', '')])));
+  const VENUES = Object.freeze({
+    coinbase: { id: 'coinbase', name: 'Coinbase spot', coins: null },
+    hyperliquid: { id: 'hyperliquid', name: 'Hyperliquid perps', info: 'https://api.hyperliquid.xyz/info', coins: HL_COINS }
+  });
+  /** The venue's name for a coin, or null when the venue does not list it. */
+  const venueCoin = (venue, symbol) => (!venue || !venue.coins ? symbol : venue.coins[symbol] || null);
+  /** Hyperliquid's l2Book answer ({ levels: [bids, asks] } of { px, sz }) as a parsed book. */
+  function parseHyperliquidBook(data) {
+    const levels = data && Array.isArray(data.levels) ? data.levels : [[], []];
+    const rows = side => (Array.isArray(side) ? side.map(level => [level.px, level.sz]) : []);
+    return parseBook({ bids: rows(levels[0]), asks: rows(levels[1]) });
+  }
+  /** Hyperliquid's metaAndAssetCtxs answer as { venueCoin: hourly funding rate }. */
+  function parseHyperliquidFunding(data) {
+    if (!Array.isArray(data) || !data[0] || !Array.isArray(data[0].universe) || !Array.isArray(data[1])) throw new Error('unexpected Hyperliquid answer');
+    const out = {};
+    data[0].universe.forEach((asset, i) => {
+      const rate = Number(data[1][i] && data[1][i].funding);
+      if (asset && asset.name && !asset.isDelisted && Number.isFinite(rate)) out[asset.name] = rate;
+    });
+    return out;
+  }
 
   const RULES = Object.freeze({
     riskPct: .01,             // a stop-out loses ~1% of equity (gated book), times the leverage tier below
@@ -125,12 +153,25 @@
     const mid = sorted.length >> 1;
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   };
-  /** The costs of one coin: the fixed ones, with slippage raised to its measured median (never lowered). */
+  /**
+   * The costs of one coin: the fixed ones, with slippage raised to its measured median book cost and
+   * funding to its measured median rate (either sign: whichever side pays, assume it is ours). Never
+   * lowered: received funding is not credited, so the model stays on the expensive side.
+   */
   function costsFor(symbol, execution = {}, base = COSTS, rules = EXECUTION) {
-    const samples = (execution[symbol] && execution[symbol].samples) || [];
-    if (samples.length < rules.minSamples) return base;
-    const measured = median(samples.map(sample => sample.slippage));
-    return Number.isFinite(measured) && measured > base.slippage ? { ...base, slippage: Math.min(rules.maxSlippage, measured) } : base;
+    const entry = execution[symbol] || {};
+    const samples = entry.samples || [];
+    const funding = entry.funding || [];
+    let costs = base;
+    if (samples.length >= rules.minSamples) {
+      const measured = median(samples.map(sample => sample.slippage));
+      if (Number.isFinite(measured) && measured > costs.slippage) costs = { ...costs, slippage: Math.min(rules.maxSlippage, measured) };
+    }
+    if (funding.length >= rules.minSamples) {
+      const per8h = median(funding.map(rate => Math.abs(rate))) * 8;
+      if (Number.isFinite(per8h) && per8h > costs.fundingPer8h) costs = { ...costs, fundingPer8h: Math.min(rules.maxFundingPer8h, per8h) };
+    }
+    return costs;
   }
 
   // ---------- small helpers ----------
@@ -870,7 +911,7 @@
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
     ACCOUNT_FRESH_HOURS, accountFresh,
-    EXECUTION, parseBook, bookImpact, bookSample, costsFor, median,
+    EXECUTION, parseBook, bookImpact, bookSample, costsFor, median, VENUES, venueCoin, parseHyperliquidBook, parseHyperliquidFunding,
     TIMEFRAMES, timeframeOf, aggregateCandles, marketTrendSeries, marketTrendAt, marketContext, marketSummary, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
