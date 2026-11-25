@@ -7,11 +7,12 @@ Claude runs this once a day, unattended. The aim is a Metyu that stays healthy a
    ```bash
    git fetch origin autopilot-data main
    mkdir -p /tmp/metyu-state
-   for f in status.json exchange-status.json; do git show origin/autopilot-data:$f > /tmp/metyu-state/$f; done
+   for f in status.json exchange-status.json account-public.json; do git show origin/autopilot-data:$f > /tmp/metyu-state/$f; done
    ```
-2. Run both scripts on it:
+2. Run the three scripts on it:
    - `node scripts/daily-report.js /tmp/metyu-state`
    - `node scripts/watchdog.js /tmp/metyu-state`
+   - `node scripts/preflight-live.js /tmp/metyu-state` (real-money preflight: exit 1 means order code, a secret or a sent shadow order appeared; fix that first)
 3. Check the scheduler: in the last 24 h, the `autopilot` workflow should have about 96 successful runs (one every 15 minutes). Fewer means cron-job.org or its token has a problem. Tell the owner; the owner fixes it.
 
 ## 2. Fix (only when something is wrong)
