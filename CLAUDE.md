@@ -44,5 +44,8 @@ npm run test:e2e         # Playwright, iPhone and desktop (~42); slow, run it la
 - **After merging:** fast-forward `claude/metyu-kod-eksikleri-xr3gwb` to `main` and push it.
 - **Board changes:** check them at the GitHub Pages URL on an iPhone 13 viewport. Expect 0 failed requests and no horizontal scroll.
 
+## Real-money plan
+See `docs/LIVE-TRADING-ARCHITECTURE.md` (design only: stage 1 order tickets executed by hand in Fomo, stage 2 a trade-only agent on the owner's machine). Nothing there is built without 6/6 and the owner's separate approval.
+
 ## Daily routine
 See `docs/STEWARD.md`.
