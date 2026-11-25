@@ -151,12 +151,31 @@ function solanaProvider({ address, rpcUrl, balancesUrl, priceUrl = Wallet.DEFAUL
 const HYPERLIQUID_INFO = 'https://api.hyperliquid.xyz/info';
 const HL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 /**
+ * What a HYPERLIQUID_ADDRESS value is, WITHOUT ever repeating it: { address } when usable (spaces,
+ * quotes and a missing 0x are forgiven), else { problem } with a kind and an owner-facing hint.
+ * A private key or a recovery phrase is called out loudly: it must be deleted and the funds moved.
+ */
+function checkHyperliquidAddress(value) {
+  const text = String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
+  if (HL_ADDRESS.test(text)) return { address: text };
+  if (/^[0-9a-fA-F]{40}$/.test(text)) return { address: `0x${text}` };
+  const say = (kind, hint) => ({ problem: { kind, hint } });
+  if (!text) return say('empty', 'the secret is empty');
+  if (/^(0x)?[0-9a-fA-F]{64}$/.test(text)) return say('private-key', 'it looks like a PRIVATE KEY (64 hex characters). Delete the secret NOW and move your funds to a new wallet: anyone who saw it can take them. Metyu needs only the public 0x address (40 hex characters).');
+  if (Wallet.looksLikeSecret(text)) return say('secret', 'it looks like a recovery phrase or a private key. Delete the secret NOW and move your funds to a new wallet. Metyu needs only the public 0x address.');
+  if (Wallet.normaliseAddress(text)) return say('solana', 'it is a Solana address; the perps account needs the 0x (EVM) address shown in the app\'s perps deposit screen');
+  if (/^0x[0-9a-fA-F]*$/.test(text)) return say('length', `it starts with 0x but has ${text.length - 2} hex characters instead of 40 (copied only part of it?)`);
+  return say('format', 'it is not a 0x address (0x followed by 40 characters 0-9 and a-f)');
+}
+/**
  * The perps account behind the Fomo app: margin, open positions and the API agents approved to
  * trade for it, read through the public POST /info endpoint with the public address. An address
  * cannot sign; nothing here can move funds. The order endpoint (/exchange) is never called.
  */
 async function hyperliquidAccount({ address, fetchImpl = fetch, timeoutMs = 15000 }) {
-  if (!HL_ADDRESS.test(String(address || ''))) throw new Error('HYPERLIQUID_ADDRESS is not a Hyperliquid (0x, 40 hex) address. Use the PUBLIC address, never a private key or a seed phrase.');
+  const checked = checkHyperliquidAddress(address);
+  if (!checked.address) throw new Error(`HYPERLIQUID_ADDRESS is not usable: ${checked.problem.hint}`);
+  address = checked.address;
   const info = async body => {
     const response = await fetchImpl(HYPERLIQUID_INFO, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ ...body, user: address }), signal: AbortSignal.timeout(timeoutMs) });
     if (!response.ok) throw new Error(`Hyperliquid HTTP ${response.status}`);
@@ -182,7 +201,9 @@ async function hyperliquidAccount({ address, fetchImpl = fetch, timeoutMs = 1500
   };
 }
 function hyperliquidProvider({ address, fetchImpl = fetch }) {
-  if (!HL_ADDRESS.test(String(address || ''))) throw new Error('HYPERLIQUID_ADDRESS is not a Hyperliquid (0x, 40 hex) address. Use the PUBLIC address, never a private key or a seed phrase.');
+  const checked = checkHyperliquidAddress(address);
+  if (!checked.address) throw new Error(`HYPERLIQUID_ADDRESS is not usable: ${checked.problem.hint}`);
+  address = checked.address;
   return {
     name: 'hyperliquid',
     async permissions() { return { canView: true, canTrade: false, canWithdraw: false, canTransfer: false, raw: { type: 'public address', network: 'hyperliquid', canSign: false } }; },
@@ -228,11 +249,19 @@ function providerFromEnv(env = process.env, { fetchImpl = fetch } = {}) {
   if (env.COINBASE_API_KEY_NAME && env.COINBASE_API_PRIVATE_KEY) provider = coinbaseProvider({ keyName: env.COINBASE_API_KEY_NAME, privateKey: env.COINBASE_API_PRIVATE_KEY, fetchImpl });
   else if (env.BINANCE_API_KEY && env.BINANCE_API_SECRET) provider = binanceProvider({ apiKey: env.BINANCE_API_KEY, apiSecret: env.BINANCE_API_SECRET, baseUrl: env.BINANCE_BASE_URL || undefined, fetchImpl });
   else if (env.SOLANA_WALLET_ADDRESS) provider = solanaProvider({ address: env.SOLANA_WALLET_ADDRESS, rpcUrl: env.SOLANA_RPC_URL || undefined, fetchImpl });
-  // The Fomo app's perps account rides along with any provider, or stands alone.
+  // The Fomo app's perps account rides along with any provider, or stands alone. A bad value never
+  // stops the other link: the perps part reports what is wrong (its kind, never the value).
   if (env.HYPERLIQUID_ADDRESS) {
-    const perps = hyperliquidProvider({ address: env.HYPERLIQUID_ADDRESS, fetchImpl });
-    if (!provider) return perps;
-    provider.perps = perps.perps;
+    const checked = checkHyperliquidAddress(env.HYPERLIQUID_ADDRESS);
+    if (!checked.address) {
+      if (!provider) throw new Error(`HYPERLIQUID_ADDRESS is not usable: ${checked.problem.hint}`);
+      const problem = checked.problem;
+      provider.perps = async () => { const error = new Error(`HYPERLIQUID_ADDRESS is not usable: ${problem.hint}`); error.kind = problem.kind; throw error; };
+    } else {
+      const perps = hyperliquidProvider({ address: checked.address, fetchImpl });
+      if (!provider) return perps;
+      provider.perps = perps.perps;
+    }
   }
   return provider;
 }
@@ -262,7 +291,11 @@ async function syncAccount({ provider, passphrase, getJson, now = () => Date.now
     try {
       perps = await provider.perps();
       perpsPublic = { linked: true, positions: perps.positions.length, agents: perps.agents ? perps.agents.length : null, checkedAt: verifiedAt };
-    } catch (error) { perpsPublic = { linked: false, error: 'perps account unavailable' }; }
+    } catch (error) {
+      // The kind of a bad secret (never its value) is published so the owner can fix it; anything else stays generic.
+      perpsPublic = { linked: false, error: error.kind ? `address ${error.kind}` : 'perps account unavailable' };
+      console.warn(redact(`perps account: ${error.message}`));
+    }
   }
   const perpsUsd = perps ? perps.accountValue + perps.spotUsdc : 0;
   const snapshot = {
@@ -328,4 +361,4 @@ async function main(env = process.env, argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { hyperliquidAccount, hyperliquidProvider, HYPERLIQUID_INFO, redact, parseCoinbaseKey, coinbaseJwt, coinbaseProvider, binanceSignature, binanceProvider, solanaProvider, SOLANA_MINTS, assertViewOnly, RefusedKeyError, priceBalances, providerFromEnv, syncAccount, parseArgs, main };
+module.exports = { checkHyperliquidAddress, hyperliquidAccount, hyperliquidProvider, HYPERLIQUID_INFO, redact, parseCoinbaseKey, coinbaseJwt, coinbaseProvider, binanceSignature, binanceProvider, solanaProvider, SOLANA_MINTS, assertViewOnly, RefusedKeyError, priceBalances, providerFromEnv, syncAccount, parseArgs, main };

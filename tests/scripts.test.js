@@ -158,6 +158,8 @@ test('daily report: health, crypto equity and last 24 h, gates, the real-money l
   assert.match(text, /History test \(13 episodes 2018–2024, 3 d ago\): trend earns in crash\/bear, loses in bull\/range/);
   assert.match(text, /\*\*Real wallet\/account:\*\* not linked/);
   assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), security: { approvals: 0 } }, now }), /verified 1 h ago, no open token approvals/);
+  assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), perps: { linked: false, error: 'address solana' } }, now }), /\*\*Fomo perps account:\*\* NOT linked \(address solana\)/);
+  assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), perps: { linked: true, positions: 2, agents: 1 } }, now }), /linked, 2 open position\(s\), ⚠ 1 API agent\(s\) may trade for it/);
   assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), security: { approvals: 2 } }, now }), /⚠ 2 OPEN TOKEN APPROVAL\(S\)/);
   assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString() }, now }), /\*\*Real wallet\/account:\*\* solana, read-only, verified 1 h ago/);
   assert.match(text, /Equity 10500\.00 \(\+\$500\.00 since start, peak 10600\.00\), 2 open \(1 normal book\)/);
