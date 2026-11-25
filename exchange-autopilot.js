@@ -64,7 +64,7 @@ function shadowOpen(state, held, at, say, fmt) {
   if (shadow.dayPnl <= -limits.maxDailyLossUsd) skip = `daily loss limit ($${limits.maxDailyLossUsd}) reached`;
   else if (usd < SHADOW_MIN_ORDER_USD) skip = `open limit ($${limits.maxOpenUsd}) full`;
   if (skip) { say('SHADOW', `${held.symbol} ${held.side}: not mirrored · ${skip}`); return null; }
-  const order = { id: held.id, symbol: held.symbol, side: held.side, usd, qty: usd / held.entry, entry: held.entry, stop: held.initialStop, openedAt: new Date(at).toISOString(), spotOk, venueOk, venue: perps ? venue.id : 'spot' };
+  const order = { id: held.id, symbol: held.symbol, side: held.side, usd, qty: usd / held.entry, entry: held.entry, stop: held.initialStop, target: held.target, openedAt: new Date(at).toISOString(), spotOk, venueOk, venue: perps ? venue.id : 'spot' };
   shadow.open[held.id] = order;
   say('SHADOW', `${held.symbol} ${held.side} $${usd.toFixed(2)} @ ${fmt(held.entry)} 1x (not sent) · ${perps ? `${venue.name}: ${venueOk ? 'executable' : 'NOT listed'}` : spotOk ? 'spot: executable' : 'spot: NOT executable (a short needs futures or margin)'}`);
   return order;
@@ -98,6 +98,48 @@ function shadowSummary(shadow) {
     dayPnl: s.dayPnl || 0, orders: all.length, spotExecutable: all.filter(order => order.spotOk).length, venueExecutable: all.filter(order => order.venueOk ?? order.spotOk).length,
     recent: closed.slice(0, 20)
   };
+}
+
+// ---------- the path to real money: tickets (computed, never sent) and the ten steps ----------
+// docs/LIVE-TRADING-ARCHITECTURE.md. A TICKET is the order the future order adapter would send for a
+// shadow order: venue coin, side, dollars, a max price (IOC limit), the stop and target, an expiry.
+// It is computed only. Nothing here can send anything: there is no order code in Metyu.
+const TICKET_MAX_SLIPPAGE = .003;                                    // IOC limit 0.3% from the signal price
+const TICKET_TTL_MS = 15 * MINUTE;
+function ticketOf(order, { live = null, venue = X.VENUES.hyperliquid } = {}) {
+  const coin = X.venueCoin(venue, order.symbol);
+  const maxPrice = order.side === 'LONG' ? order.entry * (1 + TICKET_MAX_SLIPPAGE) : order.entry * (1 - TICKET_MAX_SLIPPAGE);
+  const blockedBy = [];
+  if (!live || !live.ready) blockedBy.push(live ? `real-money lock ${live.met}/${live.total}` : 'no readiness check');
+  if (!coin) blockedBy.push(`${order.symbol} not listed on ${venue.name}`);
+  blockedBy.push('no order adapter (step 9)');
+  return {
+    id: order.id, symbol: order.symbol, venue: venue.id, venueCoin: coin, side: order.side, usd: Math.round(order.usd * 100) / 100,
+    maxPrice, stop: order.stop, target: Number.isFinite(order.target) ? order.target : null,
+    createdAt: order.openedAt, expiresAt: new Date(Date.parse(order.openedAt) + TICKET_TTL_MS).toISOString(),
+    closed: !!order.closedAt, sent: false, blockedBy
+  };
+}
+/** The ten steps of the plan, with where things stand. owner: the owner's own action, unknown to the code. */
+function realMoneyPath({ live = null, model = null, tickets = [], approval = null } = {}) {
+  const gates = model ? Object.values(model.strategies || {}).concat(model.satellite ? Object.values(model.satellite.strategies || {}) : []) : [];
+  const openGate = gates.some(s => s.gate && s.gate.open && !s.demoted);
+  const steps = [
+    { n: 1, text: 'Design (docs/LIVE-TRADING-ARCHITECTURE.md)', state: 'done' },
+    // The owner chose to skip this check (25 Nov 2026): legality stays the owner's own responsibility.
+    { n: 2, text: 'Legality of perps where you live: skipped by the owner (the owner\'s responsibility)', state: 'skipped' },
+    // The owner chose a small cloud VPS (25 Nov 2026); it is rented only when step 8 comes.
+    { n: 3, text: 'Host: a small cloud VPS, a few dollars a month (the owner\'s choice; rented at step 8)', state: 'done' },
+    { n: 4, text: 'Tickets: the orders that would be sent (computed only)', state: 'done' },
+    { n: 5, text: 'Board panel for the tickets', state: 'done' },
+    { n: 6, text: 'A checkable approval record that expires', state: approval ? 'done' : 'todo' },
+    { n: 7, text: `A strategy passes the evidence gate, and 6/6 conditions (now ${live ? `${live.met}/${live.total}` : '?'})`, state: openGate && live && live.ready ? 'done' : 'waiting' },
+    { n: 8, text: 'Owner: a dedicated Hyperliquid account (≤ $100) with one trade-only agent', state: 'later' },
+    { n: 9, text: 'The order adapter (its own review, tested on a mock exchange)', state: 'later' },
+    { n: 10, text: 'Deploy on the host; the first real order at $25', state: 'later' }
+  ];
+  const current = steps.find(step => step.state === 'waiting' || step.state === 'todo') || steps.find(step => step.state === 'later');
+  return { stage: 'paper', current: current ? current.n : null, steps, tickets, openGate };
 }
 
 /** Node transport: JSON over fetch with a timeout and one retry. */
@@ -567,6 +609,13 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     // lock counts those trades only; the learning book's research trades never count toward it.
     live: X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now }),
     shadow: shadowSummary(state.shadow),
+    // The path to real money (computed only): the tickets the future adapter would send, and the plan's steps.
+    realMoney: (() => {
+      const live = X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now });
+      const s = state.shadow || freshShadow();
+      const orders = Object.values(s.open || {}).concat(s.closed || []).sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt)).slice(0, 10);
+      return realMoneyPath({ live, model: state.model, tickets: orders.map(order => ticketOf(order, { live })) });
+    })(),
     // How the current strategies did in the big past episodes (information only; see metyu-history.js).
     stress: state.stress ? { at: state.stress.at, coins: state.stress.coins, episodes: state.stress.episodes, kinds: state.stress.kinds, verdicts: state.stress.verdicts } : null,
     // The linked wallet's security check (counts only, no address): the board warns from it.
@@ -640,4 +689,5 @@ async function main() {
 if (require.main === module) main().catch(error => { console.error(error.message); process.exit(1); });
 
 module.exports = {
+  ticketOf, realMoneyPath,
   executionOf, shadowOpen, shadowClose, shadowSummary, freshShadow, createExchangeAutopilot, learnable, healthOf, applyHaltReset, freshState, makeGetJson, forwardEvidence, statusOf, loadState, saveState, parseArgs, DEFAULTS };

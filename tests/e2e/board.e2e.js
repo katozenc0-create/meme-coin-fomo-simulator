@@ -982,3 +982,31 @@ test('Fomo perps account: linked on the board by its public 0x address, read fro
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });
+
+test('overview: the path to real money and the orders that would be sent (never sent)', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  const page = await env.page({ width: 390, height: 844 }, { view: 'terminal', layout: 'compact' });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  let status = statusOf(state);
+  await page.route(published, route => route.fulfill({ json: status }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#ovRealMoney').hidden);
+  assert.match(await text(page, '#ovTickets'), /None yet: an order ticket appears only when a strategy has passed the evidence gate/);
+  assert.match(await text(page, '#ovPathHead'), /^Path to real money · step 6 of 10: A checkable approval record that expires$/);
+  await page.click('#ovPathHead');
+  assert.match(await text(page, '#ovSteps'), /1\. Design.*2\. Legality of perps where you live: skipped by the owner \(the owner's responsibility\).*7\. A strategy passes the evidence gate, and 6\/6 conditions \(now \d\/6\).*10\. Deploy on the host; the first real order at \$25 \(later\)/);
+  assert.equal(await page.locator('#ovSteps li.done').count(), 4);
+  assert.match(await text(page, '#ovSteps'), /3\. Host: a small cloud VPS/);
+  // A shadow order (a gated signal) becomes a ticket that is shown as NOT SENT, with the reasons.
+  state.shadow.open.x1 = { id: 'x1', symbol: 'ETH-USD', side: 'SHORT', usd: 25, entry: 2000, stop: 2100, target: 1800, openedAt: new Date().toISOString() };
+  status = statusOf(state);
+  await page.reload();
+  await page.waitForFunction(() => /NOT SENT/.test(document.querySelector('#ovTickets').textContent));
+  assert.match(await text(page, '#ovTickets'), /ETH SHORT \$25 · limit 1994\.00 · stop 2100\.00 · target 1800\.00\s*NOT SENT\s*blocked: real-money lock \d\/6 · no order adapter \(step 9\)/);
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});

@@ -58,7 +58,7 @@ always-on host (the owner's machine, or a small VPS the owner rents; never GitHu
 ```
 
 - **Account:** a new Hyperliquid account, separate from the Fomo account. The owner funds it with a small amount and approves **one agent** with an expiry. The agent trades but **cannot withdraw**.
-- **Host:** an always-on machine. The agent key lives only in an environment variable there. It is never in the repository, GitHub, chat, logs or the board.
+- **Host:** an always-on machine; **the owner chose a small cloud VPS**. The agent key lives only in an environment variable there. It is never in the repository, GitHub, chat, logs or the board.
   - **Owner's own computer:** no extra cost; it must stay on and updated.
   - **Small VPS** (a few dollars a month): always on, independent of the owner's devices. The owner rents it, and only the owner holds its login.
 - **Tickets** are internal: the adapter's input, made only from **normal-book** signals (an open gate). Learning-book signals never reach real money.
@@ -77,8 +77,8 @@ Larger limits, and any leverage, only with the owner's new, explicit approval af
 | # | Step | Who | Needs |
 |---|---|---|---|
 | 1 | This design | Claude | nothing (done) |
-| 2 | Check that perps are legal where the owner lives | owner | — |
-| 3 | Choose the host: own computer or a small VPS | owner | — |
+| 2 | Check that perps are legal where the owner lives | owner | **skipped by the owner (25 Nov 2026)**: legality stays the owner's own responsibility |
+| 3 | Choose the host: own computer or a small VPS | owner | **chosen: a small cloud VPS** (a few dollars a month), rented only at step 8 |
 | 4 | `ticketOf(shadowOrder)` + tickets in the status (no sending) + tests | Claude | can be built now: it only computes |
 | 5 | Board: an "Orders that would be sent" panel from the tickets | Claude | step 4 |
 | 6 | A checkable approval record, e.g. `METYU_LIVE_APPROVED=<date>` that expires | Claude + owner | step 4 |

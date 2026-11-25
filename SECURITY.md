@@ -98,7 +98,7 @@ Every normal-book entry is mirrored as the order the first real-money release wo
 
 ### The venue: Hyperliquid perps (the owner's choice, 25 Nov 2026)
 
-The owner chose a venue that allows shorts and lives outside Turkey. Turkish rules (CMB Communiqué III-35/B.2) ban crypto derivatives, leverage and short selling for residents. Whether perps are legal where the owner lives is the owner's own check; Metyu does not decide it.
+The owner chose a venue that allows shorts and lives outside Turkey. Turkish rules (CMB Communiqué III-35/B.2) ban crypto derivatives, leverage and short selling for residents. Whether perps are legal where the owner lives is the owner's own check; Metyu does not decide it. The owner chose to skip that check in the plan (25 Nov 2026), so the responsibility stays fully with the owner.
 
 The agent only **reads** Hyperliquid, through its public `POST /info` endpoint: order books (`l2Book`) and funding rates (`metaAndAssetCtxs`). Its order endpoint, `/exchange`, is never called. The preflight's code check fails the build if `hyperliquid.xyz/exchange` appears in any source file.
 
