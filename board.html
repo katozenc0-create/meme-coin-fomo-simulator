@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+EtgEHG0uhneO+ZNAHQgwmQwuMqyGSa8lXWaieK4pmA=' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw=' 'sha256-t42eu8uaiarNvCm9N3rDlbF7L4z9QcKst0lsKZVA7/Q='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -40,6 +40,16 @@
     /* The simple board (the default): the live overview and the Metyu terminal only. Everything else
        is one tap away ("All panels"), kept in the page so the wallet, account and agents still run. */
     body.compact .board-extra { display: none !important; }
+    .rm-steps { margin: 6px 0 0; padding: 0; list-style: none; font: 11px/1.6 Consolas, monospace; color: var(--muted); }
+    .rm-steps li::before { content: '○ '; }
+    .rm-steps li.done { color: var(--green); }
+    .rm-steps li.done::before { content: '✓ '; }
+    .rm-steps li.current { color: var(--amber); font-weight: 800; }
+    .rm-steps li.current::before { content: '▶ '; }
+    .rm-steps li.owner::before { content: '👤 '; }
+    .ov-list li.ticket { flex-wrap: wrap; }
+    .ov-list li.ticket small { flex-basis: 100%; color: var(--muted); font-size: 11px; }
+    .rm-path summary { cursor: pointer; font: 800 12px Consolas, monospace; color: var(--amber); }
     .layout-toggle { display: block; width: 100%; margin: 12px 0 0; padding: 12px; border: 1px dashed var(--line); background: transparent; color: var(--muted); font: 800 11px Consolas, monospace; letter-spacing: .06em; }
     /* The simple terminal: header, current trade, the last 8 trades, the result. The pipeline
        detail (agents, flow, stages, raw log) stays in the page for tools, out of sight. */
@@ -232,6 +242,11 @@
       <ul class="ov-list" id="ovPositions"></ul>
       <h3>Last 24 hours</h3>
       <ul class="ov-list" id="ovDigest"></ul>
+      <div id="ovRealMoney" hidden>
+        <h3>Real money · orders that would be sent</h3>
+        <ul class="ov-list" id="ovTickets"></ul>
+        <details class="rm-path" id="ovPath"><summary id="ovPathHead">Path to real money</summary><ol class="rm-steps" id="ovSteps"></ol></details>
+      </div>
     </section>
     <section class="term simple" id="terminal" aria-label="Metyu terminal">
       <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span><span class="term-bar-title">Metyu terminal</span><label class="term-source">source <select id="tSource" aria-label="Terminal source"><option value="auto">auto</option></select></label><span class="term-chip on" id="tMode">paper · demo</span></div>
@@ -1996,6 +2011,39 @@
           const pm = (autopilotStatus.history || []).filter(trade => Date.parse(trade.closedAt) >= since);
           const pmPnl = pm.reduce((sum, trade) => sum + trade.pnl, 0);
           lines.push([`prediction markets: ${pm.length} closed · ${(autopilotStatus.positions || []).length} open`, pm.length ? plusMoney(pmPnl) : '—', pmPnl]);
+        }
+        // The path to real money: the tickets the future order adapter would send (computed only, never
+        // sent) and the plan's ten steps (docs/LIVE-TRADING-ARCHITECTURE.md).
+        const realMoney = status.realMoney;
+        $('#ovRealMoney').hidden = !realMoney;
+        if (realMoney) {
+          const tickets = realMoney.tickets || [];
+          const fmtPrice = value => (Number.isFinite(value) ? (value >= 100 ? value.toFixed(2) : value >= 1 ? value.toFixed(4) : value.toPrecision(4)) : '—');
+          $('#ovTickets').replaceChildren(...(tickets.length ? tickets.slice(0, 5).map(ticket => {
+            const item = document.createElement('li');
+            item.className = 'ticket';
+            const name = document.createElement('span');
+            name.textContent = `${ticket.venueCoin || ticket.symbol} ${ticket.side} $${ticket.usd.toFixed(0)} · limit ${fmtPrice(ticket.maxPrice)} · stop ${fmtPrice(ticket.stop)}${ticket.target ? ` · target ${fmtPrice(ticket.target)}` : ''}`;
+            const state = document.createElement('b');
+            state.textContent = ticket.closed ? 'closed · not sent' : 'NOT SENT';
+            const why = document.createElement('small');
+            why.textContent = `blocked: ${ticket.blockedBy.join(' · ')}`;
+            item.append(name, state, why);
+            return item;
+          }) : [(() => {
+            const item = document.createElement('li');
+            item.textContent = 'None yet: an order ticket appears only when a strategy has passed the evidence gate (the normal book). Learning trades never reach real money.';
+            return item;
+          })()]));
+          const steps = realMoney.steps || [];
+          const current = steps.find(step => step.n === realMoney.current);
+          $('#ovPathHead').textContent = `Path to real money · step ${realMoney.current || '—'} of ${steps.length}${current ? `: ${current.text}` : ''}`;
+          $('#ovSteps').replaceChildren(...steps.map(step => {
+            const item = document.createElement('li');
+            item.className = step.n === realMoney.current ? 'current' : step.state === 'done' ? 'done' : step.state === 'owner' ? 'owner' : '';
+            item.textContent = `${step.n}. ${step.text}${step.state === 'owner' ? ' (your step)' : step.state === 'later' ? ' (later)' : ''}`;
+            return item;
+          }));
         }
         $('#ovDigest').replaceChildren(...lines.map(([text, value, tone]) => {
           const item = document.createElement('li');

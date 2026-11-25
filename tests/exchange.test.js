@@ -773,3 +773,37 @@ test('market direction: BTC 4h trend known only at bar close, with breadth and h
   assert.equal(X.marketContext(series).market(last.closeAt), 'up');
   assert.equal(X.RULES.familySize, Object.keys(X.STRATEGIES).length * 2, 'the gate corrects for every strategy in both tiers');
 });
+
+test('real money path: tickets are computed from shadow orders, never sent, and say what blocks them', () => {
+  const { ticketOf, realMoneyPath } = require('../exchange-autopilot.js');
+  const order = { id: 'x1', symbol: 'ETH-USD', side: 'SHORT', usd: 25, entry: 2000, stop: 2100, target: 1800, openedAt: '2026-11-25T10:00:00.000Z' };
+  const locked = { ready: false, met: 3, total: 6 };
+  const ticket = ticketOf(order, { live: locked });
+  assert.equal(ticket.venue, 'hyperliquid');
+  assert.equal(ticket.venueCoin, 'ETH');
+  assert.equal(ticket.sent, false, 'never sent');
+  assert.equal(ticket.usd, 25);
+  close(ticket.maxPrice, 2000 * .997);
+  assert.equal(ticket.expiresAt, '2026-11-25T10:15:00.000Z');
+  assert.deepEqual(ticket.blockedBy, ['real-money lock 3/6', 'no order adapter (step 9)']);
+  close(ticketOf({ ...order, side: 'LONG' }, { live: locked }).maxPrice, 2000 * 1.003);
+  assert.ok(ticketOf({ ...order, symbol: 'QNT-USD' }, { live: locked }).blockedBy.includes('QNT-USD not listed on Hyperliquid perps'));
+  assert.deepEqual(ticketOf(order, { live: { ready: true, met: 6, total: 6 } }).blockedBy, ['no order adapter (step 9)'], 'even at 6/6 nothing can be sent without the adapter');
+  // The path: where things stand today (closed gates, 3/6).
+  const path = realMoneyPath({ live: locked, model: { strategies: { trend: { gate: { open: false } } } }, tickets: [ticket] });
+  assert.equal(path.stage, 'paper');
+  assert.equal(path.steps.length, 10);
+  assert.equal(path.current, 6, 'the first open item: the approval record');
+  assert.equal(path.steps[6].state, 'waiting');
+  assert.match(path.steps[6].text, /now 3\/6/);
+  assert.equal(realMoneyPath({ live: locked, approval: { at: 'x' } }).current, 7, 'then the evidence');
+  assert.deepEqual(path.steps.filter(step => step.state === 'owner').map(step => step.n), [2, 3]);
+  // Published in the status, from the shadow book only.
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - X.DAY).toISOString();
+  state.shadow.open.x1 = order;
+  const status = statusOf(state);
+  assert.equal(status.realMoney.tickets.length, 1);
+  assert.equal(status.realMoney.tickets[0].sent, false);
+  assert.match(status.realMoney.tickets[0].blockedBy[0], /^real-money lock \d\/6$/);
+});
