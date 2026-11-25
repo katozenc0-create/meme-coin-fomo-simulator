@@ -18,7 +18,7 @@
   const MIN_CHECK_MS = 90000;
   const RATE_LIMIT_PAUSE_MS = 15 * 60000;
   const SHA = /^[0-9a-f]{40}$/;
-  const NAME = /^[A-Za-z0-9_.-]+$/;
+  const NAME = /^(?!\.+$)[A-Za-z0-9_.-]{1,100}$/;   // plain GitHub names; never "." or ".."
 
   const isCommitUrl = url => /\/[0-9a-f]{40}\//.test(String(url));
 

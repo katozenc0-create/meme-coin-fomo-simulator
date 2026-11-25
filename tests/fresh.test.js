@@ -69,6 +69,8 @@ test('fresh: a rate limit pauses the checks until GitHub resets it', async () =>
 
 test('fresh: only plain names reach the URLs; commit URLs may be cached', async () => {
   assert.throws(() => createResolver({ owner: 'a/b', repo: 'metyu', fetchImpl: async () => reply(200) }));
+  assert.throws(() => createResolver({ owner: 'someone', repo: '..', fetchImpl: async () => reply(200) }));
+  assert.throws(() => createResolver({ owner: 'someone', repo: 'a%2F..', fetchImpl: async () => reply(200) }));
   const { resolver } = setup([]);
   await assert.rejects(() => resolver.urls('../secrets'));
   assert.equal(cacheModeFor(`https://raw.githubusercontent.com/o/r/${SHA1}/status.json`), 'force-cache');
