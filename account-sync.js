@@ -148,58 +148,10 @@ function solanaProvider({ address, rpcUrl, balancesUrl, priceUrl = Wallet.DEFAUL
 }
 
 // ---------- Hyperliquid: the Fomo app's perps account, read by its public address ----------
-const HYPERLIQUID_INFO = 'https://api.hyperliquid.xyz/info';
-const HL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-/**
- * What a HYPERLIQUID_ADDRESS value is, WITHOUT ever repeating it: { address } when usable (spaces,
- * quotes and a missing 0x are forgiven), else { problem } with a kind and an owner-facing hint.
- * A private key or a recovery phrase is called out loudly: it must be deleted and the funds moved.
- */
-function checkHyperliquidAddress(value) {
-  const text = String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
-  if (HL_ADDRESS.test(text)) return { address: text };
-  if (/^[0-9a-fA-F]{40}$/.test(text)) return { address: `0x${text}` };
-  const say = (kind, hint) => ({ problem: { kind, hint } });
-  if (!text) return say('empty', 'the secret is empty');
-  if (/^(0x)?[0-9a-fA-F]{64}$/.test(text)) return say('private-key', 'it looks like a PRIVATE KEY (64 hex characters). Delete the secret NOW and move your funds to a new wallet: anyone who saw it can take them. Metyu needs only the public 0x address (40 hex characters).');
-  if (Wallet.looksLikeSecret(text)) return say('secret', 'it looks like a recovery phrase or a private key. Delete the secret NOW and move your funds to a new wallet. Metyu needs only the public 0x address.');
-  if (Wallet.normaliseAddress(text)) return say('solana', 'it is a Solana address; the perps account needs the 0x (EVM) address shown in the app\'s perps deposit screen');
-  if (/^0x[0-9a-fA-F]*$/.test(text)) return say('length', `it starts with 0x but has ${text.length - 2} hex characters instead of 40 (copied only part of it?)`);
-  return say('format', 'it is not a 0x address (0x followed by 40 characters 0-9 and a-f)');
-}
-/**
- * The perps account behind the Fomo app: margin, open positions and the API agents approved to
- * trade for it, read through the public POST /info endpoint with the public address. An address
- * cannot sign; nothing here can move funds. The order endpoint (/exchange) is never called.
- */
-async function hyperliquidAccount({ address, fetchImpl = fetch, timeoutMs = 15000 }) {
-  const checked = checkHyperliquidAddress(address);
-  if (!checked.address) throw new Error(`HYPERLIQUID_ADDRESS is not usable: ${checked.problem.hint}`);
-  address = checked.address;
-  const info = async body => {
-    const response = await fetchImpl(HYPERLIQUID_INFO, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ ...body, user: address }), signal: AbortSignal.timeout(timeoutMs) });
-    if (!response.ok) throw new Error(`Hyperliquid HTTP ${response.status}`);
-    return response.json();
-  };
-  const num = value => (Number.isFinite(Number(value)) ? Number(value) : 0);
-  const state = await info({ type: 'clearinghouseState' });
-  if (!state || !state.marginSummary) throw new Error('unexpected Hyperliquid answer');
-  let spot = null;
-  try { spot = await info({ type: 'spotClearinghouseState' }); } catch (error) { spot = null; }
-  let agents = null;
-  try { agents = await info({ type: 'extraAgents' }); } catch (error) { agents = null; }
-  const positions = (state.assetPositions || []).map(entry => entry && entry.position).filter(Boolean).map(position => ({
-    coin: String(position.coin), side: num(position.szi) < 0 ? 'SHORT' : 'LONG', size: Math.abs(num(position.szi)), entry: num(position.entryPx),
-    value: num(position.positionValue), pnl: num(position.unrealizedPnl), leverage: position.leverage ? num(position.leverage.value) : null,
-    liquidation: position.liquidationPx === null || position.liquidationPx === undefined ? null : num(position.liquidationPx)
-  })).filter(position => position.size > 0);
-  const spotUsdc = spot && Array.isArray(spot.balances) ? spot.balances.filter(b => b.coin === 'USDC').reduce((sum, b) => sum + num(b.total), 0) : 0;
-  return {
-    accountValue: num(state.marginSummary.accountValue), withdrawable: num(state.withdrawable), marginUsed: num(state.marginSummary.totalMarginUsed),
-    spotUsdc, positions,
-    agents: Array.isArray(agents) ? agents.map(agent => ({ name: String(agent.name || ''), address: String(agent.address || ''), validUntil: agent.validUntil || null })) : null
-  };
-}
+// Shared with the Live Board (metyu-wallet.js): the address check and the read-only reader.
+const HYPERLIQUID_INFO = Wallet.HYPERLIQUID_INFO;
+const checkHyperliquidAddress = Wallet.checkHyperliquidAddress;
+const hyperliquidAccount = options => Wallet.hyperliquidAccount(options);
 function hyperliquidProvider({ address, fetchImpl = fetch }) {
   const checked = checkHyperliquidAddress(address);
   if (!checked.address) throw new Error(`HYPERLIQUID_ADDRESS is not usable: ${checked.problem.hint}`);

@@ -466,6 +466,11 @@ test('HYPERLIQUID_ADDRESS: forgiving about spaces, quotes and 0x; loud about key
   assert.equal(A.checkHyperliquidAddress('ab'.repeat(20)).address, good, 'a missing 0x is added');
   const kind = value => A.checkHyperliquidAddress(value).problem && A.checkHyperliquidAddress(value).problem.kind;
   assert.equal(kind(''), 'empty');
+  assert.equal(A.checkHyperliquidAddress(' 0x' + 'ab'.repeat(20)).address, require('../metyu-wallet.js').hyperliquidAddressOf('0x' + 'ab'.repeat(20)));
+  assert.equal(require('../metyu-wallet.js').hyperliquidAddressOf('0x' + 'cd'.repeat(32)), null, 'a private key is never an address');
+  const W = require('../metyu-wallet.js');
+  assert.equal(W.looksLikeSecret('0x' + 'cd'.repeat(32)), 'private-key', 'an EVM private key is a secret');
+  assert.equal(W.looksLikeSecret('0x' + 'ab'.repeat(20)), null, 'a public 0x address is not');
   assert.equal(kind('0x' + 'cd'.repeat(32)), 'private-key');
   assert.equal(kind('cd'.repeat(32)), 'private-key');
   assert.equal(kind('abandon ability able about above absent absorb abstract absurd abuse access accident'), 'secret');
@@ -475,7 +480,7 @@ test('HYPERLIQUID_ADDRESS: forgiving about spaces, quotes and 0x; loud about key
   for (const value of ['0x' + 'cd'.repeat(32), '0x' + 'ab'.repeat(19), '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM']) {
     assert.ok(!A.checkHyperliquidAddress(value).problem.hint.includes(value), 'the hint never repeats the value');
   }
-  assert.match(A.checkHyperliquidAddress('0x' + 'cd'.repeat(32)).problem.hint, /PRIVATE KEY.*Delete the secret NOW and move your funds/);
+  assert.match(A.checkHyperliquidAddress('0x' + 'cd'.repeat(32)).problem.hint, /PRIVATE KEY.*Delete it wherever you saved it and move your funds to a new wallet NOW/);
   // A bad perps secret never stops the Solana link; the public file says which kind of problem.
   const env = { SOLANA_WALLET_ADDRESS: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', HYPERLIQUID_ADDRESS: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM' };
   const provider = A.providerFromEnv(env, { fetchImpl: async () => { throw new Error('no network in this test'); } });

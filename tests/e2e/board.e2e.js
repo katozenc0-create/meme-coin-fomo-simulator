@@ -934,3 +934,51 @@ test('account panel: the Fomo perps account (Hyperliquid) shows margin, position
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });
+
+test('Fomo perps account: linked on the board by its public 0x address, read from Hyperliquid only, never uploaded', async () => {
+  const address = '0x' + 'ab'.repeat(20);
+  const page = await env.page({ width: 390, height: 844 });
+  const seen = [];
+  page.on('request', request => seen.push({ url: request.url(), body: request.postData() || '' }));
+  const answers = {
+    clearinghouseState: { marginSummary: { accountValue: '512.5', totalMarginUsed: '84' }, withdrawable: '400', assetPositions: [{ position: { coin: 'ETH', szi: '-0.05', entryPx: '1700', positionValue: '84.3', unrealizedPnl: '1.2', leverage: { type: 'isolated', value: 1 }, liquidationPx: '9000' } }] },
+    spotClearinghouseState: { balances: [{ coin: 'USDC', total: '20' }] },
+    extraAgents: []
+  };
+  await page.route('https://api.hyperliquid.xyz/info', route => {
+    const body = JSON.parse(route.request().postData());
+    return route.fulfill({ json: answers[body.type], headers: { 'access-control-allow-origin': '*' } });
+  });
+  await page.goto(`${env.base}/board.html`);
+  // A Solana address is refused with a clear reason, and a private key is wiped at once.
+  await page.fill('#pAddress', '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM');
+  await page.click('#pLink');
+  assert.match(await text(page, '#pStatus'), /Not linked: it is a Solana address; the perps account needs the 0x \(EVM\) address/);
+  await page.fill('#pAddress', '0x' + 'cd'.repeat(32));
+  assert.equal(await page.inputValue('#pAddress'), '', 'an EVM private key is wiped from the field at once');
+  assert.match(await text(page, '#secAlert'), /PRIVATE KEY/);
+  // The real link: spaces around the address are forgiven.
+  await page.fill('#pAddress', `  ${address} `);
+  await page.click('#pLink');
+  await page.waitForFunction(() => /✓ read at/.test(document.querySelector('#pVerified').textContent));
+  assert.equal(await text(page, '#pValue'), '$513');
+  assert.equal(await text(page, '#pCount'), '1');
+  assert.equal(await text(page, '#pShort'), '0xabab…abab');
+  assert.match(await text(page, '#pPositions'), /ETH SHORT 1x\+\$1\.2 ?0\.05 @ 1,700 · value \$84\.3 · liq\. 9,000/);
+  assert.match(await text(page, '#pAgents'), /No API agents approved/);
+  assert.equal(await page.$eval('#ovPerpsLine', el => el.hidden), false, 'the overview carries the perps line (the overview shows once the agent publishes)');
+  assert.equal(await text(page, '#ovPerps'), '$513');
+  assert.match(await text(page, '#ovPerpsSub'), /^1 open · \+\$1\.2 · ✓ read \d+ s ago$/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.perpsAddress')), address, 'kept on this device');
+  const leaks = seen.filter(r => (r.url.includes(address) || r.body.includes(address)) && new URL(r.url).host !== 'api.hyperliquid.xyz');
+  assert.deepEqual(leaks, [], 'the address only ever goes to Hyperliquid');
+  assert.ok(!seen.some(r => r.url.includes('hyperliquid.xyz/exchange')), 'the order endpoint is never called');
+  // Remembered after a reload; unlink removes it.
+  await page.reload();
+  await page.waitForFunction(() => /✓ read at/.test(document.querySelector('#pVerified').textContent));
+  await page.click('#pUnlink');
+  assert.equal(await page.evaluate(() => localStorage.getItem('metyuBoard.perpsAddress')), null);
+  assert.equal(await page.$eval('#ovPerpsLine', el => el.hidden), true);
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});

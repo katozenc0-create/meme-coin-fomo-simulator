@@ -106,6 +106,8 @@ There is still no order code, no key and no signing. A real order needs the full
 
 ### Linking the Fomo perps account (read-only)
 
+The easiest way is **on the Live Board**: in the wallet panel, paste the public 0x address under "Fomo perps account". It stays in that browser only, and the board reads Hyperliquid directly. The GitHub secret below is the alternative, for the daily report and the sealed snapshot.
+
 The Fomo app trades perps on Hyperliquid, from an account with a **public 0x address**. Add that address as the GitHub secret `HYPERLIQUID_ADDRESS`. The secret keeps the address private; the address itself cannot sign anything.
 
 The account sync then reads, through `POST /info` only:

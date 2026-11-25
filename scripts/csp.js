@@ -16,7 +16,7 @@ const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..');
 const PAGES = ['index.html', 'polymarket.html', 'board.html'];
-const CONNECT = "'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com";
+const CONNECT = "'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz";
 
 /** The text of every inline <script> (no src) in a page, exactly as the browser hashes it. */
 function inlineScripts(html) {
