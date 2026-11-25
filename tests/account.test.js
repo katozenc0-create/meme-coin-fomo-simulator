@@ -412,3 +412,49 @@ test('wallet security: a recovery phrase or a private key is recognised so it ca
   assert.equal(W.looksLikeSecret('hello world'), null);
   assert.equal(W.looksLikeSecret('my bankroll is ten thousand'), null);
 });
+
+test('Fomo perps (Hyperliquid): read by the public address through /info only; sealed in full, counts in public', async () => {
+  const address = '0x' + 'ab'.repeat(20);
+  const calls = [];
+  const fetchImpl = async (url, request) => {
+    calls.push({ url, request });
+    const body = JSON.parse(request.body);
+    const answers = {
+      clearinghouseState: { marginSummary: { accountValue: '512.5', totalMarginUsed: '112.5' }, withdrawable: '400', assetPositions: [{ position: { coin: 'ETH', szi: '-0.05', entryPx: '1700', positionValue: '84.3', unrealizedPnl: '1.2', leverage: { type: 'isolated', value: 1 }, liquidationPx: '9000' } }, { position: { coin: 'BTC', szi: '0' } }] },
+      spotClearinghouseState: { balances: [{ coin: 'USDC', total: '20' }, { coin: 'PURR', total: '5' }] },
+      extraAgents: [{ name: 'fomo', address: '0x' + '11'.repeat(20), validUntil: 1 }]
+    };
+    return { ok: true, json: async () => answers[body.type] };
+  };
+  const account = await A.hyperliquidAccount({ address, fetchImpl });
+  assert.ok(calls.every(c => c.url === 'https://api.hyperliquid.xyz/info' && c.request.method === 'POST'), 'only the read-only info endpoint');
+  assert.ok(calls.every(c => JSON.parse(c.request.body).user === address));
+  assert.deepEqual(account.positions, [{ coin: 'ETH', side: 'SHORT', size: .05, entry: 1700, value: 84.3, pnl: 1.2, leverage: 1, liquidation: 9000 }], 'empty positions are dropped');
+  assert.equal(account.accountValue, 512.5);
+  assert.equal(account.spotUsdc, 20);
+  assert.equal(account.agents.length, 1);
+  await assert.rejects(() => A.hyperliquidAccount({ address: 'not-an-address', fetchImpl }), /PUBLIC address, never a private key/);
+  assert.throws(() => A.hyperliquidProvider({ address: '0x' + 'ab'.repeat(32) }), /not a Hyperliquid/, 'a 64-hex private key is refused');
+  // With a Solana wallet: the perps ride along; publicly only counts.
+  const env = { SOLANA_WALLET_ADDRESS: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', HYPERLIQUID_ADDRESS: address };
+  const provider = A.providerFromEnv(env, { fetchImpl });
+  assert.equal(provider.name, 'solana');
+  assert.equal(typeof provider.perps, 'function');
+  provider.balances = async () => [{ asset: 'SOL', free: 1, locked: 0, price: 150 }];
+  provider.approvals = async () => [];
+  const { box, snapshot, publicInfo } = await A.syncAccount({ provider, passphrase: 'a long board passphrase', getJson: async () => ({}) });
+  assert.equal(snapshot.perps.positions.length, 1);
+  assert.equal(snapshot.totalUsd, 150 + 512.5 + 20);
+  assert.deepEqual(Object.keys(publicInfo.perps).sort(), ['agents', 'checkedAt', 'linked', 'positions']);
+  assert.equal(publicInfo.perps.positions, 1);
+  const open = JSON.stringify(publicInfo);
+  assert.ok(!open.includes(address) && !open.includes('512') && !open.includes('ETH'), 'no address, amount or coin in public');
+  assert.ok(!JSON.stringify(box).includes('512'), 'sealed');
+  // Alone: a perps-only provider.
+  assert.equal(A.providerFromEnv({ HYPERLIQUID_ADDRESS: address }, { fetchImpl }).name, 'hyperliquid');
+  // A failing perps read never breaks the sync.
+  provider.perps = async () => { throw new Error('down'); };
+  const partial = await A.syncAccount({ provider, passphrase: 'a long board passphrase', getJson: async () => ({}) });
+  assert.deepEqual(partial.publicInfo.perps, { linked: false, error: 'perps account unavailable' });
+  assert.equal(A.redact(`x ${address} y`, env), 'x [HYPERLIQUID_ADDRESS] y', 'the address is redacted from logs');
+});

@@ -907,3 +907,30 @@ test('execution check on the perps venue: its books, funding above the floor, un
   assert.equal(await text(page, '#exExec'), 'Execution check (real Hyperliquid perps order books, $5,000 paper size, 3 coins measured): 2 cost more than the 0.05% floor and are charged their measured cost (worst RENDER-USD 0.11%, ZRO-USD 0.07%). A $100 order would pay a median 0.02%. Funding: 1 coin charged above the 0.01% per 8 h floor. Not listed there: QNT-USD.');
   assert.deepEqual(page.errors, []);
 });
+
+test('account panel: the Fomo perps account (Hyperliquid) shows margin, positions and approved API agents', async () => {
+  const Vault = require('../../metyu-vault.js');
+  const pass = 'my long board passphrase';
+  const perps = {
+    accountValue: 512.5, withdrawable: 400, marginUsed: 112.5, spotUsdc: 20,
+    positions: [{ coin: 'ETH', side: 'SHORT', size: .05, entry: 1700, value: 84.3, pnl: 1.2, leverage: 1, liquidation: 9000 }],
+    agents: [{ name: 'fomo', address: '0x1111111111111111111111111111111111111111', validUntil: null }]
+  };
+  const box = await Vault.seal({ kind: 'account', provider: 'solana', verifiedAt: new Date(Date.now() - 60000).toISOString(), viewOnly: true, permissions: { type: 'public address', network: 'solana', canSign: false },
+    balances: [{ asset: 'SOL', free: 1, locked: 0, total: 1, usd: 150 }], totalUsd: 682.5, unpriced: [], perps }, pass, { iterations: 100000, label: 'metyu-account' });
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/account.enc.json';
+  await page.route(published, route => route.fulfill({ json: box }));
+  await page.goto(`${env.base}/board.html?account=${encodeURIComponent(published)}`);
+  await page.waitForSelector('#accountPanel:not([hidden])');
+  await page.fill('#acPass', pass);
+  await page.click('#acOpen');
+  await page.waitForSelector('#acBody:not([hidden])');
+  assert.equal(await text(page, '#acProvider'), 'Solana wallet + Fomo perps');
+  assert.match(await text(page, '#acPerpsSummary'), /^Account value \$513 · withdrawable \$400 · spot USDC \$20 · 1 open position · ⚠ 1 API agent may trade for this account: fomo \(0x11…1111\)/);
+  assert.match(await text(page, '#acPerps'), /ETH SHORT 1x\+\$1\.2 ?0\.05 @ 1,700 · value \$84\.3 · liq\. 9,000/);
+  await page.click('#acLock');
+  assert.equal(await page.locator('#acPerps li').count(), 0, 'positions are removed from the page');
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});

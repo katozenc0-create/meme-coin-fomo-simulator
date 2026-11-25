@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw=' 'sha256-rOS3fw2BZ+LnlpkMWNFziQ9pombcFbY++4BhSdAgxoI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-74+7/PJ3QKZ0ETdm1HhR9nVzVsQfvDQoqFtfydbGMmQ=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -398,6 +398,9 @@
         </div>
         <ul class="trades" id="acBalances"></ul>
         <p class="note" id="acApprovals" hidden></p>
+        <h3 id="acPerpsHead" hidden>Fomo perps (Hyperliquid account)</h3>
+        <p class="note" id="acPerpsSummary" hidden></p>
+        <ul class="trades" id="acPerps" hidden></ul>
         <button class="btn secondary" type="button" id="acLock" style="margin-top:8px">Lock</button>
       </div>
     </section>
@@ -1185,6 +1188,7 @@
       function lockAccount(message) {
         $('#acBody').hidden = true;
         $('#acBalances').replaceChildren();
+        $('#acPerps').replaceChildren();
         $('#acForm').hidden = false;
         $('#acPass').value = '';
         if (message) $('#acStatus').textContent = message;
@@ -1196,7 +1200,7 @@
         const addressOnly = snapshot.permissions && snapshot.permissions.type === 'public address';
         $('#acStatus').textContent = `Opened on this device only. ${addressOnly ? 'Linked by its public address only: Metyu reads the on-chain balances and can never sign or move funds.' : snapshot.viewOnly ? 'The API key is verified view-only: Metyu can read balances, it cannot trade or withdraw.' : ''}`;
         $('#acTotal').textContent = formatMoney(snapshot.totalUsd);
-        $('#acProvider').textContent = snapshot.provider === 'solana' ? 'Solana wallet' : snapshot.provider;
+        $('#acProvider').textContent = snapshot.provider === 'solana' ? `Solana wallet${snapshot.perps ? ' + Fomo perps' : ''}` : snapshot.provider === 'hyperliquid' ? 'Fomo perps (Hyperliquid)' : snapshot.provider;
         $('#acKey').textContent = addressOnly ? 'address only ✓' : snapshot.viewOnly ? 'view-only ✓' : 'NOT view-only';
         $('#acKey').className = snapshot.viewOnly ? 'positive' : 'negative';
         $('#acVerified').textContent = age < 60 ? `${Math.max(0, Math.round(age))} min ago` : new Date(snapshot.verifiedAt).toLocaleString();
@@ -1206,6 +1210,29 @@
         $('#acApprovals').textContent = !approvalsList ? '' : approvalsList.length
           ? `⚠ Open token approvals (revoke in your wallet app): ${approvalsList.map(a => `${MetyuWallet.shortAddress(a.mint)} → ${MetyuWallet.shortAddress(a.delegate)} may move ${a.amount.toLocaleString()}`).join('; ')}`
           : '✓ No open token approvals: no other address can move your tokens.';
+        // The Fomo app's perps account: margin, positions, and API agents allowed to trade for it.
+        const perps = snapshot.perps || null;
+        for (const id of ['#acPerpsHead', '#acPerpsSummary', '#acPerps']) $(id).hidden = !perps;
+        if (perps) {
+          const agents = Array.isArray(perps.agents) ? perps.agents : null;
+          $('#acPerpsSummary').textContent = `Account value ${formatMoney(perps.accountValue)} · withdrawable ${formatMoney(perps.withdrawable)} · spot USDC ${formatMoney(perps.spotUsdc)} · ${perps.positions.length} open position${perps.positions.length === 1 ? '' : 's'}`
+            + (agents === null ? '' : agents.length ? ` · ⚠ ${agents.length} API agent${agents.length === 1 ? '' : 's'} may trade for this account: ${agents.map(a => `${a.name || 'unnamed'} (${MetyuWallet.shortAddress(a.address)})`).join(', ')}. If you did not approve ${agents.length === 1 ? 'it' : 'them'} (the Fomo app may use one), revoke in the app.` : ' · ✓ no API agents approved');
+          $('#acPerpsSummary').className = `note ${agents && agents.length ? 'negative' : ''}`;
+          $('#acPerps').replaceChildren(...perps.positions.map(position => {
+            const item = document.createElement('li');
+            const name = document.createElement('span');
+            name.className = 'market';
+            name.textContent = `${position.coin} ${position.side}${position.leverage ? ` ${position.leverage}x` : ''}`;
+            const value = document.createElement('span');
+            value.className = `pnl ${position.pnl > 0 ? 'positive' : position.pnl < 0 ? 'negative' : ''}`;
+            value.textContent = `${position.pnl >= 0 ? '+' : '−'}${formatMoney(Math.abs(position.pnl))}`;
+            const detail = document.createElement('span');
+            detail.className = 'detail';
+            detail.textContent = `${position.size.toLocaleString(undefined, { maximumFractionDigits: 6 })} @ ${position.entry.toLocaleString()} · value ${formatMoney(position.value)}${position.liquidation ? ` · liq. ${position.liquidation.toLocaleString()}` : ''}`;
+            item.append(name, value, detail);
+            return item;
+          }));
+        }
         $('#acBalances').replaceChildren(...snapshot.balances.map(balance => {
           const item = document.createElement('li');
           const name = document.createElement('span');
