@@ -192,3 +192,25 @@ test('CSP: only the repository\'s own inline scripts may run (hashes, no unsafe-
   assert.throws(() => csp.inlineScripts('<script>a()'), /could pair only 0/);
   assert.deepEqual(csp.inlineScripts('<script>c()</script\t\n bar>'), ['c()'], 'any end tag a browser accepts');
 });
+
+test('funding carry research: funding accrues while held, every week counts, costs on entry and exit', () => {
+  const C = require('../research/funding-carry.js');
+  const H = 3600000;
+  const start = Date.parse('2025-01-06T00:00:00Z');
+  const series = Array.from({ length: 24 * 7 * 4 }, (_, i) => ({ t: start + i * H, rate: i < 24 * 7 * 2 ? .00002 : -.00002 }));
+  const always = C.simulate(series, { enter: -Infinity, exit: -Infinity }, { lookbackHours: 24, costs: .01 });
+  assert.equal(always.entries, 1);
+  const total = [...always.weekly.values()].reduce((a, b) => a + b, 0);
+  // Held from hour 23: funding of hours 24.. (each +/-0.002%), minus the full round trip.
+  const expected = series.slice(24).reduce((a, r) => a + r.rate, 0) - .01;
+  assert.ok(Math.abs(total - expected) < 1e-12, `${total} vs ${expected}`);
+  const spanned = new Set(series.map(r => Math.floor(r.t / (7 * 24 * H)))).size;
+  assert.equal(always.weekly.size, spanned, 'every week is counted, idle or not');
+  const picky = C.simulate(series, { enter: .00001, exit: 0 }, { lookbackHours: 24, costs: .01 });
+  assert.equal(picky.entries, 1, 'enters once while funding is rich, leaves when it turns');
+  assert.ok(picky.hoursHeld < always.hoursHeld);
+  const s = C.summarise([always.weekly], 4);
+  assert.equal(s.weeks, spanned);
+  assert.ok(s.ci[0] <= s.ci95[0] && s.ci[1] >= s.ci95[1], 'the corrected interval is wider');
+  assert.ok(Math.abs(C.ROUND_TRIP - .0059) < 1e-12, 'a full round trip costs 0.59% of notional');
+});

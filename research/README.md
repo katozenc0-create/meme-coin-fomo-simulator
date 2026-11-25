@@ -66,6 +66,34 @@ Sample A's 7-day near-miss was tested on four new independent samples, with the 
 
 Brier scores of the earlier samples, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
 
+## Crypto: the funding carry on Hyperliquid (25 Nov 2026, passes; small)
+
+**Idea.** Hold a coin and short the same amount of its perpetual. Price moves cancel, and the position collects the funding that longs pay shorts. There is no price prediction. Hyperliquid's funding has a built-in positive baseline of 0.00125% an hour (about 11% a year on notional) whenever the market is calm.
+
+**Data and model** (`research/funding-carry.js`):
+- 2 years of Hyperliquid's real hourly funding for the 30 listed coins.
+- Costs are expensive on purpose: a full round trip is 0.59% of notional (perp taker 0.045% + Fomo builder fee 0.05% per side, spot 0.10% per side, 0.05% basis/slippage per leg per side).
+- Evidence: one observation per week (the mean across coins); the interval is from a weekly block bootstrap, corrected for the 4 rules tried.
+
+| Rule (30 coins) | Year 1 | Year 2 | Both years | Corrected interval (%/week) | Weeks up |
+|---|---|---|---|---|---|
+| always hold | 7.4%/yr | 3.2%/yr | **5.6%/yr** | [0.065, 0.155] | 78/105 |
+| enter above 0.0010%/h | 6.3% | 1.4% | 4.0% | [0.040, 0.122] | 66/105 |
+| enter above 0.0015%/h | 6.0% | 1.2% | 3.7% | [0.041, 0.112] | 76/105 |
+| enter above 0.0025%/h | 4.1% | 0.7% | 2.4% | [0.022, 0.083] | 60/105 |
+
+- **BTC, ETH and SOL** (the deepest books), always hold: 6.7%/yr; corrected interval [0.087, 0.172]%/week; 88 of 105 weeks up; worst week −0.30%.
+- Per coin it ranges from about 11% (AAVE, LINK) down to −3.3% (ICP).
+
+**Verdict.** This is the first return source in this repository that passes the gate in **both** calendar years after costs. It is a structural premium, not a forecast.
+
+It is also **small and shrinking**:
+- The returns above are on notional. The capital needed is the spot leg plus the perp margin, about 2× notional at 1x (LIVE_LIMITS). So on capital it is about 2.8%/yr for all coins and about 3.4%/yr for BTC/ETH/SOL.
+- Year 2 was about half of year 1.
+- Its risks are an exchange failure, a long negative-funding regime, and the perp leg's liquidation if it is run with leverage.
+
+It is a low-risk way to prove the real-money pipeline. It is not a way to high profits.
+
 ## Crypto: the market-aligned breakout (26 Nov 2026, rejected)
 
 The history stress test (`metyu-history.js`) replayed the current crypto strategies through 13 past episodes (2018 to mid-2024) on BTC, ETH, LTC, BCH and LINK. The trend and breakout strategies earned in crashes and bear markets and lost in flat ranges.

@@ -113,12 +113,16 @@ async function main(argv = process.argv.slice(2)) {
   }
   const usable = Object.entries(data).filter(([, series]) => series.length > 24 * 120);
   console.log(`Funding carry on Hyperliquid · ${usable.length} coins with 120+ days · round-trip cost ${(ROUND_TRIP * 100).toFixed(2)}% of notional`);
-  const halves = [['first half', s => s.slice(0, Math.floor(s.length / 2))], ['second half', s => s.slice(Math.floor(s.length / 2))], ['all', s => s]];
+  // Calendar halves (one date for every coin), so both halves cover the same weeks for all coins.
+  const mid = from + (Date.now() - from) / 2;
+  const halves = [['first year', series => series.filter(r => r.t < mid)], ['second year', series => series.filter(r => r.t >= mid)], ['all', series => series]];
+  const perCoin = usable.map(([coin, series]) => ({ coin, s: summarise([simulate(series, RULES[0]).weekly], 1) })).sort((x, y) => y.s.annual - x.s.annual);
+  console.log(`always-hold per coin (annual on notional): ${perCoin.map(c => `${c.coin} ${(c.s.annual * 100).toFixed(1)}%`).join(' · ')}`);
   for (const rule of RULES) {
     for (const [label, cut] of halves) {
-      const runs = usable.map(([, series]) => simulate(cut(series), rule));
+      const runs = usable.map(([, series]) => cut(series)).filter(series => series.length > 24 * 30).map(series => simulate(series, rule));
       const s = summarise(runs.map(r => r.weekly), RULES.length);
-      const held = runs.reduce((a, r) => a + r.hoursHeld, 0) / runs.reduce((a, r) => a + cut(usable[0][1]).length, 0);
+      const held = runs.reduce((a, r) => a + r.hoursHeld, 0) / usable.reduce((a, [, series]) => a + cut(series).length, 0);
       console.log(`${rule.id.padEnd(10)} ${label.padEnd(11)} weeks ${String(s.weeks).padStart(3)} · mean ${(s.meanWeekly * 100).toFixed(3)}%/wk (${(s.annual * 100).toFixed(1)}%/yr) · 95% [${(s.ci95[0] * 100).toFixed(3)}, ${(s.ci95[1] * 100).toFixed(3)}] · corrected [${(s.ci[0] * 100).toFixed(3)}, ${(s.ci[1] * 100).toFixed(3)}] · ${s.positiveWeeks}/${s.weeks} weeks up · worst ${(s.worstWeek * 100).toFixed(2)}% · entries/coin ${(runs.reduce((a, r) => a + r.entries, 0) / runs.length).toFixed(1)} · held ${(held * 100).toFixed(0)}%`);
     }
   }
