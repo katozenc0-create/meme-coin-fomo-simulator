@@ -96,6 +96,26 @@ Even then, the first orders are capped at **$25 per order, $100 open, $50 maximu
 
 Every normal-book entry is mirrored as the order the first real-money release would send. It uses the limits above and is settled at the same exit, but **nothing is sent**: there is no order code in Metyu. The board shows the result (`Shadow orders`), including how many orders could be placed on a spot account. A spot account cannot short, and today the proven strategy trades mostly shorts in a downtrend.
 
+### The preflight (`scripts/preflight-live.js`)
+
+One command checks what a real-money release would need, against the code and the published state. It sends nothing.
+
+The **code checks** must always pass, and the unit tests run them, so CI fails the moment one breaks:
+- no order, cancel, withdraw or signing call anywhere in the source;
+- `LIVE_LIMITS` and the cost floors unchanged;
+- the evidence gate's bars unchanged;
+- the kill-switch in place;
+- no key, token or recovery phrase in the repository.
+
+The **readiness checks** read the published state:
+- the six conditions;
+- shadow orders never sent;
+- the linked account read-only, fresh and free of token approvals;
+- order-book costs measured for every coin;
+- how many signals a spot account could have placed at all.
+
+The daily steward runs it every morning.
+
 ### Go-live checklist (all of it, in this order)
 
 1. **6/6 conditions on the board.** Check the shadow orders: they should agree with the forward test.

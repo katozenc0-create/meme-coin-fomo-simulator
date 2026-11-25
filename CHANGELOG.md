@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.9.1: the real-money preflight
+
+- **`scripts/preflight-live.js`**: one checklist for a real-money release, run against the code and the published state; it sends nothing.
+- **Code checks (must always pass):**
+  - no order, cancel, withdraw or signing call in any source file;
+  - `LIVE_LIMITS` ($25 / $100 / $50 / 1x), the cost floors, the gate's bars (30 trades, 12 weeks, the multiple-testing correction) and the kill-switch unchanged;
+  - no key, token or recovery phrase in the repository.
+  - `tests/preflight.test.js` runs these on every CI run, so order code or a committed key fails the build.
+- **Readiness checks:** the six conditions, shadow orders never sent (exit 1 if one ever was), the linked account read-only, fresh and without token approvals, and order-book costs measured for every coin.
+- **Spot reality.** The first run found that 82 of the last 84 trades were SHORT (+$574.80). A spot account could have placed only the 2 LONG trades (−$27.85). A real-money release needs a venue that allows shorts, or the strategies' long side must pass the gate on its own. The owner has to decide this (SECURITY.md, go-live checklist step 2).
+- The daily steward runs the preflight every morning (docs/STEWARD.md).
+
 ## 2.9.0: execution realism: costs from real order books
 
 - Real-money preparation: the paper results must not be better than real trading could be. A first measurement of all 31 Coinbase order books, for a $5,000 paper-size order, found:

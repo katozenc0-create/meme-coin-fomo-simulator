@@ -22,7 +22,7 @@ Metyu is a 24/7 paper-trading ecosystem: a crypto exchange agent and a Polymarke
 | `board.html`, `sw.js` | The Live Board and its service worker (cache name `metyu-shell-vN`) |
 | `metyu-fresh.js` | Board data freshness: reads `autopilot-data` files at the branch head commit (GitHub API, ≤ 1 check / 90 s), falls back to the branch URL |
 | `server.py` | Optional local server and read-only Polymarket proxy; its CSP header must equal the pages' CSP meta tags |
-| `scripts/` | `publish-state.sh`, `restore-state.sh`, `realtime.sh`, `watchdog.js`, `daily-report.js` |
+| `scripts/` | `publish-state.sh`, `restore-state.sh`, `realtime.sh`, `watchdog.js`, `daily-report.js`, `preflight-live.js` (real-money preflight; its code checks run in the tests) |
 | `.github/workflows/` | `autopilot.yml` (one tick), `watchdog.yml` (hourly health), `tests.yml`, `codeql.yml` |
 
 ## Checks (run before every push)
