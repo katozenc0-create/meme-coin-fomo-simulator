@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.18.0: paper trading at Hyperliquid's own prices
+
+- Until real money is allowed (6/6 and the owner's separate approval), organic trading stays virtual, on the target venue. With `--venue hyperliquid`, **entries and marks now use Hyperliquid's own prices** (`allMids`, one request a tick). The paper record becomes a rehearsal of trading there.
+- `kPEPE` is quoted per 1,000 PEPE and is divided by 1,000. QNT, which Hyperliquid does not list, keeps its Coinbase price.
+- Signals and exit replays still read the Coinbase bars. The basis between the two is recorded per coin (`status.execution.coins[*].basis`, median of the last 48).
+- If Hyperliquid's prices fail, the tick uses the Coinbase prices and logs it. Read-only: `POST /info`, never `/exchange`.
+
 ## 2.17.1: a Polymarket plan, parked; Hyperliquid stays the target (design only)
 
 - `docs/LIVE-TRADING-ARCHITECTURE.md` gets **Part B: the Polymarket agent**. Asked to choose between the two, Claude kept **Hyperliquid (Part A) as the target**: it has a trade-only agent key that cannot withdraw, while Polymarket has none, and its evidence builds faster. Polymarket is parked. Fomo stays a read-only wallet and data view.

@@ -80,6 +80,20 @@
     const rows = side => (Array.isArray(side) ? side.map(level => [level.px, level.sz]) : []);
     return parseBook({ bids: rows(levels[0]), asks: rows(levels[1]) });
   }
+  /**
+   * Hyperliquid's allMids answer ({ coin: "price" }) as { symbol: USD price } for the coins the venue
+   * lists. A "k" contract (kPEPE) is quoted per 1,000 units, so its price is divided by 1,000.
+   */
+  function parseHyperliquidMids(data, venue = VENUES.hyperliquid) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('unexpected Hyperliquid answer');
+    const out = {};
+    for (const [symbol, coin] of Object.entries(venue.coins || {})) {
+      const price = Number(data[coin]);
+      if (!(price > 0)) continue;
+      out[symbol] = /^k[A-Z]/.test(coin) && !/^K/.test(symbol) ? price / 1000 : price;
+    }
+    return out;
+  }
   /** Hyperliquid's metaAndAssetCtxs answer as { venueCoin: hourly funding rate }. */
   function parseHyperliquidFunding(data) {
     if (!Array.isArray(data) || !data[0] || !Array.isArray(data[0].universe) || !Array.isArray(data[1])) throw new Error('unexpected Hyperliquid answer');
@@ -933,7 +947,7 @@
   return {
     LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
     ACCOUNT_FRESH_HOURS, accountFresh,
-    EXECUTION, parseBook, bookImpact, bookSample, costsFor, median, VENUES, venueCoin, parseHyperliquidBook, parseHyperliquidFunding,
+    EXECUTION, parseBook, bookImpact, bookSample, costsFor, median, VENUES, venueCoin, parseHyperliquidBook, parseHyperliquidFunding, parseHyperliquidMids,
     TIMEFRAMES, timeframeOf, aggregateCandles, marketTrendSeries, marketTrendAt, marketContext, marketSummary, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,
     HOUR, DAY, SYMBOLS, KRAKEN_PAIRS, COSTS, RULES, WARMUP, STRATEGIES,
     createRng, bootstrapCI, mean,
