@@ -14,6 +14,10 @@ The hard rules in `CLAUDE.md` hold throughout:
 
 **Owner's choice (25 Nov 2026):** no manual order entry. The first real-money stage is **supervised automation on a dedicated Hyperliquid account**. The owner's Fomo account stays read-only.
 
+**Owner's choice (26 Nov 2026): the real-money venue is Polymarket.** See **Part B** below: it replaces the Hyperliquid plan as the target. Fomo is used only as a read-only wallet view and as a source of fresh market data: Hyperliquid's public books and funding, which Fomo's perps route to. Part A (Hyperliquid) is kept as a parked alternative for the crypto agent.
+
+# Part A: the crypto agent on Hyperliquid (parked)
+
 ## 1. What we know (25 Nov 2026)
 
 | Fact | Consequence |
@@ -101,3 +105,61 @@ Steps 4–6 move nothing and send nothing. Step 9 is the first code that could p
 - Everything that can be built without risk (tickets, the board panel, the approval record) comes first, so the day a gate opens only the adapter remains.
 - The adapter is the only piece that can lose money. It is the most guarded: its own file, its own review, limits enforced twice (in the adapter and by the small balance), and a kill switch the owner holds outside the code (revoking the agent).
 - Throughout, the evidence gate decides **whether** to trade. This architecture only decides **how**.
+
+# Part B: the Polymarket agent (the target, 26 Nov 2026)
+
+Status: **design only**. Same hard rules: no order code until the Polymarket agent's own six conditions are met **and** the owner approves separately; the first limits are `LIVE_LIMITS` ($25 per order, $100 open, $50 a day, no leverage).
+
+## B1. What we know (26 Nov 2026, from Polymarket's developer docs)
+
+| Fact | Consequence |
+|---|---|
+| Trading goes through the **CLOB API** with two auth levels. **L1** is an EIP-712 signature from the wallet's **private key**, used to create or derive API credentials. **L2** is an HMAC key (apiKey, secret, passphrase) for requests. **Every order also carries a wallet signature.** | The order process must hold a wallet's private key. |
+| There is **no trade-only key**. Unlike a Hyperliquid agent, a key that can sign orders belongs to a wallet that can also move its funds. | The wallet must be **dedicated and small**: only the trading balance, never the owner's Fomo wallet or any other wallet. The key's worst case is that wallet's balance. |
+| Signature types: EOA (0), POLY_PROXY (1), POLY_GNOSIS_SAFE (2), and deposit wallets (POLY_1271, 3) for accounts created on or after 4 May 2026. Each wallet has **one** active API key, and a new one revokes the old. An open client issue asks how to derive L2 keys for deposit wallets. | Use a plain **EOA** wallet created for Metyu. Funds are USDC on Polygon, plus a little gas if the chosen path needs it. Recheck the deposit-wallet question before building. |
+| A **geoblock** check reports whether the requesting IP's country is blocked. Sanctioned regions are fully blocked. Other countries are **close-only**: no new orders. The lists change. | The adapter checks the geoblock **before every order** and stops if it is blocked or close-only. The host is never used to get around the owner's own country rules: a VPS in another country does not change where the owner lives. Turkish residents are excluded by local rules as well (CMB). |
+| The Polymarket agent's evidence gate is **closed**: 56 out-of-sample trades, mean +8.5%, interval below zero. The paper account is at −$276 realized. | Nothing can start. Polymarket needs its **own** real-money conditions. The crypto lock does not count. |
+
+## B2. Design
+
+```
+small VPS (the owner's, always on; never GitHub Actions)
+  autopilot.js (as today: virtual trades, its own evidence gate)
+     │ normal-book signal (gate open) ─► POLYMARKET TICKET (pure fn: token, side, $≤25, limit price, expiry)
+     ▼
+  POLYMARKET ORDER ADAPTER (separate process, separate review; the only file allowed to place CLOB orders)
+     1. geoblock check from this host: blocked or close-only → stop
+     2. re-reads the status: the Polymarket readiness 6/6 and the owner's approval record, both current
+     3. enforces LIVE_LIMITS itself; GTC/FOK limit orders only, never a market order without a price cap
+     4. deterministic client ids; reconciles open orders and positions every tick; stops on mismatch
+     5. stops on METYU_PAUSE, the kill-switch, a stale feed
+     6. append-only redacted audit log; only counts are published
+            │ EOA private key + L2 creds: env vars on the VPS only
+            ▼
+  Polymarket CLOB ── dedicated EOA wallet on Polygon (≤ $100 USDC + gas)
+            ▲ read-only: positions and balance by the PUBLIC address (as the board reads wallets today)
+  Live Board: Polymarket tickets (NOT SENT until the adapter exists), positions, audit summary
+```
+
+**Fomo's role:** a read-only view only. The board shows the owner's Solana wallet and the Hyperliquid perps account, and the Hyperliquid books and funding stay a fresh price source for the crypto agent. Nothing trades through Fomo.
+
+**Emergency:** move the USDC out of the dedicated wallet with the owner's own wallet app. Or set `METYU_PAUSE`, or revoke the L2 key by creating a new one. The adapter can never touch any other wallet.
+
+## B3. Steps, in order
+
+| # | Step | Who | Needs |
+|---|---|---|---|
+| B1 | This design | Claude | done |
+| B2 | Check eligibility: Polymarket's geoblock check from the owner's own phone, where the owner lives | owner | — |
+| B3 | `polymarketReadiness`: the six conditions for the Polymarket agent (days, 30+ normal-book trades, an interval above zero over 4+ weeks, drawdown, a read-only wallet link, approval) + tests | Claude | can be built now: it only computes |
+| B4 | Polymarket tickets (computed, never sent) + the board's "orders that would be sent" for Polymarket | Claude | B3 |
+| B5 | A strategy lab for the Polymarket agent (as for crypto), to look for an edge the gate can confirm | Claude | can be built now |
+| B6 | **Wait** for the Polymarket gate to open and 6/6 | the data | time |
+| B7 | A dedicated EOA wallet (≤ $100 USDC on Polygon), its public address linked read-only | owner | B6 |
+| B8 | The order adapter + a preflight exception for that one file + tests against a mock CLOB | Claude | B6, B7 and the owner's approval |
+| B9 | Deploy on the VPS; the first real order at $25 | owner + Claude | B8 |
+
+## B4. Honest expectations
+
+- Polymarket's own research here found no reliable edge yet (`research/README.md`): every apparent edge was a form of look-ahead. Until the gate opens on clean data, B6 is the long pole.
+- A Polymarket key can move its wallet's funds, so the **small dedicated wallet is the safety limit**, together with the adapter's own limits.

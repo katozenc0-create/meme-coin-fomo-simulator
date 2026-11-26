@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.17.1: the real-money plan moves to Polymarket (design only)
+
+- As the owner chose, `docs/LIVE-TRADING-ARCHITECTURE.md` gets **Part B: the Polymarket agent** as the real-money target. The Hyperliquid plan becomes Part A and is parked.
+- **Facts from Polymarket's docs:**
+  - CLOB orders need a wallet's private key (L1 EIP-712 for credentials, a wallet signature on every order);
+  - there is **no trade-only key**;
+  - one API key per wallet;
+  - there are geoblock tiers (blocked, close-only).
+- **Design:**
+  - a dedicated small EOA wallet (≤ $100 USDC on Polygon), with its key only on the VPS;
+  - a separate, reviewed order adapter that checks the geoblock before every order (never used to get around the owner's own country rules), re-checks readiness, enforces `LIVE_LIMITS` and reconciles every tick;
+  - Fomo stays a read-only wallet and data view.
+- **Steps B1–B9.** B3–B5 only compute and can be built now: Polymarket readiness, tickets and a Polymarket strategy lab. Nothing is built yet; no order code.
+
 ## 2.17.0: the strategy lab runs every week
 
 - As the owner asked, strategy development is now part of the automation. **`metyu-lab.js`** (moved out of `research/strategy-lab.js`, which is now a thin command-line tool) runs every week with the history stress test, on the same episode bars. It costs about 2 seconds.
