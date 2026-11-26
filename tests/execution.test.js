@@ -141,6 +141,7 @@ test('venue: on Hyperliquid the agent reads funding once per tick and books in t
       posts.push(body);
       if (body.type === 'metaAndAssetCtxs') return [{ universe: [{ name: 'BTC' }, { name: 'ETH' }] }, [{ funding: '0.00004' }, { funding: '0.0000125' }]];
       if (body.type === 'l2Book') return { levels: [[{ px: '99.99', sz: '1000' }], [{ px: '100.01', sz: '1000' }]] };
+      if (body.type === 'allMids') return { BTC: '100.05', ETH: '99.9', QNT: '1' };
       throw new Error('unexpected body');
     }
     const u = new URL(url);
@@ -167,6 +168,12 @@ test('venue: on Hyperliquid the agent reads funding once per tick and books in t
   assert.deepEqual(report.unlisted.includes('QNT-USD'), true);
   assert.equal(report.coins['BTC-USD'].fundingSamples, 7);
   close(report.coins['BTC-USD'].fundingPer8h, .00004 * 8, 1e-15);
+  // Entries and marks use the venue's own prices; the basis to the Coinbase bar is recorded.
+  assert.equal(state.marks['BTC-USD'].source, 'hyperliquid');
+  assert.equal(state.marks['BTC-USD'].price, 100.05);
+  assert.ok(Number.isFinite(report.coins['BTC-USD'].basis));
+  assert.notEqual(state.marks['QNT-USD'] && state.marks['QNT-USD'].source, 'hyperliquid', 'an unlisted coin keeps its Coinbase price');
+  assert.ok(!state.log.some(e => e.kind === 'ERROR' && /Hyperliquid prices/.test(e.text)));
   assert.equal(report.coins['ETH-USD'].fundingPer8h, X.COSTS.fundingPer8h);
 });
 
@@ -180,4 +187,30 @@ test('venue: the CLI takes --venue (unknown names fall back to Coinbase); the tr
   assert.equal(seen[0].request.method, 'POST');
   assert.equal(seen[0].request.body, '{"type":"l2Book","coin":"BTC"}');
   assert.equal(seen[1].request.method, undefined, 'a plain read is a GET');
+});
+
+test('venue prices: Hyperliquid mids map to symbols; a k-contract is per 1,000 units; failures fall back', async () => {
+  const mids = X.parseHyperliquidMids({ BTC: '60781.5', kPEPE: '0.003523', ALGO: '0.080103', QNT: '70', NOPE: 'x' });
+  assert.equal(mids['BTC-USD'], 60781.5);
+  close(mids['PEPE-USD'], .000003523, 1e-15);
+  assert.equal(mids['ALGO-USD'], .080103);
+  assert.equal(mids['QNT-USD'], undefined, 'QNT is not listed on Hyperliquid');
+  assert.throws(() => X.parseHyperliquidMids([1, 2]), /unexpected Hyperliquid answer/);
+  // The agent keeps the Coinbase prices when the venue's prices fail, and says so.
+  let clock = Date.parse('2026-11-25T10:07:00Z');
+  const getJson = async (url, body) => {
+    if (body !== undefined) throw new Error('HTTP 503');
+    const u = new URL(url);
+    const s0 = Date.parse(u.searchParams.get('start'));
+    const e = Date.parse(u.searchParams.get('end'));
+    const step = Number(u.searchParams.get('granularity')) * 1000;
+    const rows = [];
+    for (let t0 = Math.floor(s0 / step) * step; t0 < e && t0 + step <= clock; t0 += step) rows.push([t0 / 1000, 99, 101, 100, 100, 100]);
+    return rows.reverse();
+  };
+  const state = freshState();
+  const pilot = createExchangeAutopilot({ getJson, now: () => clock, state, options: { symbols: ['BTC-USD', 'ETH-USD'], trainBars: 600, venue: 'hyperliquid' } });
+  await pilot.tick();
+  assert.equal(state.marks['BTC-USD'].source, 'coinbase');
+  assert.ok(state.log.some(e => e.kind === 'ERROR' && /Hyperliquid prices: HTTP 503 \(Coinbase prices used this tick\)/.test(e.text)));
 });

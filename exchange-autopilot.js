@@ -437,14 +437,31 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
 
     // 1. Fresh hourly bars and live prices for every coin.
     const series = {};
+    const coinbaseClose = {};
     for (const symbol of opts.symbols) {
       try {
         // 900 hourly bars: enough history for the 4-hour strategy's indicators (225 four-hour bars).
         const { source, candles } = await X.fetchCandles(getJson, symbol, { granularity: 3600, bars: opts.liveBars, now: t });
         const last = candles[candles.length - 1];
         state.marks[symbol] = { price: last.c, at: new Date(t).toISOString(), source };
+        coinbaseClose[symbol] = last.c;
         series[symbol] = X.closedCandles(candles, HOUR, t);
       } catch (error) { say('ERROR', `prices for ${symbol}: ${error.message}`); }
+    }
+    // On the target venue, entries and marks use ITS prices (Hyperliquid mids): the paper record is then
+    // a rehearsal of real trading there. Signals and exits still read the Coinbase bars; the basis
+    // between the two (usually a few hundredths of a percent) is recorded per coin.
+    if (opts.venue === 'hyperliquid') {
+      try {
+        const mids = X.parseHyperliquidMids(await getJson(X.VENUES.hyperliquid.info, { type: 'allMids' }));
+        state.execution = state.execution || {};
+        for (const [symbol, price] of Object.entries(mids)) {
+          if (!state.marks[symbol] || !coinbaseClose[symbol]) continue;          // no fresh Coinbase bar: keep it out
+          state.marks[symbol] = { price, at: new Date(t).toISOString(), source: 'hyperliquid' };
+          const entry = state.execution[symbol] || (state.execution[symbol] = { samples: [] });
+          entry.basis = [price / coinbaseClose[symbol] - 1, ...(entry.basis || [])].slice(0, X.EXECUTION.samples);
+        }
+      } catch (error) { say('ERROR', `Hyperliquid prices: ${error.message} (Coinbase prices used this tick)`); }
     }
 
     // 2. Open positions: exits on 15-minute bars.
@@ -561,13 +578,14 @@ function executionOf(state, costs = X.COSTS, symbols = X.SYMBOLS) {
   for (const [symbol, entry] of Object.entries(state.execution || {})) {
     const samples = entry.samples || [];
     const funding = entry.funding || [];
-    if (!samples.length && !funding.length) continue;
+    if (!samples.length && !funding.length && !(entry.basis && entry.basis.length)) continue;
     const charged = X.costsFor(symbol, state.execution, costs);
     out[symbol] = {
       samples: samples.length, at: samples.length ? samples[0].at : null,
       halfSpread: samples.length ? X.median(samples.map(x => x.halfSpread)) : null, slippage: samples.length ? X.median(samples.map(x => x.slippage)) : null, live: samples.length ? X.median(samples.map(x => x.live)) : null,
       charged: charged.slippage,
-      ...(funding.length ? { fundingSamples: funding.length, funding: X.median(funding), fundingPer8h: charged.fundingPer8h } : {})
+      ...(funding.length ? { fundingSamples: funding.length, funding: X.median(funding), fundingPer8h: charged.fundingPer8h } : {}),
+      ...(entry.basis && entry.basis.length ? { basis: X.median(entry.basis) } : {})
     };
   }
   return {
