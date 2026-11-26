@@ -244,8 +244,8 @@ Each reading comes with plain-language notes you can check against the chart on 
   - 72-hour time stop.
 
 **Portfolio rules:**
-- at most 6 positions in the normal book (8 in the learning book, whose trades risk 0.25% each), and one per coin. The open-risk cap below usually binds first: 3 fresh positions per side, more once stops have trailed to break-even;
-- open risk in one direction is capped at 4% of equity in the normal book (2% in the learning book), because crypto moves together. Each book has its own budget, so research trades never take the place of a proven strategy;
+- at most 6 positions in the normal book (16 in the learning book, whose trades risk 0.25% each, with its own 4% side-risk and 30% margin budgets), and one per coin. The open-risk cap below usually binds first: 3 fresh positions per side, more once stops have trailed to break-even;
+- open risk in one direction is capped at 4% of equity in the normal book (4% in the learning book, which also has its own margin budget of 30% of equity), because crypto moves together. Each book has its own budget, so research trades never take the place of a proven strategy;
 - **evidence-based leverage**: the normal book's risk per trade is 1% and grows only with proof.
   - 1.5%: the out-of-sample lower bound is at least +0.05R and 5+ live trades average above 0R.
   - 2%: the lower bound is at least +0.10R and 10+ live trades average at least +0.20R.

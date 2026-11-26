@@ -99,9 +99,10 @@
     maxPositionPct: .25,      // margin of one position <= 25% of equity
     maxMarginPct: .6,         // all margins together <= 60% of equity
     maxOpen: 6,               // positions open at once (normal book); the 3% open-risk cap per side binds first
-    learnMaxOpen: 8,          // the learning book's tiny trades may fill all 8 coins (8 x 0.25% = 2% risk; the 3% side cap still holds)
+    learnMaxOpen: 16,         // the learning book's tiny trades (16 x 0.25% = 4% risk); doubled 26 Nov 2026, as the owner asked, for more experience: 8 was full most of the time
     maxSideRiskPct: .04,      // crypto moves together: open risk in one direction <= 4% of equity (normal book)
-    learnSideRiskPct: .02,    // the learning book's own budget (8 x 0.25%), so research trades never crowd out proven ones
+    learnSideRiskPct: .04,    // the learning book's own side budget (16 x 0.25%), so research trades never crowd out proven ones
+    learnMaxMarginPct: .3,    // ...and its own margin budget: research never uses more than 30% of equity, so a proven strategy always finds margin
     dailyLossPct: .04,        // after -4% in a UTC day, no new positions that day
     killDrawdown: .15,        // -15% from the peak: close everything and halt
     cooldownHours: 6,         // no re-entry on a coin for 6 h after a losing trade on it
@@ -854,7 +855,9 @@
     const sideRisk = inBook.filter(held => held.side === side).reduce((sum, held) => sum + openRisk(held), 0);
     if (sideRisk + riskAmount > sideCap * equity) reasons.push(`too much ${side.toLowerCase()} risk at once (crypto moves together)`);
     const usedMargin = open.reduce((sum, held) => sum + held.margin, 0);
-    const maxMargin = Math.min(rules.maxPositionPct * equity, rules.maxMarginPct * equity - usedMargin, account.cash);
+    // The learning book also has its own margin budget, inside the shared one.
+    const learnRoom = learningBook && rules.learnMaxMarginPct !== undefined ? rules.learnMaxMarginPct * equity - inBook.reduce((sum, held) => sum + held.margin, 0) : Infinity;
+    const maxMargin = Math.min(rules.maxPositionPct * equity, rules.maxMarginPct * equity - usedMargin, account.cash, learnRoom);
     if (!(maxMargin > 0)) reasons.push('no free margin');
     return { ok: reasons.length === 0, reasons, riskAmount, maxMargin, maxLeverage: book === 'gated' ? rules.maxLeverage : rules.learnMaxLeverage };
   }
