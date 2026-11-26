@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-OR00pEhiJqhQLt/DcjL3k9+/j6kmLsFdycdM+ZddzG0=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-5TINnhayduR+ILQlMbYKiuTx52ShZpydppxgpFZPrvs=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -239,7 +239,7 @@
         <div class="stat"><span>Real money</span><strong id="ovLive">—</strong><small id="ovLiveSub"></small></div>
         <div class="stat"><span>Health</span><strong id="ovHealth">—</strong><small id="ovHealthSub"></small></div>
       </div>
-      <h3>Open positions · live Coinbase prices</h3>
+      <h3 id="ovPosHead">Open positions · live prices</h3>
       <ul class="ov-list" id="ovPositions"></ul>
       <h3>Last 24 hours</h3>
       <ul class="ov-list" id="ovDigest"></ul>
@@ -316,7 +316,7 @@
     </section>
     <button type="button" class="layout-toggle" id="layoutBtn" aria-expanded="false">All panels ▾</button>
     <p class="install-hint" id="iosHint" hidden>📱 <b>iPhone app:</b> tap <b>Share</b> <span aria-hidden="true">⬆︎</span> then <b>Add to Home Screen</b>, then open <b>Metyu</b> from your home screen (full screen, own icon, works offline). <button type="button" id="iosHintClose" aria-label="Hide this tip">✕</button></p>
-    <p class="board-extra disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No orders and no keys that can move money: a wallet or exchange account is only ever read. Live data are public Coinbase and Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Coinbase &amp; Polymarket prices · wallet read-only · no orders · not financial advice</span></p>
+    <p class="board-extra disclaimer"><span class="long">VIRTUAL MONEY ONLY. Metyu trades many markets at once from one paper account. No orders and no keys that can move money: a wallet or exchange account is only ever read. Live data are public Hyperliquid, Coinbase and Polymarket prices (read-only); demo mode streams simulated markets. Not financial advice.</span><span class="short">VIRTUAL MONEY ONLY · read-only Hyperliquid, Coinbase &amp; Polymarket prices · wallet read-only · no orders · not financial advice</span></p>
 
     <section class="board-extra panel" id="walletPanel" style="margin-bottom:12px">
       <h2>My Solana wallet <span class="kind real">REAL · READ-ONLY</span></h2>
@@ -1070,7 +1070,7 @@
         const learningEver = status.positions.some(p => p.book === 'learning') || (status.history || []).some(t => t.learning);
         const health = status.health || {};
         const healthText = health.staleMarks && health.staleMarks.length ? ` · ⚠ stale prices: ${health.staleMarks.join(', ')} (not traded)` : '';
-        $('#exStatus').textContent = `${liveness(status.lastTick, status.paused)}${healthText} · ${Object.keys(status.marks || {}).length} coins, live Coinbase prices · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
+        $('#exStatus').textContent = `${liveness(status.lastTick, status.paused)}${healthText} · ${Object.keys(status.marks || {}).length} coins, ${venuePricesLabel(status)} · ${account.halted ? 'HALTED by the kill-switch' : openGates ? `${openGates} strategy gate(s) open: normal book` : learningEver || strategies.some(([, s]) => s.learnable) ? 'learning book: 0.25% risk per trade, up to 2x (no gate open yet)' : 'watching only (no strategy has an edge after costs)'}`;
         // The forward test of both books: the normal book (what real money would copy) first.
         const gatedForward = status.forward && status.forward.gated;
         const forward = status.forward && status.forward.learning;
@@ -1106,7 +1106,11 @@
             + (dearer.length ? `${dearer.length} cost more than the ${pct(execution.floor)} floor and are charged their measured cost (worst ${dearer.slice(0, 3).map(([symbol, c]) => `${symbol} ${pct(c.charged)}`).join(', ')}).` : `every coin costs no more than the ${pct(execution.floor)} floor.`)
             + ` A $${execution.liveProbeUsd} order would pay a median ${pct(liveMedian)}.`
             + (execution.fundingFloor !== undefined && measured.some(([, c]) => c.fundingSamples) ? ` Funding: ${fundingDearer ? `${fundingDearer} coin${fundingDearer === 1 ? '' : 's'} charged above` : 'all at'} the ${pct(execution.fundingFloor)} per 8 h floor.` : '')
-            + (execution.unlisted && execution.unlisted.length ? ` Not listed there: ${execution.unlisted.join(', ')}.` : '');
+            + (execution.unlisted && execution.unlisted.length ? ` Not listed there: ${execution.unlisted.join(', ')}.` : '')
+            + (() => {
+              const basis = Object.values(execution.coins).map(c => c.basis).filter(Number.isFinite).map(Math.abs).sort((a, b) => a - b);
+              return basis.length ? ` Price gap to Coinbase: median ${pct(basis[Math.floor(basis.length / 2)])} over ${basis.length} coins.` : '';
+            })();
           $('#exExec').className = `note ${dearer.length ? 'negative' : 'sec-ok'}`;
         }
         // The weekly strategy lab: families tried on the episodes; a promoted new one goes to the gate check.
@@ -1895,23 +1899,51 @@
       }
 
       // ---------- live overview: live prices between the agent's runs, and the last 24 hours ----------
-      // The agent publishes every 15 minutes; open positions are re-marked here every 10 seconds from
-      // Coinbase's public ticker (the P&L at the agent's mark, moved by the price change since).
+      // The agent publishes every 15 minutes; open positions are re-marked here every 10 seconds (the
+      // P&L at the agent's mark, moved by the price change since). On the Hyperliquid venue the prices
+      // are Hyperliquid's own (one public read for every coin); otherwise, or for a coin it does not
+      // list, or when it cannot be reached, Coinbase's public ticker.
       const livePrices = {};
       let livePricesAt = 0;
+      let livePricesSource = '';
+      const onHyperliquid = status => !!(status && status.execution && status.execution.venue === 'hyperliquid');
+      function venuePricesLabel(status) { return onHyperliquid(status) ? 'live Hyperliquid prices' : 'live Coinbase prices'; }
+      const hyperliquidCoin = symbol => (symbol === 'PEPE-USD' ? 'kPEPE' : symbol.replace(/-USD$/, ''));
+      async function hyperliquidMids(symbols) {
+        const unlisted = new Set((exchangeStatus.execution && exchangeStatus.execution.unlisted) || []);
+        const wanted = symbols.filter(symbol => !unlisted.has(symbol));
+        if (!wanted.length) return {};
+        try {
+          const response = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ type: 'allMids' }), cache: 'no-store' });
+          if (!response.ok) return {};
+          const mids = await response.json();
+          const out = {};
+          for (const symbol of wanted) {
+            const coin = hyperliquidCoin(symbol);
+            const price = Number(mids && mids[coin]);
+            if (price > 0) out[symbol] = /^k[A-Z]/.test(coin) ? price / 1000 : price;   // a k-contract is per 1,000 units
+          }
+          return out;
+        } catch (error) { return {}; }
+      }
       async function refreshLivePrices() {
         if (!exchangeStatus || document.hidden) return;
         const symbols = [...new Set(exchangeStatus.positions.map(held => held.symbol))].filter(symbol => /^[A-Z0-9]+-USD$/.test(symbol));
-        const results = await Promise.all(symbols.map(async symbol => {
+        const venue = onHyperliquid(exchangeStatus) ? await hyperliquidMids(symbols) : {};
+        for (const [symbol, price] of Object.entries(venue)) livePrices[symbol] = { price, at: Date.now(), source: 'Hyperliquid' };
+        const rest = symbols.filter(symbol => !(symbol in venue));
+        const results = Object.keys(venue).length ? [true] : [];
+        livePricesSource = Object.keys(venue).length ? (rest.length ? 'Hyperliquid + Coinbase' : 'Hyperliquid') : 'Coinbase';
+        results.push(...await Promise.all(rest.map(async symbol => {
           try {
             const response = await fetch(`https://api.exchange.coinbase.com/products/${symbol}/ticker`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
             if (!response.ok) return false;
             const price = Number((await response.json()).price);
             if (!(price > 0)) return false;
-            livePrices[symbol] = { price, at: Date.now() };
+            livePrices[symbol] = { price, at: Date.now(), source: 'Coinbase' };
             return true;
           } catch (error) { return false; }
-        }));
+        })));
         if (results.some(Boolean)) livePricesAt = Date.now();
         renderOverview();
       }
@@ -1961,6 +1993,7 @@
         const tickAge = status.lastTick ? now - Date.parse(status.lastTick) : Infinity;
         const fresh = $('#ovFresh');
         fresh.textContent = `agent ${Number.isFinite(tickAge) ? `${ago(tickAge)} ago` : 'never'}${livePricesAt ? ` · prices ${ago(now - livePricesAt)} ago` : ''}`;
+        $('#ovPosHead').textContent = `Open positions · ${livePricesSource ? `live ${livePricesSource} prices` : venuePricesLabel(status)}`;
         fresh.className = `badge ov-fresh ${tickAge < 40 * 60000 ? 'live' : 'stale'}`;
         // The market at a glance: the direction the strategies trade with (trend-followers short a falling market).
         const market = status.market;
