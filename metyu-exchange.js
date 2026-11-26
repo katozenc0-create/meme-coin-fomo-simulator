@@ -474,15 +474,9 @@
   // ---------- strategies ----------
   // Each looks only at bars up to i and returns null or { side, stop, target, reason } priced off the
   // close of bar i. Parameters are a small grid; train() picks them on the first part of the history.
-  // letRun: no fixed take-profit; the winner runs until the trailing stop (break-even after 1.5 ATR,
-  // then 2.5 ATR behind the best close) or the time stop. On the 2018-2024 episodes it beat the fixed
-  // target in every kind of market (research/exit-study.js: +0.127R vs +0.070R over ~1,800 trades);
-  // the evidence gate judged it on the training window before it was adopted (research/README.md).
-  // Range reversion keeps its target: the middle band IS its idea.
   const BASE_STRATEGIES = {
     trend: {
       label: 'Trend pullback',
-      letRun: true,
       grid: [{ stopAtr: 2, targetAtr: 3 }, { stopAtr: 2, targetAtr: 4 }, { stopAtr: 3, targetAtr: 4.5 }],
       signal(candles, ind, i, params) {
         const r = readChart(candles, ind, i);
@@ -498,7 +492,6 @@
     },
     breakout: {
       label: 'Range breakout',
-      letRun: true,
       grid: [{ stopAtr: 1.5, targetAtr: 3 }, { stopAtr: 2, targetAtr: 4 }, { stopAtr: 2.5, targetAtr: 5 }],
       signal(candles, ind, i, params) {
         const r = readChart(candles, ind, i);
@@ -538,7 +531,7 @@
   // strategy makes the gate's correction stricter for all the others. The market reader below
   // stays: the board shows the market's direction, and later hypotheses can use it.
   const TIMEFRAMES = Object.freeze({ trend: 1, breakout: 1, reversion: 1, trend4h: 4 });
-  const STRATEGIES = Object.freeze({ ...BASE_STRATEGIES, trend4h: { label: 'Trend pullback (4h)', timeframe: 4, letRun: true, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal } });
+  const STRATEGIES = Object.freeze({ ...BASE_STRATEGIES, trend4h: { label: 'Trend pullback (4h)', timeframe: 4, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal } });
 
   /**
    * The market's direction: Bitcoin's trend (readChart) on 4-hour bars, each known at its bar's
@@ -657,9 +650,7 @@
    * autopilot can walk 1-minute bars incrementally. `trail: false` checks a still-forming bar for
    * stop / target / liquidation hits without trailing on its unfinished close.
    */
-  // useTarget false: the take-profit is ignored and the winner runs on the trailing stop (see
-  // `letRun` on the strategies and research/exit-study.js).
-  function replayPosition(position, bars, { now = Infinity, costs = COSTS, timeStopHours = RULES.timeStopHours, trail = true, useTarget = true } = {}) {
+  function replayPosition(position, bars, { now = Infinity, costs = COSTS, timeStopHours = RULES.timeStopHours, trail = true } = {}) {
     const long = position.side === 'LONG';
     const atrValue = position.atr;
     let stop = finite(position.stop) ? position.stop : position.initialStop;
@@ -672,7 +663,7 @@
       const liq = position.liquidation;
       const hitStop = long ? bar.l <= stop : bar.h >= stop;
       const hitLiq = long ? bar.l <= liq : bar.h >= liq;
-      const hitTarget = useTarget && finite(position.target) && (long ? bar.h >= position.target : bar.l <= position.target);
+      const hitTarget = finite(position.target) && (long ? bar.h >= position.target : bar.l <= position.target);
       if (hitLiq && (long ? liq >= stop : liq <= stop)) return { exit: { price: liq, at: bar.t, reason: 'liquidated' }, stop, best, lastPrice };
       if (hitStop) {
         const gap = long ? bar.o < stop : bar.o > stop;
@@ -725,7 +716,7 @@
       if (!sized) { i += 1; continue; }
       const position = { ...sized, openedAt: next.t, atr: ind.atr[i] };
       // The entry bar itself can stop out or hit the target after the open.
-      const result = replayPosition(position, candles.slice(i + 1, to), { costs, useTarget: !strategy.letRun });
+      const result = replayPosition(position, candles.slice(i + 1, to), { costs });
       if (!result.exit) break;                                          // still open at the end: not counted
       const outcome = settle(position, result.exit.price, result.exit.at, costs);
       trades.push({ symbol, strategy: strategyName, side: signal.side, openedAt: next.t, closedAt: result.exit.at, entry: position.entry, exit: outcome.exitFill, reason: result.exit.reason, r: outcome.r });

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.15.1: research: exits and profit-taking (rejected); the 4-year test
+
+- **Exits.** `research/exit-study.js` compares seven exit rules on the same entries over the 2018–2024 episodes.
+  - Letting winners run (no fixed target) looked best there: +0.127R vs +0.070R, better or equal in every kind of market. Taking profit earlier always hurt.
+  - On the training window it did not replicate: 2 strategies improved, 4 got worse, no gate opened, and satellite trend would have left the learning book.
+  - The engine keeps its exits. Written up in `research/README.md`.
+- **The 4-year test** (owner-approved, then declined by the owner after seeing it): training on about 4 years opened no gate and proved core trend a loser (95% interval below zero). That would have cut the learning book's experience, and one training took 10.5 minutes. The data window stays at about 2 years.
+
 ## 2.15.0: more experience for the learning book
 
 - As the owner asked, the agents should gain experience faster. Over the last 134 hours the learning book opened 36 trades and skipped **116 signals only because its 8 slots were full**.

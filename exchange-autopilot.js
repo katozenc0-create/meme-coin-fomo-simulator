@@ -209,8 +209,6 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
 
   // Each coin's costs: the fixed ones, with slippage raised to its measured order book (never lowered).
   const costsOf = symbol => X.costsFor(symbol, state.execution || {}, costs);
-  // A strategy that lets winners run ignores its take-profit (exits on the trailing or time stop).
-  const useTargetOf = held => !(strategies[held.strategy] && strategies[held.strategy].letRun);
   const priceOf = symbol => (state.marks[symbol] ? state.marks[symbol].price : NaN);
   const markOf = held => {
     const price = priceOf(held.symbol);
@@ -313,7 +311,7 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       try {
         const quarters = (await X.fetchCandles(getJson, held.symbol, { granularity: 900, bars: 300, now: t })).candles
           .filter(bar => bar.t + QUARTER <= (finished.length ? finished[0].t : t));
-        const result = X.replayPosition(held, quarters, { now: t, costs: costsOf(held.symbol), timeStopHours: rules.timeStopHours, useTarget: useTargetOf(held) });
+        const result = X.replayPosition(held, quarters, { now: t, costs: costsOf(held.symbol), timeStopHours: rules.timeStopHours });
         if (quarters.length) held.checkedUntil = Math.max(resumeAt, quarters[quarters.length - 1].t + QUARTER);
         if (apply(result, QUARTER)) return;
       } catch (error) {
@@ -322,12 +320,12 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
       }
     }
     if (finished.length) {
-      const result = X.replayPosition(held, finished, { now: t, costs: costsOf(held.symbol), timeStopHours: rules.timeStopHours, useTarget: useTargetOf(held) });
+      const result = X.replayPosition(held, finished, { now: t, costs: costsOf(held.symbol), timeStopHours: rules.timeStopHours });
       held.checkedUntil = Math.max(held.checkedUntil || 0, finished[finished.length - 1].t + MINUTE);
       if (apply(result, MINUTE)) return;
     }
     const forming = (minutes || []).filter(bar => bar.t + MINUTE > t && bar.t >= (held.checkedUntil || 0));
-    if (forming.length) apply(X.replayPosition(held, forming, { now: t, costs: costsOf(held.symbol), trail: false, useTarget: useTargetOf(held) }), MINUTE);
+    if (forming.length) apply(X.replayPosition(held, forming, { now: t, costs: costsOf(held.symbol), trail: false }), MINUTE);
   }
 
   function admitAndOpen({ symbol, tier = 'core', strategy, label, signal, bar, atrValue, price, book, reading, leverage = { scale: 1, reason: 'base risk' } }) {

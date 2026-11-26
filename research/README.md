@@ -66,6 +66,39 @@ Sample A's 7-day near-miss was tested on four new independent samples, with the 
 
 Brier scores of the earlier samples, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
 
+## Crypto: exits and profit-taking (26 Nov 2026, rejected)
+
+**Why.** The owner asked to teach the agents better profit-taking and exits.
+
+**Formed on the episodes** (`research/exit-study.js`). The same entries as today's trend, breakout and trend4h strategies, with seven exit rules, on the 2018–2024 episodes only:
+
+| Exit rule | Crash | Bear | Bull | Range | All |
+|---|---|---|---|---|---|
+| current (target, break-even at 1.5 ATR, 2.5 ATR trail, 72 h) | +0.34R | +0.30R | +0.02R | −0.20R | +0.070R |
+| **no target, let the winner run** | +0.51R | +0.30R | +0.07R | −0.18R | **+0.127R** |
+| no trail | +0.40R | +0.39R | +0.03R | −0.21R | +0.094R |
+| half at 1R | +0.27R | +0.25R | −0.01R | −0.19R | +0.042R |
+| tight trail (1.5 ATR) | +0.27R | +0.27R | 0.00R | −0.20R | +0.048R |
+| break-even at 1 ATR | +0.26R | +0.25R | 0.00R | −0.19R | +0.044R |
+| time stop 24 h | +0.24R | +0.29R | 0.00R | −0.21R | +0.039R |
+
+On the episodes, taking profit earlier always hurt. Letting winners run was better or equal in every kind of market.
+
+**Judged on the training window** (the gate, last ~2 years, letting winners run on trend, breakout and trend4h):
+
+| Strategy | Current | Let it run |
+|---|---|---|
+| core trend | −0.085R | −0.085R |
+| core breakout | −0.106R | −0.117R |
+| core trend4h | −0.065R | −0.021R |
+| satellite trend | −0.056R | −0.095R (95% interval below zero: no longer learnable) |
+| satellite breakout | −0.104R | −0.125R |
+| satellite trend4h | +0.015R | +0.026R |
+
+**Verdict.** It did not replicate: two strategies improved, four got worse, and no gate opened. It would also have taken satellite trend out of the learning book, so the agents would gain less experience. The engine keeps its current exits.
+
+The lesson is the same as for the market-aligned breakout. An exit rule that looks clearly better on one set of years is a new hypothesis, and on the next set it was not.
+
 ## Crypto: range-market strategies (26 Nov 2026, none formed)
 
 **Why.** The history test showed that the strategies earn in crashes and bear markets and lose in flat ranges. The owner asked to speed up the evidence. The only honest way is a strategy with a real edge where the current ones lose.
