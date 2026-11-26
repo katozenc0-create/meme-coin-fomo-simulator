@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.14.1: the state push is retried
+
+- One tick in the last 24 h (25 Nov 16:00 UTC) failed to publish: GitHub answered the push with a transient "fatal error in commit_refs_rules". When the push fails, the next tick restores the previous state, so that tick's work is lost. `scripts/publish-state.sh` now retries the push up to 4 times, pausing 5, 10 and 15 s between attempts, before failing (`METYU_PUSH_ATTEMPTS`, `METYU_PUSH_DELAY`).
+
 ## 2.14.0: the path to real money on the board (steps 4 and 5)
 
 - **Tickets** (`ticketOf`): each shadow order (a normal-book signal under `LIVE_LIMITS`) becomes the order the future adapter would send. A ticket holds the Hyperliquid coin, side, dollars, an IOC limit 0.3% from the signal price, stop, target and a 15-minute expiry, plus **what blocks it**: the real-money lock, an unlisted coin, and always "no order adapter (step 9)". It is computed only, and `sent` is always false.

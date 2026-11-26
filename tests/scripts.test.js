@@ -66,6 +66,13 @@ test('publish refuses unsealed balances and secret-looking content; restore cope
   const empty = path.join(s.dir, 'empty');
   fs.mkdirSync(empty);
   assert.match(s.run('publish-state.sh', [empty]).stderr, /nothing to save/);
+  // A failing push is retried, then reported (no remote here: every attempt fails).
+  const clean = path.join(s.dir, 'clean');
+  fs.mkdirSync(clean, { recursive: true });
+  fs.writeFileSync(path.join(clean, 'status.json'), '{"ok":true}');
+  const flaky = spawnSync('bash', [path.join(ROOT, 'scripts/publish-state.sh'), clean], { env: { PATH: process.env.PATH, METYU_GIT_REMOTE: path.join(s.dir, 'missing.git'), METYU_PUSH_ATTEMPTS: '3', METYU_PUSH_DELAY: '0', HOME: s.dir }, encoding: 'utf8' });
+  assert.equal(flaky.status, 1);
+  assert.match(flaky.stderr, /push failed \(attempt 1 of 3\), retrying in 0 s[\s\S]*push failed \(attempt 2 of 3\)[\s\S]*push failed after 3 attempts/);
   const fresh = s.run('restore-state.sh', [path.join(s.dir, 'fresh')]);
   assert.equal(fresh.status, 0);
   assert.match(fresh.stdout, /no autopilot-data branch yet/);
