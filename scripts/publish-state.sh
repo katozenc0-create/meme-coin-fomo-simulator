@@ -58,5 +58,20 @@ if [ -n "$token" ] && [ -z "${METYU_GIT_REMOTE:-}" ]; then
   basic="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
   auth=(-c "http.extraheader=AUTHORIZATION: basic ${basic}")
 fi
-git ${auth[@]+"${auth[@]}"} push -q --force "$remote" HEAD:refs/heads/autopilot-data
-echo "publish: ${files# } -> autopilot-data"
+# A transient server error (e.g. "fatal error in commit_refs_rules", seen once on 25 Nov 2026) would
+# lose this tick's state: the next tick restores the previous one. So the push is retried a few times
+# with a growing pause. METYU_PUSH_ATTEMPTS / METYU_PUSH_DELAY (seconds) tune it (tests use 0).
+attempts="${METYU_PUSH_ATTEMPTS:-4}"
+delay="${METYU_PUSH_DELAY:-5}"
+for attempt in $(seq 1 "$attempts"); do
+  if git ${auth[@]+"${auth[@]}"} push -q --force "$remote" HEAD:refs/heads/autopilot-data; then
+    echo "publish: ${files# } -> autopilot-data${attempt:+$([ "$attempt" -gt 1 ] && echo " (attempt $attempt)")}"
+    exit 0
+  fi
+  if [ "$attempt" -lt "$attempts" ]; then
+    echo "publish: push failed (attempt $attempt of $attempts), retrying in $((delay * attempt)) s" >&2
+    sleep "$((delay * attempt))"
+  fi
+done
+echo "publish: push failed after $attempts attempts" >&2
+exit 1
