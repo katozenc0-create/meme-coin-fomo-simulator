@@ -230,17 +230,26 @@ test('admit enforces the kill-switch, position count, one per coin, cool-down, s
   const four = { a: learn('A'), b: learn('B'), c: learn('C'), d: learn('D') };
   assert.equal(X.admit({ ...base, book: 'learning', positions: four }).ok, true, 'a 5th learning position is allowed');
   const eight = { ...four, e: learn('E'), f: learn('F'), g: learn('G'), h: learn('H') };
-  assert.match(X.admit({ ...base, book: 'learning', positions: eight }).reasons.join(), /8 open learning positions \(max 8\)/);
+  assert.equal(X.admit({ ...base, book: 'learning', positions: eight }).ok, true, 'a 9th learning position is allowed (16 since 26 Nov 2026)');
+  const sixteen = Object.fromEntries('ABCDEFGHIJKLMNOP'.split('').map(c => [c, learn(c)]));
+  assert.match(X.admit({ ...base, book: 'learning', positions: sixteen }).reasons.join(), /16 open learning positions \(max 16\)/);
+  // Its own margin budget: 30% of equity, so the normal book always finds margin.
+  const heavy = { a: learn('A', 'SHORT', 1, 1500), b: learn('B', 'SHORT', 1, 1500) };
+  assert.match(X.admit({ ...base, book: 'learning', positions: heavy }).reasons.join(), /no free margin/, 'learning margin full at 30%');
+  assert.equal(X.admit({ ...base, positions: heavy }).ok, true, 'the normal book still has margin');
+  assert.ok(X.admit({ ...base, book: 'learning', positions: { a: learn('A', 'SHORT', 1, 1000) } }).maxMargin <= .3 * 10000 - 1000 + 1e-9);
   // Separate budgets: research trades never take a proven strategy's place (count or side risk).
   assert.equal(X.admit({ ...base, side: 'SHORT', positions: eight }).ok, true, 'learning positions do not fill the normal book');
   const normalShorts = { a: held('A', 'SHORT', 100), b: held('B', 'SHORT', 100) };
   const research = { c: learn('C', 'SHORT', 25), d: learn('D', 'SHORT', 25) };
   assert.equal(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, ...research } }).ok, true, 'learning risk is not counted against the normal side cap');
   assert.match(X.admit({ ...base, side: 'SHORT', positions: { ...normalShorts, e: held('E', 'SHORT', 100), f: held('F', 'SHORT', 100) } }).reasons.join(), /too much short risk/);
-  const researchFull = Object.fromEntries('CDEFGHIJ'.split('').map(c => [c, learn(c, 'SHORT', 25)]));
-  assert.match(X.admit({ ...base, book: 'learning', side: 'SHORT', positions: researchFull }).reasons.join(), /too much short risk/, 'the learning book has its own 2% cap');
+  const researchFull = Object.fromEntries('CDEFGHIJKLMNOPQR'.split('').slice(0, 15).map(c => [c, learn(c, 'SHORT', 27)]));
+  assert.match(X.admit({ ...base, book: 'learning', side: 'SHORT', positions: researchFull }).reasons.join(), /too much short risk/, 'the learning book has its own 4% cap');
   assert.equal(X.admit({ ...base, side: 'SHORT', positions: { a: held('A', 'SHORT', 1), b: held('B', 'SHORT', 1), c: held('C', 'SHORT', 1), d: held('D', 'SHORT', 1), e: held('E', 'SHORT', 1), f: held('F', 'SHORT', 1) } }).reasons.some(r => /6 open normal-book positions/.test(r)), true);
-  assert.equal(X.RULES.learnMaxOpen, 8);
+  assert.equal(X.RULES.learnMaxOpen, 16);
+  assert.equal(X.RULES.learnSideRiskPct, .04);
+  assert.equal(X.RULES.learnMaxMarginPct, .3);
   assert.match(X.admit({ ...base, positions: { a: held('ETH-USD', 'LONG', 200), b: held('SOL-USD', 'LONG', 150) } }).reasons.join(), /too much long risk/);
   assert.equal(X.admit({ ...base, positions: { a: held('ETH-USD', 'SHORT', 150), b: held('SOL-USD', 'SHORT', 100) } }).ok, true, 'opposite side: hedges');
   assert.match(X.admit({ ...base, lastLossAt: { 'BTC-USD': -H } }).reasons.join(), /cool-down/);

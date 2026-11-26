@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.15.0: more experience for the learning book
+
+- As the owner asked, the agents should gain experience faster. Over the last 134 hours the learning book opened 36 trades and skipped **116 signals only because its 8 slots were full**.
+- The learning book now holds up to **16** positions, with its side-risk budget raised from 2% to **4%**. Risk per trade is unchanged at 0.25%.
+- **New:** the learning book gets its own margin budget, **30% of equity**, inside the shared 60%. Research trades can never take the margin a proven strategy needs.
+- Virtual money only. The evidence gate, the normal book's limits and the real-money lock are unchanged; learning trades still never count toward the lock.
+
 ## 2.14.2: research: range-market strategies (none formed)
 
 - To speed up the evidence honestly, two range-market ideas were tried on the 2018–2024 episodes only: failed-breakout fades and range reversion, each on 1h and 4h bars, with and without a trailing stop (`research/range-hypotheses.js`). None earned across the episodes (best overall −0.04R). The one positive cell rests on 7 trades. None was sent to the gate, which stays unchanged. Written up in `research/README.md`.
