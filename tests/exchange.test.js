@@ -194,7 +194,7 @@ test('backtest walks the same rules over history and train judges the gate only 
   }
   const model = X.train(series, { now: 5 });
   assert.equal(model.trainedAt, 5);
-  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakout', 'reversion', 'trend4h', 'channel4h', 'emaCross4h']);
+  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakout', 'reversion', 'trend4h', 'emaCross4h']);
   assert.equal(model.strategies.trend4h.timeframe, 4, 'the 4-hour trend is trained on 4-hour bars');
   assert.equal(model.strategies.trend.timeframe, 1);
   for (const s of Object.values(model.strategies)) {
@@ -817,4 +817,28 @@ test('real money path: tickets are computed from shadow orders, never sent, and 
   assert.equal(status.realMoney.tickets.length, 1);
   assert.equal(status.realMoney.tickets[0].sent, false);
   assert.match(status.realMoney.tickets[0].blockedBy[0], /^real-money lock \d\/6$/);
+});
+
+test('EMA 20/50 cross (4h): a cross in the direction of EMA200, on 4-hour bars, from the strategy lab', () => {
+  const S = X.STRATEGIES.emaCross4h;
+  assert.equal(S.timeframe, 4);
+  assert.equal(X.timeframeOf('emaCross4h'), 4);
+  const n = 400;
+  // Down for a long time (EMA200 high), then a strong rally: EMA20 crosses EMA50 while still below
+  // EMA200 (no long), later above it.
+  const closes = Array.from({ length: n }, (_, i) => (i < 250 ? 200 - i * .4 : 100 + (i - 250) * 1.5));
+  const candles = closes.map((c, i) => ({ t: i * 4 * X.HOUR, o: c, h: c * 1.01, l: c * .99, c, v: 100 }));
+  const ind = X.computeIndicators(candles);
+  const signals = [];
+  for (let i = X.WARMUP; i < n; i += 1) { const s = S.signal(candles, ind, i, S.grid[0]); if (s) signals.push({ i, ...s }); }
+  for (const s of signals) {
+    const k = s.i;
+    if (s.side === 'LONG') {
+      assert.ok(ind.ema20[k] > ind.ema50[k] && ind.ema20[k - 1] <= ind.ema50[k - 1], 'a fresh cross up');
+      assert.ok(candles[k].c > ind.ema200[k], 'only above EMA200');
+      assert.ok(s.stop < candles[k].c && s.target > candles[k].c);
+    }
+  }
+  assert.equal(X.RULES.familySize, Object.keys(X.STRATEGIES).length * 2);
+  assert.ok(!('channel4h' in X.STRATEGIES), 'the channel breakout lost on the training window and was dropped');
 });
