@@ -128,3 +128,57 @@ test('history: the agent runs the stress test only when asked, weekly, never in 
   await on.tick();
   assert.ok(historyCalls.length > before);
 });
+
+test('strategy lab: families on the episodes, a pre-registered promotion rule, and honest labels', () => {
+  const Lab = require('../metyu-lab.js');
+  assert.deepEqual(Lab.PROMOTION, { minTrades: 30, minMeanR: .05, minKindsPositive: 3 });
+  assert.ok(Object.keys(Lab.FAMILIES).length >= 5);
+  // A toy family that always buys, on episodes that only rise: promoted, and labelled NEW.
+  const start = Date.parse('2020-12-11');
+  const up = walk(9, .002, .01, 60 * 24, start);
+  const episodes = [
+    { id: 'a', name: 'A', from: '2021-01-20', to: '2021-02-05', kind: 'crash', note: 'synthetic' },
+    { id: 'b', name: 'B', from: '2021-01-20', to: '2021-02-05', kind: 'bull', note: 'synthetic' },
+    { id: 'c', name: 'C', from: '2021-01-20', to: '2021-02-05', kind: 'range', note: 'synthetic' }
+  ];
+  const data = { a: { 'AAA-USD': up }, b: { 'AAA-USD': up }, c: { 'AAA-USD': up } };
+  const toy = { 'always long': { timeframes: [1], grid: [{}], signal: (c, ind, i) => ({ side: 'LONG', stop: c[i].c - 2 * ind.atr[i], target: c[i].c + 3 * ind.atr[i] }) } };
+  const lab = Lab.runLab(data, { families: toy, episodes, now: Date.parse('2026-11-26') });
+  assert.equal(lab.variants.length, 1);
+  const v = lab.variants[0];
+  assert.ok(v.trades >= 30, String(v.trades));
+  assert.ok(v.meanR > .05);
+  assert.equal(v.promoted, true);
+  assert.equal(lab.promoted[0].status, 'NEW CANDIDATE: needs the gate check', 'never adopted by itself');
+  assert.equal(lab.at, '2026-11-26T00:00:00.000Z');
+  // The real families on the real catalogue: known ones are labelled, not re-proposed.
+  assert.equal(Lab.ENGINE['EMA cross@4'], 'emaCross4h');
+  assert.ok('emaCross4h' in X.STRATEGIES);
+  assert.match(Lab.REJECTED['channel breakout@4'], /-0\.11R/);
+});
+
+test('strategy lab: the agent runs it weekly with the history test, logs it and publishes a summary', async () => {
+  const now0 = Date.parse('2026-11-25T10:07:00Z');
+  let clock = now0;
+  const getJson = async url => {
+    const u = new URL(url);
+    const s = Date.parse(u.searchParams.get('start'));
+    const e = Date.parse(u.searchParams.get('end'));
+    const rows = [];
+    const rng = X.createRng(Math.floor(s / History.WARMUP_DAYS) % 9973);
+    let p = 100;
+    for (let t = Math.floor(s / X.HOUR) * X.HOUR; t < e && t + X.HOUR <= clock; t += X.HOUR) { const o = p; p *= Math.exp(.02 * (rng() - .5)); rows.push([t / 1000, Math.min(o, p) * .995, Math.max(o, p) * 1.005, o, p, 100]); }
+    return rows.reverse();
+  };
+  const state = freshState();
+  const pilot = createExchangeAutopilot({ getJson, now: () => clock, state, options: { symbols: ['AAA-USD', 'BBB-USD'], trainBars: 1200, stressDays: 7 } });
+  await pilot.tick();
+  clock += 15 * 60000;
+  await pilot.tick();
+  assert.ok(state.lab, 'the lab ran with the stress test');
+  assert.equal(state.lab.variants.length, Object.values(require('../metyu-lab.js').FAMILIES).reduce((n, f) => n + f.timeframes.length * f.grid.length, 0));
+  assert.match(state.log.find(e => e.kind === 'LAB').text, /^strategy lab: \d+ variants of \d+ families · \d+ promoted/);
+  const status = statusOf(state, { now: clock });
+  assert.deepEqual(Object.keys(status.lab).sort(), ['at', 'families', 'promoted', 'rule', 'variants']);
+  assert.equal(typeof status.lab.variants, 'number', 'the board gets a count, not every variant');
+});

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.17.0: the strategy lab runs every week
+
+- As the owner asked, strategy development is now part of the automation. **`metyu-lab.js`** (moved out of `research/strategy-lab.js`, which is now a thin command-line tool) runs every week with the history stress test, on the same episode bars. It costs about 2 seconds.
+- It runs 5 families and 20 variants against the pre-registered promotion rule. Each promoted variant is labelled: in the engine, rejected on the training window, or **NEW CANDIDATE**.
+- The results appear on the board (crypto panel, "Strategy lab"), in the log (`LAB`) and in the daily report.
+- **Adoption stays reviewed.** The lab never adds a strategy by itself: trying variants automatically and keeping the winners would be multiple testing the gate cannot see. The daily steward judges a new candidate on the training window and adds it only if it is not proven to lose (`docs/STEWARD.md`).
+
 ## 2.16.0: the strategy lab; the 4h EMA cross joins as a learning candidate
 
 - **`research/strategy-lab.js`**: 5 different strategy families (20 variants: channel breakout, volatility squeeze, RSI-2 deep pullback, EMA cross, exhaustion fade), run on the 2018–2024 episodes against a promotion rule written down before the run. Two families were promoted.
