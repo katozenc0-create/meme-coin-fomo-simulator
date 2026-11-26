@@ -109,7 +109,7 @@
     timeStopHours: 72,
     minTrades: 30,            // the evidence gate's bar, the same as the Prediction Lab's
     minWeeks: 12,             // ...and at least 12 different weeks with trades: trades in one week move together
-    familySize: 8,            // strategies x tiers tested at once (4 x 2): the gate's interval is corrected for them
+    familySize: 10,           // strategies x tiers tested at once (5 x 2): the gate's interval is corrected for them
     liveReviewTrades: 20,     // live watchdog: the last 20 closed trades of a strategy (both books, in R)...
     liveDemoteR: -.25         // ...averaging below -0.25R demote it to the learning book until they recover
   });
@@ -530,8 +530,27 @@
   // -0.17R over 773 trades, 95% interval below zero). It was removed rather than kept: every extra
   // strategy makes the gate's correction stricter for all the others. The market reader below
   // stays: the board shows the market's direction, and later hypotheses can use it.
-  const TIMEFRAMES = Object.freeze({ trend: 1, breakout: 1, reversion: 1, trend4h: 4 });
-  const STRATEGIES = Object.freeze({ ...BASE_STRATEGIES, trend4h: { label: 'Trend pullback (4h)', timeframe: 4, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal } });
+  // From the strategy lab (research/strategy-lab.js, 26 Nov 2026). Two slower families passed the
+  // lab's pre-registered promotion rule on the 2018-2024 episodes (30+ trades, mean above +0.05R,
+  // positive in 3+ of the 4 kinds of market). On the training window the 4h channel breakout lost
+  // (core -0.11R, satellite -0.13R) and was dropped. The 4h EMA cross came out undecided (core -0.01R,
+  // satellite +0.03R): it stays as a new hypothesis, traded only by the learning book until its own
+  // gate opens. The family is now 5 x 2.
+  const emaCross4h = {
+    label: 'EMA 20/50 cross (4h)', timeframe: 4,
+    grid: [{ stopAtr: 2.5, targetAtr: 6 }, { stopAtr: 3.5, targetAtr: 9 }],
+    signal(candles, ind, i, params) {
+      if (i < 2 || !(ind.atr[i] > 0)) return null;
+      const price = candles[i].c; const a = ind.atr[i];
+      const up = ind.ema20[i - 1] <= ind.ema50[i - 1] && ind.ema20[i] > ind.ema50[i];
+      const down = ind.ema20[i - 1] >= ind.ema50[i - 1] && ind.ema20[i] < ind.ema50[i];
+      if (up && price > ind.ema200[i]) return { side: 'LONG', stop: price - params.stopAtr * a, target: price + params.targetAtr * a, reason: 'EMA20 crossed above EMA50, above EMA200 (4h)' };
+      if (down && price < ind.ema200[i]) return { side: 'SHORT', stop: price + params.stopAtr * a, target: price - params.targetAtr * a, reason: 'EMA20 crossed below EMA50, below EMA200 (4h)' };
+      return null;
+    }
+  };
+  const TIMEFRAMES = Object.freeze({ trend: 1, breakout: 1, reversion: 1, trend4h: 4, emaCross4h: 4 });
+  const STRATEGIES = Object.freeze({ ...BASE_STRATEGIES, trend4h: { label: 'Trend pullback (4h)', timeframe: 4, grid: BASE_STRATEGIES.trend.grid, signal: BASE_STRATEGIES.trend.signal }, emaCross4h });
 
   /**
    * The market's direction: Bitcoin's trend (readChart) on 4-hour bars, each known at its bar's
@@ -734,8 +753,8 @@
   /**
    * The evidence gate, honest about two things (Bailey & Lopez de Prado on backtest overfitting):
    *  - dependence: the interval comes from a WEEKLY block bootstrap (see blockBootstrapCI);
-   *  - multiple testing: `tests` hypotheses are judged at once (4 strategies x 2 tiers), so the
-   *    interval that must clear zero is Bonferroni-corrected (95% -> 99.4% for 8 tests).
+   *  - multiple testing: `tests` hypotheses are judged at once (5 strategies x 2 tiers), so the
+   *    interval that must clear zero is Bonferroni-corrected (95% -> 99.5% for 10 tests).
    * trades: [{ r, openedAt (ms or ISO) }]. `ci95` (weekly, uncorrected) says whether a strategy is
    * still undecided (learning book) or proven to lose; `ci` (corrected) opens the gate.
    */

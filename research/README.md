@@ -66,6 +66,31 @@ Sample A's 7-day near-miss was tested on four new independent samples, with the 
 
 Brier scores of the earlier samples, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
 
+## Crypto: the strategy lab (26 Nov 2026): one new learning candidate
+
+**Why.** The owner asked to diversify the strategy research.
+
+**How.** `research/strategy-lab.js` runs 5 families that differ from today's strategies, 20 variants in all, on the 2018–2024 episodes only. Every variant is judged against a promotion rule written down before the run: 30+ trades, a mean above +0.05R, and a positive mean in 3+ of the 4 kinds of market.
+
+| Family (best variant) | Crash | Bear | Bull | Range | All | Lab |
+|---|---|---|---|---|---|---|
+| Channel breakout 4h (55 bars) | +0.76R | +0.81R | +0.17R | +0.06R | +0.35R (313) | promoted |
+| EMA 20/50 cross 4h | +0.74R | +0.43R | +0.20R | +0.05R | +0.27R (114) | promoted |
+| Volatility squeeze 4h | — | — | +0.59R | −0.51R | +0.30R (44, too few in 2 kinds) | no |
+| Deep pullback in trend (RSI-2) | | | | | −0.07R … −0.15R | no |
+| Exhaustion fade | | | | | −0.27R … −0.58R | no |
+
+Daily-bar variants could not be measured: the episodes carry 40 days of warm-up, and daily bars need 210.
+
+**Judged on the training window** (gate, ~2 years):
+
+| Candidate | Core | Satellite | Decision |
+|---|---|---|---|
+| Channel breakout 4h | −0.109R (628 trades) | −0.125R (560) | **dropped**: it did not replicate |
+| EMA 20/50 cross 4h | −0.013R (279) | +0.032R (253) | **kept as a learning candidate**: undecided, its own gate stays closed |
+
+No gate opened. The EMA cross is the first new family that holds near zero on the training window instead of losing. As the owner asked for diversity and experience, it trades the learning book (0.25% risk) and builds its own forward evidence. The gate's family grows to 5 × 2 = 10, so its correction is a little stricter for every strategy (99.5% instead of 99.4%).
+
 ## Crypto: exits and profit-taking (26 Nov 2026, rejected)
 
 **Why.** The owner asked to teach the agents better profit-taking and exits.

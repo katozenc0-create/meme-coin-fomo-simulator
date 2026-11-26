@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.16.0: the strategy lab; the 4h EMA cross joins as a learning candidate
+
+- **`research/strategy-lab.js`**: 5 different strategy families (20 variants: channel breakout, volatility squeeze, RSI-2 deep pullback, EMA cross, exhaustion fade), run on the 2018–2024 episodes against a promotion rule written down before the run. Two families were promoted.
+- **On the training window**, the 4h channel breakout lost (−0.11R / −0.13R) and was dropped. The 4h EMA 20/50 cross came out undecided (−0.01R / +0.03R). It is added as `emaCross4h`, the first new family since the start. It trades the learning book only until its own gate opens.
+- The gate's family is now 5 × 2 = 10 (a slightly stricter correction). Written up in `research/README.md`.
+
 ## 2.15.1: research: exits and profit-taking (rejected); the 4-year test
 
 - **Exits.** `research/exit-study.js` compares seven exit rules on the same entries over the 2018–2024 episodes.
