@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.14.2: research: range-market strategies (none formed)
+
+- To speed up the evidence honestly, two range-market ideas were tried on the 2018–2024 episodes only: failed-breakout fades and range reversion, each on 1h and 4h bars, with and without a trailing stop (`research/range-hypotheses.js`). None earned across the episodes (best overall −0.04R). The one positive cell rests on 7 trades. None was sent to the gate, which stays unchanged. Written up in `research/README.md`.
+
 ## 2.14.1: the state push is retried
 
 - One tick in the last 24 h (25 Nov 16:00 UTC) failed to publish: GitHub answered the push with a transient "fatal error in commit_refs_rules". When the push fails, the next tick restores the previous state, so that tick's work is lost. `scripts/publish-state.sh` now retries the push up to 4 times, pausing 5, 10 and 15 s between attempts, before failing (`METYU_PUSH_ATTEMPTS`, `METYU_PUSH_DELAY`).

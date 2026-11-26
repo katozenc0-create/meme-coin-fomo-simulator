@@ -66,6 +66,23 @@ Sample A's 7-day near-miss was tested on four new independent samples, with the 
 
 Brier scores of the earlier samples, crowd → model (calibration / rich): Sample A 0.1642 → 0.1614 / 0.1606, Sample B 0.1524 → 0.1498 / 0.1491. At a 4¢ spread there are no trades anywhere.
 
+## Crypto: range-market strategies (26 Nov 2026, none formed)
+
+**Why.** The history test showed that the strategies earn in crashes and bear markets and lose in flat ranges. The owner asked to speed up the evidence. The only honest way is a strategy with a real edge where the current ones lose.
+
+**How.** Hypotheses were formed only on the 2018–2024 episodes (`research/range-hypotheses.js`), never on the training window. All costs were included, with next-bar entry, as in `backtest`. Each was tried with and without a trailing stop.
+
+| Hypothesis | Best variant on the episodes | Range episodes | All episodes |
+|---|---|---|---|
+| Failed breakout, faded to the middle of the range (1h) | stop 1 ATR, no trail | −0.27R (34) | −0.18R (243) |
+| Failed breakout (4h) | stop 1 ATR, no trail | +0.23R (7) | −0.08R (39) |
+| Range reversion (1h, Bollinger + RSI) | stop 2.5 ATR, no trail | −0.41R (33) | −0.19R (155) |
+| Range reversion (4h) | stop 2.5 ATR, no trail | −0.04R (10) | −0.04R (38) |
+
+**Verdict.** No hypothesis earned across the episodes. The only positive cell (4h failed breakout in ranges, +0.23R) rests on 7 trades. None was sent to the evidence gate: a hypothesis that already fails where it was formed would only make the gate's multiple-testing correction stricter for the other strategies.
+
+There is no shortcut to the real-money lock here. The normal book trades again only when a strategy's gate opens on its own evidence.
+
 ## Crypto: the funding carry on Hyperliquid (25 Nov 2026, passes; small)
 
 **Idea.** Hold a coin and short the same amount of its perpetual. Price moves cancel, and the position collects the funding that longs pay shorts. There is no price prediction. Hyperliquid's funding has a built-in positive baseline of 0.00125% an hour (about 11% a year on notional) whenever the market is calm.
