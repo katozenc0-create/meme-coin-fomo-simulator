@@ -17,6 +17,7 @@ Metyu is a 24/7 paper-trading ecosystem: a crypto exchange agent and a Polymarke
 | `metyu-exchange.js` execution | `parseBook`, `bookImpact`, `costsFor`: each coin's slippage from its measured order book (floor 0.05%, never lower) |
 | Venue | Hyperliquid perps, read-only (`POST /info`: books, funding); `/exchange` is never called (the preflight fails the build if it appears) |
 | `metyu-history.js` | 13 past market episodes (2018–2024) and the weekly stress test of the current strategies (information only) |
+| `metyu-lab.js` | The weekly strategy lab: 5 families / 20 variants on the episodes, a pre-registered promotion rule; NEW CANDIDATES go to the steward's gate check (docs/STEWARD.md), never straight into the engine |
 | `exchange-autopilot.js` | Crypto agent: tick, exits on 1-minute bars, retrain, shadow orders, `statusOf` (what the board reads) |
 | `metyu-agent.js`, `autopilot.js` | Polymarket engine and agent (calibration model, `walkForward`, `loadResolvedMarkets`) |
 | `metyu-wallet.js`, `account-sync.js`, `metyu-vault.js` | Read-only Solana wallet, view-only exchange account, end-to-end encryption |

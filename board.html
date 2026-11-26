@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw=' 'sha256-q2B2YOzQ7lVPIkUZvMXSEhTSVjmGCsOG0uPFun9LJyE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0dFvobo4xI/fyrsJH7OuDpMUDizUwXlt90cn3/bBu0s=' 'sha256-2BKBExsdAkxnumJjAs1quP8vPS6ZvpCRNeX+WCnhgS4=' 'sha256-OR00pEhiJqhQLt/DcjL3k9+/j6kmLsFdycdM+ZddzG0=' 'sha256-kB0Hnh2tzOb/pIjGsEmIWTn/9pG4Yoic1UbU3OQfLmw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; worker-src 'self'; connect-src 'self' https://gamma-api.polymarket.com https://clob.polymarket.com https://raw.githubusercontent.com https://api.exchange.coinbase.com https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://api.jup.ag https://data-api.polymarket.com https://api.github.com https://api.hyperliquid.xyz; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a140e" />
   <link rel="manifest" href="manifest.webmanifest" />
@@ -383,6 +383,7 @@
       <h3 id="exStressHead" hidden>History test</h3>
       <ul class="lock-list" id="exStress" hidden></ul>
       <p class="note" id="exStressNote" hidden></p>
+      <p class="note" id="exLab" hidden></p>
       <h3 id="exLiveHead">Real money: locked</h3>
       <ul class="lock-list" id="exLive"></ul>
       <p class="note" id="exLiveLimits"></p>
@@ -1107,6 +1108,15 @@
             + (execution.fundingFloor !== undefined && measured.some(([, c]) => c.fundingSamples) ? ` Funding: ${fundingDearer ? `${fundingDearer} coin${fundingDearer === 1 ? '' : 's'} charged above` : 'all at'} the ${pct(execution.fundingFloor)} per 8 h floor.` : '')
             + (execution.unlisted && execution.unlisted.length ? ` Not listed there: ${execution.unlisted.join(', ')}.` : '');
           $('#exExec').className = `note ${dearer.length ? 'negative' : 'sec-ok'}`;
+        }
+        // The weekly strategy lab: families tried on the episodes; a promoted new one goes to the gate check.
+        const lab = status.lab;
+        $('#exLab').hidden = !lab;
+        if (lab) {
+          const fresh = lab.promoted.filter(p => p.status.startsWith('NEW CANDIDATE'));
+          $('#exLab').textContent = `Strategy lab (weekly): ${lab.variants} variants of ${lab.families} families on the past episodes · ${lab.promoted.length} promoted · `
+            + (fresh.length ? `new candidate(s) for the evidence gate: ${fresh.map(p => `${p.family} ${p.timeframe}h`).join(', ')}` : 'no new candidate')
+            + ` (${[...new Set(lab.promoted.filter(p => !p.status.startsWith('NEW')).map(p => `${p.family} ${p.timeframe}h: ${p.status.split(' (')[0]}`))].join('; ')}). A family joins only after the evidence gate on the last 2 years.`;
         }
         // History test: the current strategies replayed through the big past episodes (2018-2024).
         const stress = status.stress && status.stress.kinds ? status.stress : null;

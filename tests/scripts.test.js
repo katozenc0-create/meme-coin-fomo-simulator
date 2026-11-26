@@ -154,6 +154,7 @@ test('daily report: health, crypto equity and last 24 h, gates, the real-money l
     live: { met: 2, total: 6, conditions: [{ id: 'days', ok: true, text: 'days' }, { id: 'trades', ok: false, text: '30+ closed normal-book trades (now 6)' }] },
     shadow: { orders: 3, trades: 3, pnl: -.41, sent: 0 },
     execution: { floor: .0005, minSamples: 6, coins: { 'PEPE-USD': { samples: 8, charged: .0022 }, 'BTC-USD': { samples: 8, charged: .0005 }, 'ZRO-USD': { samples: 2, charged: .0005 } } },
+    lab: { at: ago(72), families: 5, variants: 20, promoted: [{ family: 'EMA cross', timeframe: 4, params: {}, status: 'in the engine (emaCross4h)' }, { family: 'momentum', timeframe: 4, params: { n: 9 }, status: 'NEW CANDIDATE: needs the gate check' }] },
     stress: { at: ago(72), episodes: new Array(13).fill({}), verdicts: { trend: { earnsIn: ['crash', 'bear'], losesIn: ['bull', 'range'] } } },
     log: [{ at: ago(1), kind: 'DEMOTE', text: 'trend4h: last 20 live trades average -0.30R' }]
   };
@@ -162,6 +163,7 @@ test('daily report: health, crypto equity and last 24 h, gates, the real-money l
   assert.match(text, /^# Metyu daily report · 2026-11-20 08:00 UTC/);
   assert.match(text, /\*\*Health:\*\* OK/);
   assert.match(text, /Execution check: 2 coins measured, 1 charged above the 0\.05% floor \(worst PEPE-USD 0\.22%\)/);
+  assert.match(text, /Strategy lab \(weekly, 20 variants of 5 families\): 2 promoted; \*\*NEW CANDIDATE\(S\) for the gate check: momentum 4h \{"n":9\}\*\*/);
   assert.match(text, /History test \(13 episodes 2018–2024, 3 d ago\): trend earns in crash\/bear, loses in bull\/range/);
   assert.match(text, /\*\*Real wallet\/account:\*\* not linked/);
   assert.match(daily.report({ exchange, polymarket, account: { linked: true, provider: 'solana', viewOnly: true, verifiedAt: new Date(now - 3600000).toISOString(), security: { approvals: 0 } }, now }), /verified 1 h ago, no open token approvals/);

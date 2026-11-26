@@ -40,6 +40,13 @@ Not without the owner:
 
 **Strategies:** new strategy ideas may be *tested* in a scratch folder. They join the engine only through the same gate as the others (2 years of data, weekly blocks, multiple testing). Report the result honestly, especially when it fails.
 
+**The weekly strategy lab (automatic).** The agent runs `metyu-lab.js` every week with the history test. It shows on the board, in the log (`LAB`) and in the daily report. When the report lists a **NEW CANDIDATE**, this is the day's Improve step:
+1. Add it to the engine in a branch (a strategy entry, a test, `familySize` = strategies × 2).
+2. Run the dry run on the live state with a forced retrain (`model.trainedAt = 0`) and read the candidate's gate in both tiers.
+3. Proven to lose in either tier (its 95% interval entirely below zero), or clearly negative in both: do not add it. Record it in `metyu-lab.js` `REJECTED` and in `research/README.md`.
+4. Otherwise add it as a learning candidate: a PR with the dry-run numbers, merged after green CI. Record it in `ENGINE`.
+5. Report it either way. The lab never adopts anything by itself, and the gate is never loosened for a candidate.
+
 ## 4. Report (always)
 End with a short report in Turkish for the owner:
 - the daily report numbers;

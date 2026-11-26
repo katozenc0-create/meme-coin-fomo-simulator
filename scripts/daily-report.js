@@ -59,6 +59,10 @@ function report({ exchange, polymarket, account = null, now = Date.now() }) {
       const dearer = measured.filter(([, c]) => c.charged > execution.floor).sort((x, y) => y[1].charged - x[1].charged);
       lines.push(`- Execution check: ${measured.length} coins measured, ${dearer.length} charged above the ${(execution.floor * 100).toFixed(2)}% floor${dearer.length ? ` (worst ${dearer.slice(0, 3).map(([symbol, c]) => `${symbol} ${(c.charged * 100).toFixed(2)}%`).join(', ')})` : ''}`);
     }
+    if (exchange.lab) {
+      const fresh = exchange.lab.promoted.filter(p => p.status.startsWith('NEW CANDIDATE'));
+      lines.push(`- Strategy lab (weekly, ${exchange.lab.variants} variants of ${exchange.lab.families} families): ${exchange.lab.promoted.length} promoted; ${fresh.length ? `**NEW CANDIDATE(S) for the gate check: ${fresh.map(p => `${p.family} ${p.timeframe}h ${JSON.stringify(p.params)}`).join('; ')}**` : 'no new candidate'}`);
+    }
     if (exchange.stress && exchange.stress.verdicts) {
       const v = Object.entries(exchange.stress.verdicts).map(([name, x]) => `${name} earns in ${x.earnsIn.join('/') || '—'}, loses in ${x.losesIn.join('/') || '—'}`).join('; ');
       lines.push(`- History test (${exchange.stress.episodes.length} episodes 2018–2024, ${Math.round((now - Date.parse(exchange.stress.at)) / (24 * HOUR))} d ago): ${v}`);

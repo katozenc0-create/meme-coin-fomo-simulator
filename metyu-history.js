@@ -109,7 +109,8 @@ function stressTest(candles, strategies, { episodes = EPISODES, costs = X.COSTS,
 }
 
 /** Fetches every episode's bars and runs the stress test. Coins without history are skipped. */
-async function runStressTest(getJson, strategies, { episodes = EPISODES, coins = STRESS_COINS, costs = X.COSTS, now = Date.now(), onError = () => {} } = {}) {
+// onCandles(candles) receives the fetched episodes (the weekly strategy lab reuses them, metyu-lab.js).
+async function runStressTest(getJson, strategies, { episodes = EPISODES, coins = STRESS_COINS, costs = X.COSTS, now = Date.now(), onError = () => {}, onCandles = null } = {}) {
   const candles = {};
   for (const episode of episodes) {
     candles[episode.id] = {};
@@ -122,6 +123,7 @@ async function runStressTest(getJson, strategies, { episodes = EPISODES, coins =
       } catch (error) { onError(`${episode.name} ${symbol}: ${error.message}`); }
     }
   }
+  if (typeof onCandles === 'function') onCandles(candles);
   return stressTest(candles, strategies, { episodes, costs, now });
 }
 

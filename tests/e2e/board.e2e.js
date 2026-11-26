@@ -850,6 +850,7 @@ test('history test: how today\'s strategies did in the big past episodes, inform
   assert.match(await text(page, '#exStress'), /Flat ranges: trend -0\.20R \(130\) · breakout -0\.23R \(182\) — 2023 summer range/);
   assert.equal(await page.locator('#exStress li.ok').count(), 1, 'the episodes where the strategies earned are marked');
   assert.match(await text(page, '#exStressNote'), /Information only: it opens no gate and sizes no trade\. Tested 3 days ago; repeated weekly\./);
+  assert.ok(await page.locator('#exLab').isHidden(), 'no lab yet: nothing shown');
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });
@@ -1007,6 +1008,24 @@ test('overview: the path to real money and the orders that would be sent (never 
   await page.reload();
   await page.waitForFunction(() => /NOT SENT/.test(document.querySelector('#ovTickets').textContent));
   assert.match(await text(page, '#ovTickets'), /ETH SHORT \$25 · limit 1994\.00 · stop 2100\.00 · target 1800\.00\s*NOT SENT\s*blocked: real-money lock \d\/6 · no order adapter \(step 9\)/);
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});
+
+test('strategy lab line: weekly families, what was promoted, and that only the gate adds a strategy', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const state = freshState();
+  state.createdAt = new Date(Date.now() - X.DAY).toISOString();
+  state.lastTick = new Date().toISOString();
+  state.lab = { at: new Date().toISOString(), rule: { minTrades: 30, minMeanR: .05, minKindsPositive: 3 }, families: 5, variants: new Array(20).fill({}),
+    promoted: [{ family: 'EMA cross', timeframe: 4, params: {}, status: 'in the engine (emaCross4h)' }, { family: 'channel breakout', timeframe: 4, params: {}, status: 'rejected on the training window (26 Nov 2026)' }] };
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: statusOf(state) }));
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => !document.querySelector('#exLab').hidden);
+  assert.equal(await text(page, '#exLab'), 'Strategy lab (weekly): 20 variants of 5 families on the past episodes · 2 promoted · no new candidate (EMA cross 4h: in the engine; channel breakout 4h: rejected on the training window). A family joins only after the evidence gate on the last 2 years.');
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });

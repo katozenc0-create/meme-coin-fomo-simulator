@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const X = require('./metyu-exchange.js');
 const History = require('./metyu-history.js');
+const Lab = require('./metyu-lab.js');
 
 const HOUR = X.HOUR;
 const DEFAULTS = Object.freeze({
@@ -365,11 +366,18 @@ function createExchangeAutopilot({ getJson, now = () => Date.now(), state = fres
     state.lastStressAttempt = now();
     try {
       const errors = [];
-      const result = await History.runStressTest(getJson, model.strategies, { costs, now: now(), onError: text => errors.push(text) });
+      let lab = null;
+      // The weekly strategy lab runs on the same episode bars (information only: it adds nothing).
+      const result = await History.runStressTest(getJson, model.strategies, { costs, now: now(), onError: text => errors.push(text), onCandles: candles => { try { lab = Lab.runLab(candles, { now: now() }); } catch (error) { errors.push(`lab: ${error.message}`); } } });
       if (!result.coins.length) throw new Error(`no history data${errors.length ? ` (${errors[0]})` : ''}`);
       state.stress = { ...result, paramsKey: paramsKey(model), errors: errors.length };
       const verdict = Object.entries(result.verdicts).map(([name, v]) => `${name}: earns in ${v.earnsIn.join('/') || '—'}, loses in ${v.losesIn.join('/') || '—'}`).join(' · ');
       say('STRESS', `history test: ${result.episodes.length} past episodes (2018-2024) on ${result.coins.length} coins · ${verdict}`);
+      if (lab) {
+        state.lab = lab;
+        const fresh = lab.promoted.filter(p => p.status.startsWith('NEW CANDIDATE'));
+        say('LAB', `strategy lab: ${lab.variants.length} variants of ${lab.families} families · ${lab.promoted.length} promoted${fresh.length ? ` · NEW CANDIDATE(S) for the gate check: ${fresh.map(p => `${p.family} ${p.timeframe}h`).join(', ')}` : ' · no new candidate'}`);
+      }
       return true;
     } catch (error) {
       say('ERROR', `history stress test failed: ${error.message}`);
@@ -618,6 +626,8 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     })(),
     // How the current strategies did in the big past episodes (information only; see metyu-history.js).
     stress: state.stress ? { at: state.stress.at, coins: state.stress.coins, episodes: state.stress.episodes, kinds: state.stress.kinds, verdicts: state.stress.verdicts } : null,
+    // The weekly strategy lab (metyu-lab.js): promoted families and whether each is new (information only).
+    lab: state.lab ? { at: state.lab.at, rule: state.lab.rule, families: state.lab.families, variants: state.lab.variants.length, promoted: state.lab.promoted } : null,
     // The linked wallet's security check (counts only, no address): the board warns from it.
     accountSecurity: accountLink && accountLink.linked ? { ...(accountLink.security || {}), verifiedAt: accountLink.verifiedAt } : null,
     charts
