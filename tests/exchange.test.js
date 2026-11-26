@@ -194,11 +194,11 @@ test('backtest walks the same rules over history and train judges the gate only 
   }
   const model = X.train(series, { now: 5 });
   assert.equal(model.trainedAt, 5);
-  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakout', 'reversion', 'trend4h']);
+  assert.deepEqual(Object.keys(model.strategies), ['trend', 'breakout', 'reversion', 'trend4h', 'channel4h', 'emaCross4h']);
   assert.equal(model.strategies.trend4h.timeframe, 4, 'the 4-hour trend is trained on 4-hour bars');
   assert.equal(model.strategies.trend.timeframe, 1);
   for (const s of Object.values(model.strategies)) {
-    assert.ok(X.STRATEGIES.trend.grid.concat(X.STRATEGIES.breakout.grid, X.STRATEGIES.reversion.grid).includes(s.params));
+    assert.ok(Object.values(X.STRATEGIES).flatMap(strategy => strategy.grid).includes(s.params));
     assert.equal(s.gate.open, s.gate.trades >= 30 && s.gate.ci[0] > 0);
   }
   const ev = X.evidence(Array(40).fill(.3).map((r, i) => r + (i % 2 ? .1 : -.1)));
