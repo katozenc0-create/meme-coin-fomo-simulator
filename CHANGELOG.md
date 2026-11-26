@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.17.1: the real-money plan moves to Polymarket (design only)
+## 2.17.1: a Polymarket plan, parked; Hyperliquid stays the target (design only)
 
-- As the owner chose, `docs/LIVE-TRADING-ARCHITECTURE.md` gets **Part B: the Polymarket agent** as the real-money target. The Hyperliquid plan becomes Part A and is parked.
+- `docs/LIVE-TRADING-ARCHITECTURE.md` gets **Part B: the Polymarket agent**. Asked to choose between the two, Claude kept **Hyperliquid (Part A) as the target**: it has a trade-only agent key that cannot withdraw, while Polymarket has none, and its evidence builds faster. Polymarket is parked. Fomo stays a read-only wallet and data view.
 - **Facts from Polymarket's docs:**
   - CLOB orders need a wallet's private key (L1 EIP-712 for credentials, a wallet signature on every order);
   - there is **no trade-only key**;

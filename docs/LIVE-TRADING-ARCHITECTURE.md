@@ -14,9 +14,18 @@ The hard rules in `CLAUDE.md` hold throughout:
 
 **Owner's choice (25 Nov 2026):** no manual order entry. The first real-money stage is **supervised automation on a dedicated Hyperliquid account**. The owner's Fomo account stays read-only.
 
-**Owner's choice (26 Nov 2026): the real-money venue is Polymarket.** See **Part B** below: it replaces the Hyperliquid plan as the target. Fomo is used only as a read-only wallet view and as a source of fresh market data: Hyperliquid's public books and funding, which Fomo's perps route to. Part A (Hyperliquid) is kept as a parked alternative for the crypto agent.
+**Venue decision (26 Nov 2026): Hyperliquid (Part A) is the target; Polymarket (Part B) is parked.** The owner asked Claude to choose. The reasons:
 
-# Part A: the crypto agent on Hyperliquid (parked)
+| | Hyperliquid (Fomo's perps venue) | Polymarket |
+|---|---|---|
+| Key safety | a **trade-only, expiring agent** key that **cannot withdraw** | every order is signed by the wallet's private key: a leaked key can move the funds |
+| Evidence today | gates closed, but the learning book's forward test is +0.16R over 74 trades | gate closed, paper −$276, past "edges" were look-ahead |
+| Speed of evidence | 31 coins, hourly signals: 30 normal-book trades take weeks once a gate opens | markets resolve over weeks or months |
+| Fit | the strategies are mostly short; perps allow it; costs and funding are already measured | — |
+
+Fomo's role is a **read-only wallet and data view**: the owner's Solana wallet and perps account, plus Hyperliquid's public books and funding. Real orders would go straight to Hyperliquid from a separate small account, never through the Fomo app.
+
+# Part A: the crypto agent on Hyperliquid (the target)
 
 ## 1. What we know (25 Nov 2026)
 
@@ -106,9 +115,9 @@ Steps 4–6 move nothing and send nothing. Step 9 is the first code that could p
 - The adapter is the only piece that can lose money. It is the most guarded: its own file, its own review, limits enforced twice (in the adapter and by the small balance), and a kill switch the owner holds outside the code (revoking the agent).
 - Throughout, the evidence gate decides **whether** to trade. This architecture only decides **how**.
 
-# Part B: the Polymarket agent (the target, 26 Nov 2026)
+# Part B: the Polymarket agent (parked alternative, 26 Nov 2026)
 
-Status: **design only**. Same hard rules: no order code until the Polymarket agent's own six conditions are met **and** the owner approves separately; the first limits are `LIVE_LIMITS` ($25 per order, $100 open, $50 a day, no leverage).
+Status: **design only, parked**: kept in case Polymarket ever becomes the better choice, for example if its gate opens first. Same hard rules: no order code until the Polymarket agent's own six conditions are met **and** the owner approves separately; the first limits are `LIVE_LIMITS` ($25 per order, $100 open, $50 a day, no leverage).
 
 ## B1. What we know (26 Nov 2026, from Polymarket's developer docs)
 

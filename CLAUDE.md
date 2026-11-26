@@ -46,7 +46,7 @@ npm run test:e2e         # Playwright, iPhone and desktop (~42); slow, run it la
 - **Board changes:** check them at the GitHub Pages URL on an iPhone 13 viewport. Expect 0 failed requests and no horizontal scroll.
 
 ## Real-money plan
-The owner chose **Polymarket** as the real-money venue (26 Nov 2026): `docs/LIVE-TRADING-ARCHITECTURE.md` Part B. It uses a dedicated small EOA wallet whose key lives only on the VPS (Polymarket has no trade-only key), a geoblock check before every order, and the Polymarket agent's own six conditions. Fomo is a read-only wallet and data view only. Part A (Hyperliquid) is parked. See the document (design only; the owner chose no manual entry: stage 1 is supervised automation on a dedicated Hyperliquid account with a trade-only, expiring agent key on the owner's machine or a VPS; §3 lists the steps in order). Steps that only compute (tickets, the board panel, the approval record) may be built; the order adapter waits for 6/6 and the owner's separate approval.
+The real-money target is **Hyperliquid** (`docs/LIVE-TRADING-ARCHITECTURE.md` Part A; chosen 26 Nov 2026 for its trade-only agent key and faster evidence). Polymarket (Part B) is parked: it has no trade-only key. Fomo is a read-only wallet and data view only. See the document (design only; the owner chose no manual entry: stage 1 is supervised automation on a dedicated Hyperliquid account with a trade-only, expiring agent key on the owner's machine or a VPS; §3 lists the steps in order). Steps that only compute (tickets, the board panel, the approval record) may be built; the order adapter waits for 6/6 and the owner's separate approval.
 
 ## Daily routine
 See `docs/STEWARD.md`.
