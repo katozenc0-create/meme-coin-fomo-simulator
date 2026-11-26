@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.18.1: the board follows the venue
+
+- When the agent trades on Hyperliquid (`status.execution.venue`), the board re-marks open positions every 10 s at **Hyperliquid's own prices**: one public `allMids` read for every coin, with `kPEPE` divided by 1,000. It falls back to Coinbase's ticker only for a coin Hyperliquid does not list (QNT) or when Hyperliquid cannot be reached.
+- The overview's heading says where the prices come from, for example "live Hyperliquid + Coinbase prices". The crypto panel's status line says "live Hyperliquid prices".
+- The execution line adds the median price gap to Coinbase.
+- The disclaimer lists Hyperliquid among the read-only sources. Service worker cache `metyu-shell-v11`.
+
 ## 2.18.0: paper trading at Hyperliquid's own prices
 
 - Until real money is allowed (6/6 and the owner's separate approval), organic trading stays virtual, on the target venue. With `--venue hyperliquid`, **entries and marks now use Hyperliquid's own prices** (`allMids`, one request a tick). The paper record becomes a rehearsal of trading there.

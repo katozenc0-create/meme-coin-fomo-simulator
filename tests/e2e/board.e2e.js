@@ -517,6 +517,7 @@ test('exchange panel shows the crypto autopilot: chart with levels, positions, g
   assert.match(await text(page, '#ovDigest'), /opened 0 normal · 1 learning/);
   assert.equal(await text(page, '#ovWallet'), 'not linked', 'the real wallet strip, kept apart from the virtual figures');
   assert.match(await text(page, '#exStatus'), /2 coins, live Coinbase prices · learning book: 0\.25% risk per trade, up to 2x/);
+  assert.match(await text(page, '#ovPosHead'), /^Open positions · live Coinbase prices$/, 'without the Hyperliquid venue: Coinbase');
   assert.match(await text(page, '#exForward'), /Training · day 3\/3 · forward test · normal book: no closed trades yet \(needs 30\+\) · learning book: 1 closed · 1 won · \+\$\d+ · mean \+0\.86R/);
   assert.equal(await text(page, '#exGates'), '0/2 open');
   assert.equal(await page.inputValue('#exSymbol'), 'BTC-USD', 'the coin with a position is shown first');
@@ -1026,6 +1027,42 @@ test('strategy lab line: weekly families, what was promoted, and that only the g
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
   await page.waitForFunction(() => !document.querySelector('#exLab').hidden);
   assert.equal(await text(page, '#exLab'), 'Strategy lab (weekly): 20 variants of 5 families on the past episodes · 2 promoted · no new candidate (EMA cross 4h: in the engine; channel breakout 4h: rejected on the training window). A family joins only after the evidence gate on the last 2 years.');
+  assert.ok(await noHorizontalScroll(page));
+  assert.deepEqual(page.errors, []);
+});
+
+test('on the Hyperliquid venue the board prices positions at Hyperliquid (one read), Coinbase only for unlisted coins', async () => {
+  const X = require('../../metyu-exchange.js');
+  const { freshState, statusOf } = require('../../exchange-autopilot.js');
+  const H = X.HOUR;
+  const now = Date.now();
+  const state = freshState();
+  state.createdAt = new Date(now - 2 * X.DAY).toISOString();
+  state.lastTick = new Date(now - 5 * 60000).toISOString();
+  state.executionVenue = 'hyperliquid';
+  state.execution = { 'BTC-USD': { samples: [], basis: Array.from({ length: 8 }, () => .0005) }, 'ETH-USD': { samples: [], basis: Array.from({ length: 8 }, () => -.0011) } };
+  state.marks = { 'BTC-USD': { price: 60000, at: state.lastTick, source: 'hyperliquid' }, 'QNT-USD': { price: 70, at: state.lastTick, source: 'coinbase' } };
+  const pos = (id, symbol, entry) => ({ id, symbol, strategy: 'trend', book: 'learning', side: 'LONG', entry, qty: .05, notional: entry * .05, margin: entry * .05, leverage: 1, stop: entry * .97, initialStop: entry * .97, target: entry * 1.05, liquidation: entry * .5, entryFee: 1, risk: 25, atr: entry * .01, openedAt: now - 3 * H, reason: 'test' });
+  state.positions = { x1: pos('x1', 'BTC-USD', 59800), x2: pos('x2', 'QNT-USD', 69) };
+  const status = statusOf(state, { now });
+  const page = await env.page({ width: 390, height: 844 });
+  const published = 'https://raw.githubusercontent.com/someone/metyu/autopilot-data/exchange-status.json';
+  await page.route(published, route => route.fulfill({ json: status }));
+  const venue = [];
+  await page.route('https://api.hyperliquid.xyz/info', route => { venue.push(JSON.parse(route.request().postData())); return route.fulfill({ json: { BTC: '61000', ETH: '1700' }, headers: { 'access-control-allow-origin': '*' } }); });
+  const tickers = [];
+  await page.route('https://api.exchange.coinbase.com/products/*/ticker', route => { tickers.push(new URL(route.request().url()).pathname); return route.fulfill({ json: { price: '71' } }); });
+  await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
+  await page.waitForFunction(() => /prices \d+ s ago/.test(document.querySelector('#ovFresh').textContent));
+  assert.deepEqual(venue.map(b => b.type), ['allMids'], 'one read for every coin');
+  assert.deepEqual(tickers, ['/products/QNT-USD/ticker'], 'Coinbase only for the coin Hyperliquid does not list');
+  assert.equal(await text(page, '#ovPosHead'), 'Open positions · live Hyperliquid + Coinbase prices');
+  assert.match(await text(page, '#exStatus'), /2 coins, live Hyperliquid prices/);
+  // BTC at 61,000 live vs the agent's mark of 60,000: +0.05 x 1,000 = +$50 on top of the published P&L.
+  const btc = status.positions.find(p => p.symbol === 'BTC-USD');
+  const shown = await text(page, '#ovPositions');
+  assert.ok(Math.abs(btc.pnl + 50 - 54.5) < .01, 'the published P&L plus the live move');
+  assert.match(shown, /BTC-USD LONG 1\.0x · learning · trend\+\$54\.5/, shown);
   assert.ok(await noHorizontalScroll(page));
   assert.deepEqual(page.errors, []);
 });
