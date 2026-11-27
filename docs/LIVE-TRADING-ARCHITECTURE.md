@@ -94,7 +94,7 @@ Larger limits, and any leverage, only with the owner's new, explicit approval af
 | 3 | Choose the host: own computer or a small VPS | owner | **chosen: a small cloud VPS** (a few dollars a month), rented only at step 8 |
 | 4 | `ticketOf(shadowOrder)` + tickets in the status (no sending) + tests | Claude | can be built now: it only computes |
 | 5 | Board: an "Orders that would be sent" panel from the tickets | Claude | step 4 |
-| 6 | A checkable approval record, e.g. `METYU_LIVE_APPROVED=<date>` that expires | Claude + owner | step 4 |
+| 6 | A checkable approval record that expires: the repository variable `METYU_LIVE_APPROVED` = `2026-11-27..2026-12-27 25/100/50/1x hyperliquid` (at most 31 days, limits equal to `LIVE_LIMITS`; checked by `liveApproval`) | Claude (built) + owner (sets the variable) | step 4 |
 | 7 | **Wait** for a gate to open and 6/6 | the data | time |
 | 8 | Dedicated Hyperliquid account, funded ≤ $100, one trade-only agent | owner | step 7 |
 | 9 | `order-adapter.js` + the preflight exception + tests against a mock exchange | Claude | steps 7, 8 and the owner's approval |

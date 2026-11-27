@@ -182,7 +182,11 @@ test('real-money lock: locked with a list of unmet conditions; never "ready" wit
   assert.equal(almost.ready, false, "the owner's approval is missing");
   assert.equal(almost.met, 5);
   assert.deepEqual(almost.conditions.filter(c => !c.ok).map(c => c.id), ['approval']);
-  assert.equal(X.liveReadiness({ ...base, approval: { by: 'owner' } }).ready, true);
+  assert.equal(X.liveReadiness({ ...base, approval: { by: 'owner' } }).ready, false, 'only a checked record counts');
+  const record = X.liveApproval('2026-11-27..2026-12-27 25/100/50/1x hyperliquid', { now });
+  assert.equal(X.liveReadiness({ ...base, approval: record }).ready, true);
+  assert.match(X.liveReadiness({ ...base, approval: record }).conditions.find(c => c.id === 'approval').text, /until 2026-12-27, 27 day\(s\) left/);
+  assert.equal(X.liveReadiness({ ...base, approval: X.liveApproval('2026-11-01..2026-11-30 25/100/50/1x hyperliquid', { now }) }).ready, false, 'an expired record does not count');
   const fresh = X.liveReadiness({ forward: { trades: 3, ci: [-.5, .9] }, createdAt: '2026-11-29T12:00:00Z', account: { peak: 10000, equity: 9800 }, accountLink: null, now });
   assert.deepEqual(fresh.conditions.filter(c => !c.ok).map(c => c.id), ['days', 'trades', 'edge', 'account', 'approval']);
   assert.match(fresh.conditions[0].text, /forward test ran 3\+ days \(now 1\)/, 'the owner chose a 3-day training period');
@@ -501,4 +505,26 @@ test('HYPERLIQUID_ADDRESS: forgiving about spaces, quotes and 0x; loud about key
   assert.throws(() => A.providerFromEnv({ HYPERLIQUID_ADDRESS: '0x' + 'cd'.repeat(32) }), /PRIVATE KEY/);
   // The guard on the address passed to the reader itself.
   await assert.rejects(() => A.hyperliquidAccount({ address: 'cd'.repeat(32), fetchImpl: async () => ({}) }), /PRIVATE KEY/);
+});
+
+test('approval record: the METYU_LIVE_APPROVED variable counts only while current, short and at the code limits', () => {
+  const now = Date.parse('2026-12-01T12:00:00Z');
+  const ok = X.liveApproval('2026-11-27..2026-12-27 25/100/50/1x hyperliquid', { now });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.limits, { maxOrderUsd: 25, maxOpenUsd: 100, maxDailyLossUsd: 50, maxLeverage: 1 });
+  assert.equal(ok.venue, 'hyperliquid');
+  assert.equal(ok.daysLeft, 27);
+  assert.equal(X.liveApproval('', { now }), null, 'no variable: no record');
+  assert.equal(X.liveApproval(undefined, { now }), null);
+  const problem = text => X.liveApproval(text, { now }).problem;
+  assert.match(problem('yes, approved'), /unreadable/, 'a chat-like message never counts');
+  assert.match(problem('2026-11-01..2026-11-30 25/100/50/1x hyperliquid'), /expired on 2026-11-30/);
+  assert.equal(X.liveApproval('2026-11-01..2026-11-30 25/100/50/1x hyperliquid', { now: Date.parse('2026-11-30T23:59:00Z') }).ok, true, 'valid through the until day (UTC)');
+  assert.match(problem('2026-12-05..2026-12-20 25/100/50/1x hyperliquid'), /starts on 2026-12-05/);
+  assert.match(problem('2026-11-27..2027-02-27 25/100/50/1x hyperliquid'), /longer than 31 days/);
+  assert.match(problem('2026-11-27..2026-12-27 250/100/50/1x hyperliquid'), /limits differ from the code's \(25\/100\/50\/1x\)/, 'a bigger limit needs a reviewed PR');
+  assert.match(problem('2026-11-27..2026-12-27 25/100/50/5x hyperliquid'), /limits differ/, 'no leverage by variable');
+  assert.match(problem('2026-11-27..2026-12-27 25/100/50/1x binance'), /unknown venue binance/);
+  assert.match(problem('2026-12-27..2026-11-27 25/100/50/1x hyperliquid'), /not valid/);
+  assert.equal(X.APPROVAL_MAX_DAYS, 31);
 });

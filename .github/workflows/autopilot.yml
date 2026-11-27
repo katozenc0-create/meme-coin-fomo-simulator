@@ -45,6 +45,7 @@ jobs:
     env:
       METYU_PAUSE: ${{ vars.METYU_PAUSE }}
       METYU_RESET_HALT: ${{ vars.METYU_RESET_HALT }}
+      METYU_LIVE_APPROVED: ${{ vars.METYU_LIVE_APPROVED }}   # the owner's expiring approval record (a condition only)
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0 (Node 24)
         with:

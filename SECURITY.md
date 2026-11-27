@@ -88,7 +88,7 @@ Real orders are locked. The board lists six conditions, and all of them must hol
 3. The 95% interval of the mean R is above zero.
 4. There has been no kill-switch, and drawdown is under 10%.
 5. A real account is linked with a verified view-only key.
-6. The owner gives explicit approval.
+6. The owner gives explicit approval: the repository variable `METYU_LIVE_APPROVED`, current, at most 31 days long, with limits equal to `LIVE_LIMITS` (a chat message never counts). It is a condition only; the order adapter needs its own, separate approval.
 
 Even then, the first orders are capped at **$25 per order, $100 open, $50 maximum daily loss, and no leverage**. Writing the order adapter (a separate trading key, kept apart from the view-only key) is a deliberate, reviewed step at that point, not something that switches on by itself.
 

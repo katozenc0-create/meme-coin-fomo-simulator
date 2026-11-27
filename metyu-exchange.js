@@ -926,6 +926,34 @@
     return Number.isFinite(at) && now - at <= ACCOUNT_FRESH_HOURS * HOUR && now - at >= -HOUR;
   }
   const openApprovals = link => !!(link && link.security && link.security.approvals > 0);
+
+  /**
+   * The owner's approval record (step 6 of docs/LIVE-TRADING-ARCHITECTURE.md): the GitHub repository
+   * variable METYU_LIVE_APPROVED, which only the owner can set; a chat message never counts. Format:
+   *   2026-11-27..2026-12-27 25/100/50/1x hyperliquid
+   * (from..until in UTC, $ per order / $ open / $ a day / leverage, venue). It counts only while it is
+   * current (from <= now < the end of the until day), at most APPROVAL_MAX_DAYS long, and only if its
+   * limits equal LIVE_LIMITS exactly: raising a limit needs a new reviewed PR, not a new variable.
+   * It is one of the six conditions; it never sends anything and is no approval for the order adapter.
+   */
+  const APPROVAL_MAX_DAYS = 31;
+  function liveApproval(text, { now = Date.now(), limits = LIVE_LIMITS } = {}) {
+    if (text === undefined || text === null || !String(text).trim()) return null;
+    const m = /^\s*(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\s+(\d+)\/(\d+)\/(\d+)\/(\d+)x\s+([a-z]+)\s*$/.exec(String(text));
+    if (!m) return { ok: false, problem: 'unreadable: expected e.g. 2026-11-27..2026-12-27 25/100/50/1x hyperliquid' };
+    const from = Date.parse(`${m[1]}T00:00:00Z`);
+    const end = Date.parse(`${m[2]}T00:00:00Z`) + DAY;
+    const record = { from: m[1], until: m[2], venue: m[7], limits: { maxOrderUsd: +m[3], maxOpenUsd: +m[4], maxDailyLossUsd: +m[5], maxLeverage: +m[6] } };
+    const bad = problem => ({ ok: false, ...record, problem });
+    if (!Number.isFinite(from) || !Number.isFinite(end) || end <= from) return bad('the dates are not valid');
+    if ((end - from) / DAY > APPROVAL_MAX_DAYS) return bad(`longer than ${APPROVAL_MAX_DAYS} days`);
+    if (!Object.keys(limits).every(key => record.limits[key] === limits[key])) return bad(`the limits differ from the code's (${limits.maxOrderUsd}/${limits.maxOpenUsd}/${limits.maxDailyLossUsd}/${limits.maxLeverage}x)`);
+    if (!VENUES[record.venue] || record.venue === 'coinbase') return bad(`unknown venue ${record.venue}`);
+    if (now < from) return bad(`starts on ${m[1]}`);
+    if (now >= end) return bad(`expired on ${m[2]}`);
+    return { ok: true, ...record, daysLeft: Math.ceil((end - now) / DAY) };
+  }
+
   function liveReadiness({ forward, createdAt, account, accountLink, now = Date.now(), approval = null, minDays = TRAINING_DAYS }) {
     const days = createdAt ? (now - Date.parse(createdAt)) / DAY : 0;
     const drawdown = account && account.peak > 0 ? 1 - (account.equity ?? account.cash) / account.peak : 0;
@@ -938,14 +966,14 @@
       // A link counts only while it is re-verified: an old "linked" record (the sync failing since) does not.
       // ...and with no open token approval: a wallet another address can drain is not ready for anything.
       { id: 'account', ok: accountFresh(accountLink, now) && !openApprovals(accountLink), text: `a real account or wallet linked read-only, verified within ${ACCOUNT_FRESH_HOURS} h, no open token approvals (${!accountLink || !accountLink.linked ? 'not linked' : !accountLink.viewOnly ? 'the key is not view-only' : openApprovals(accountLink) ? `${accountLink.security.approvals} OPEN TOKEN APPROVAL(S): revoke them` : `last verified ${Math.round((now - Date.parse(accountLink.verifiedAt)) / HOUR)} h ago`})` },
-      { id: 'approval', ok: !!approval, text: "the owner's explicit approval, with the limits below" }
+      { id: 'approval', ok: !!approval && approval.ok === true, text: `the owner's explicit approval, with the limits below (${!approval ? 'no record' : approval.ok ? `until ${approval.until}, ${approval.daysLeft} day(s) left` : approval.problem})` }
     ];
     const met = conditions.filter(c => c.ok).length;
     return { locked: true, met, total: conditions.length, ready: met === conditions.length, conditions, limits: LIVE_LIMITS };
   }
 
   return {
-    LIVE_LIMITS, liveReadiness, TRAINING_DAYS,
+    LIVE_LIMITS, liveReadiness, TRAINING_DAYS, liveApproval, APPROVAL_MAX_DAYS,
     ACCOUNT_FRESH_HOURS, accountFresh,
     EXECUTION, parseBook, bookImpact, bookSample, costsFor, median, VENUES, venueCoin, parseHyperliquidBook, parseHyperliquidFunding, parseHyperliquidMids,
     TIMEFRAMES, timeframeOf, aggregateCandles, marketTrendSeries, marketTrendAt, marketContext, marketSummary, liveReview, openRisk, SATELLITE, tierOf, leverageTier, LEVERAGE_TIERS, blockBootstrapCI, evidenceOfTrades,

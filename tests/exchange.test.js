@@ -805,7 +805,14 @@ test('real money path: tickets are computed from shadow orders, never sent, and 
   assert.equal(path.current, 6, 'the first open item: the approval record');
   assert.equal(path.steps[6].state, 'waiting');
   assert.match(path.steps[6].text, /now 3\/6/);
-  assert.equal(realMoneyPath({ live: locked, approval: { at: 'x' } }).current, 7, 'then the evidence');
+  assert.match(path.steps[5].text, /owner: set the variable METYU_LIVE_APPROVED/);
+  assert.equal(realMoneyPath({ live: locked, approval: { at: 'x' } }).current, 6, 'an unchecked object is no record');
+  const approved = X.liveApproval('2026-11-27..2026-12-27 25/100/50/1x hyperliquid', { now: Date.parse('2026-12-01T00:00:00Z') });
+  const after = realMoneyPath({ live: locked, approval: approved });
+  assert.equal(after.current, 7, 'then the evidence');
+  assert.equal(after.steps[5].state, 'done');
+  assert.match(after.steps[5].text, /approved until 2026-12-27/);
+  assert.match(realMoneyPath({ live: locked, approval: { ok: false, problem: 'expired on 2026-12-27' } }).steps[5].text, /not valid: expired on 2026-12-27/);
   assert.deepEqual(path.steps.filter(step => step.state === 'owner').map(step => step.n), [], 'no open owner decision before the evidence');
   assert.match(path.steps[2].text, /cloud VPS/);
   assert.equal(path.steps[1].state, 'skipped', 'the owner skipped the legality check; it stays their responsibility');
@@ -817,6 +824,16 @@ test('real money path: tickets are computed from shadow orders, never sent, and 
   assert.equal(status.realMoney.tickets.length, 1);
   assert.equal(status.realMoney.tickets[0].sent, false);
   assert.match(status.realMoney.tickets[0].blockedBy[0], /^real-money lock \d\/6$/);
+  assert.equal(status.approval, null, 'no variable: no record');
+  // The owner's variable is checked into the status: a condition met, the step done, still nothing sent.
+  const today = new Date().toISOString().slice(0, 10);
+  const until = new Date(Date.now() + 20 * X.DAY).toISOString().slice(0, 10);
+  const approvedStatus = statusOf(state, { approvalText: `${today}..${until} 25/100/50/1x hyperliquid` });
+  assert.equal(approvedStatus.approval.ok, true);
+  assert.equal(approvedStatus.live.conditions.find(c => c.id === 'approval').ok, true);
+  assert.equal(approvedStatus.realMoney.steps[5].state, 'done');
+  assert.equal(approvedStatus.realMoney.tickets[0].sent, false);
+  assert.ok(approvedStatus.realMoney.tickets[0].blockedBy.includes('no order adapter (step 9)'));
 });
 
 test('EMA 20/50 cross (4h): a cross in the direction of EMA200, on 4-hour bars, from the strategy lab', () => {
