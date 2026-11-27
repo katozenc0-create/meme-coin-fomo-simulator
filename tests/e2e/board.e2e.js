@@ -998,7 +998,7 @@ test('overview: the path to real money and the orders that would be sent (never 
   await page.goto(`${env.base}/board.html?exchange=${encodeURIComponent(published)}`);
   await page.waitForFunction(() => !document.querySelector('#ovRealMoney').hidden);
   assert.match(await text(page, '#ovTickets'), /None yet: an order ticket appears only when a strategy has passed the evidence gate/);
-  assert.match(await text(page, '#ovPathHead'), /^Path to real money · step 6 of 10: A checkable approval record that expires$/);
+  assert.match(await text(page, '#ovPathHead'), /^Path to real money · step 6 of 10: A checkable approval record that expires \(owner: set the variable METYU_LIVE_APPROVED\)$/);
   await page.click('#ovPathHead');
   assert.match(await text(page, '#ovSteps'), /1\. Design.*2\. Legality of perps where you live: skipped by the owner \(the owner's responsibility\).*7\. A strategy passes the evidence gate, and 6\/6 conditions \(now \d\/6\).*10\. Deploy on the host; the first real order at \$25 \(later\)/);
   assert.equal(await page.locator('#ovSteps li.done').count(), 4);

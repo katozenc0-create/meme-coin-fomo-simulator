@@ -133,7 +133,7 @@ function realMoneyPath({ live = null, model = null, tickets = [], approval = nul
     { n: 3, text: 'Host: a small cloud VPS, a few dollars a month (the owner\'s choice; rented at step 8)', state: 'done' },
     { n: 4, text: 'Tickets: the orders that would be sent (computed only)', state: 'done' },
     { n: 5, text: 'Board panel for the tickets', state: 'done' },
-    { n: 6, text: 'A checkable approval record that expires', state: approval ? 'done' : 'todo' },
+    { n: 6, text: `A checkable approval record that expires (${!approval ? 'owner: set the variable METYU_LIVE_APPROVED' : approval.ok ? `approved until ${approval.until}` : `not valid: ${approval.problem}`})`, state: approval && approval.ok ? 'done' : 'todo' },
     { n: 7, text: `A strategy passes the evidence gate, and 6/6 conditions (now ${live ? `${live.met}/${live.total}` : '?'})`, state: openGate && live && live.ready ? 'done' : 'waiting' },
     { n: 8, text: 'Owner: a dedicated Hyperliquid account (≤ $100) with one trade-only agent', state: 'later' },
     { n: 9, text: 'The order adapter (its own review, tested on a mock exchange)', state: 'later' },
@@ -594,7 +594,9 @@ function executionOf(state, costs = X.COSTS, symbols = X.SYMBOLS) {
   };
 }
 
-function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.chartBars, costs = X.COSTS, accountLink = null } = {}) {
+function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.chartBars, costs = X.COSTS, accountLink = null, approvalText = null } = {}) {
+  // The owner's approval record (the METYU_LIVE_APPROVED variable): checked here, only ever a condition.
+  const approval = X.liveApproval(approvalText, { now });
   const positions = Object.values(state.positions).map(held => {
     const mark = state.marks[held.symbol] ? X.markPosition(held, state.marks[held.symbol].price, now, X.costsFor(held.symbol, state.execution || {}, costs)) : null;
     return { ...held, openedAt: new Date(held.openedAt).toISOString(), mark: mark ? mark.price : null, pnl: mark ? mark.pnl : 0 };
@@ -633,14 +635,15 @@ function statusOf(state, { now = Date.now(), series = {}, chartBars = DEFAULTS.c
     // Real money stays locked; this is how far away the conditions are (all trades, both books).
     // Real money would only ever copy the NORMAL book (strategies past their evidence gate), so the
     // lock counts those trades only; the learning book's research trades never count toward it.
-    live: X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now }),
+    live: X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now, approval }),
+    approval,
     shadow: shadowSummary(state.shadow),
     // The path to real money (computed only): the tickets the future adapter would send, and the plan's steps.
     realMoney: (() => {
-      const live = X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now });
+      const live = X.liveReadiness({ forward: forwardEvidence(state.history, { learning: false, now }), createdAt: state.createdAt, account: { ...state.account, equity }, accountLink, now, approval });
       const s = state.shadow || freshShadow();
       const orders = Object.values(s.open || {}).concat(s.closed || []).sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt)).slice(0, 10);
-      return realMoneyPath({ live, model: state.model, tickets: orders.map(order => ticketOf(order, { live })) });
+      return realMoneyPath({ live, model: state.model, approval, tickets: orders.map(order => ticketOf(order, { live })) });
     })(),
     // How the current strategies did in the big past episodes (information only; see metyu-history.js).
     stress: state.stress ? { at: state.stress.at, coins: state.stress.coins, episodes: state.stress.episodes, kinds: state.stress.kinds, verdicts: state.stress.verdicts } : null,
@@ -707,7 +710,7 @@ async function main() {
     if (args['status-out']) {
       let accountLink = null;
       try { if (args['account-public']) accountLink = JSON.parse(fs.readFileSync(args['account-public'], 'utf8')); } catch (error) { /* no account linked */ }
-      saveState(args['status-out'], statusOf(state, { series: pilot.series(), accountLink }));
+      saveState(args['status-out'], statusOf(state, { series: pilot.series(), accountLink, approvalText: process.env.METYU_LIVE_APPROVED || null }));
     }
     if (args.once) break;
     await new Promise(resolve => setTimeout(resolve, args.interval * 1000));

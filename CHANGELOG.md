@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.19.0: the owner's approval record (step 6)
+
+- Step 6 of the real-money path: a **checkable approval record that expires**. It is the repository variable `METYU_LIVE_APPROVED`, which only the owner can set (Settings → Secrets and variables → Actions → Variables); a chat message never counts. Format: `2026-11-27..2026-12-27 25/100/50/1x hyperliquid`.
+- `liveApproval` checks it on every tick. It counts only while it is current (UTC, through the until day), at most 31 days long, and only with limits that equal `LIVE_LIMITS` exactly (raising a limit is a reviewed PR, not a new variable). The venue must be Hyperliquid.
+- It is one of the six conditions only. It sends nothing, it is not an approval for the order adapter (step 9 still waits for 6/6 and the owner's separate approval), and the evidence gate is unchanged. The status publishes the dates and limits (`status.approval`), and the board's path shows step 6 as done or why it is not valid.
+
 ## 2.18.1: the board follows the venue
 
 - When the agent trades on Hyperliquid (`status.execution.venue`), the board re-marks open positions every 10 s at **Hyperliquid's own prices**: one public `allMids` read for every coin, with `kPEPE` divided by 1,000. It falls back to Coinbase's ticker only for a coin Hyperliquid does not list (QNT) or when Hyperliquid cannot be reached.

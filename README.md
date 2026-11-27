@@ -339,6 +339,7 @@ To run it as a service, use `deploy/metyu-realtime.service` (hardened systemd; t
 
 The real-time runner is meant for your own machine. GitHub Actions is used for scheduled ticks only, not as an always-on server.
 
+- **The real-money approval record (step 6):** set the repository variable `METYU_LIVE_APPROVED` to `<from>..<until> 25/100/50/1x hyperliquid` (UTC dates, at most 31 days). It is one of the six conditions only: it sends nothing and expires by itself. Delete it to withdraw the approval at once.
 - **Emergency pause from the phone:** in the repository, go to Settings → Secrets and variables → Actions → Variables and set `METYU_PAUSE` to `true`. For the always-on machine, set `METYU_PAUSE=true` in its environment. No new positions open, and open ones are still managed to their exits. Delete the variable (or set it to `false`) to resume.
 - **Training period:** 3 days. The board shows "Training · day N/3". Real money also needs 30+ trades and a 95% interval above zero. See the real-money lock below and `CHANGELOG.md`.
 
