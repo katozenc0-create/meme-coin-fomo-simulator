@@ -1,0 +1,1139 @@
+{
+ "available": true,
+ "virtualMoney": true,
+ "generatedAt": "2026-11-28T12:15:38.918Z",
+ "createdAt": "2026-11-12T21:59:56.133Z",
+ "lastTick": "2026-11-28T12:15:38.917Z",
+ "account": {
+  "bankroll": 10000,
+  "cash": 9263.503873378706,
+  "peak": 10000,
+  "halted": false,
+  "realized": -144.81288777938113,
+  "trades": 15,
+  "wins": 7
+ },
+ "paused": false,
+ "model": {
+  "source": "autopilot · 1305 resolved markets",
+  "trainedAt": 1795793454943,
+  "kind": "calib",
+  "gate": {
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0,
+   "spread": 0.02,
+   "tradeHorizon": 7
+  }
+ },
+ "positions": [
+  {
+   "id": "679022",
+   "question": "Will David Lisnard win the 2027 French presidential election?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/will-david-lisnard-win-the-2027-french-presidential-election",
+   "openedAt": "2026-11-13T12:42:59.117Z",
+   "lastAccrual": 1795868137390,
+   "position": {
+    "side": "NO",
+    "entry": 0.83468351,
+    "margin": 98.85169048968613,
+    "leverage": 1,
+    "notional": 98.85169048968613,
+    "borrowed": 0,
+    "shares": 118.43014664287082,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.11656767944861926,
+   "beliefVariance": 0.2395032590433922,
+   "lastYes": 0.2685,
+   "spread": 0.0010000000000000009,
+   "learning": true,
+   "endDate": "2027-04-19T03:59:00Z"
+  },
+  {
+   "id": "1339767",
+   "question": "Will Bitcoin dip to $50,000 by December 31, 2026?",
+   "cluster": "crypto",
+   "url": "https://polymarket.com/market/will-bitcoin-dip-to-50000-by-december-31-2026-454-325-222-878-949-487-451-853-523-111",
+   "openedAt": "2026-11-23T17:30:51.776Z",
+   "lastAccrual": 1795868137390,
+   "position": {
+    "side": "NO",
+    "entry": 0.7628213975,
+    "margin": 96.50900934064364,
+    "leverage": 1,
+    "notional": 96.50900934064364,
+    "borrowed": 0,
+    "shares": 126.51586551836813,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.01,
+    "takerExponent": 1
+   },
+   "belief": 0.20238714718243156,
+   "beliefVariance": 0.024624763010674296,
+   "lastYes": 0.3365,
+   "spread": 0.0010000000000000009,
+   "learning": true,
+   "endDate": "2027-01-01T05:00:00Z"
+  },
+  {
+   "id": "2299955",
+   "question": "Will Anthropic's valuation hit (HIGH) $1.75T by December 31?",
+   "cluster": "finance",
+   "url": "https://polymarket.com/market/will-anthropics-valuation-hit-high-1pt75t-by-december-31-328",
+   "openedAt": "2026-11-13T10:33:06.770Z",
+   "lastAccrual": 1795868137390,
+   "position": {
+    "side": "NO",
+    "entry": 0.599711,
+    "margin": 98.94661602963447,
+    "leverage": 1,
+    "notional": 98.94661602963447,
+    "borrowed": 0,
+    "shares": 164.990497138846,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.32620379523585463,
+   "beliefVariance": 0.10058808705959163,
+   "lastYes": 0.135,
+   "spread": 0.010000000000000009,
+   "learning": true,
+   "endDate": "2027-01-05T04:59:00Z"
+  },
+  {
+   "id": "3215007",
+   "question": "Will there be no change in Fed interest rates after the December 2026 meeting?",
+   "cluster": "economics",
+   "url": "https://polymarket.com/market/will-there-be-no-change-in-fed-interest-rates-after-the-december-2026-meeting-20260729232808635",
+   "openedAt": "2026-11-22T11:37:08.209Z",
+   "lastAccrual": 1795868137390,
+   "position": {
+    "side": "NO",
+    "entry": 0.9360726651759361,
+    "margin": 98.3141259259462,
+    "leverage": 1,
+    "notional": 98.3141259259462,
+    "borrowed": 0,
+    "shares": 105.02830558295165,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.01,
+    "takerExponent": 1
+   },
+   "belief": 0.03184673143656724,
+   "beliefVariance": 0.10396025852973352,
+   "lastYes": 0.0375,
+   "spread": 0.0010000000000000009,
+   "learning": true,
+   "endDate": "2026-12-09T23:59:00Z"
+  },
+  {
+   "id": "6884119",
+   "question": "Jensen Huang divorce by December 31, 2026?",
+   "cluster": "politics",
+   "url": "https://polymarket.com/market/jensen-huang-divorce-in-2026",
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "lastAccrual": 1795868137390,
+   "position": {
+    "side": "NO",
+    "entry": 0.777191,
+    "margin": 100,
+    "leverage": 1,
+    "notional": 100,
+    "borrowed": 0,
+    "shares": 128.66849976389332,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0.04,
+    "takerExponent": 1
+   },
+   "belief": 0.16676496264645857,
+   "beliefVariance": 0.17189943396095747,
+   "lastYes": 0.0495,
+   "spread": 0.006999999999999999,
+   "learning": true,
+   "endDate": "2027-01-01T04:59:00Z"
+  },
+  {
+   "id": "7277952",
+   "question": "Will the average Ornn B200 rental price in March 2027 be above $8.00?",
+   "cluster": "zero",
+   "url": "https://polymarket.com/market/b200-average-rental-price-in-march-2027-above-8pt00",
+   "openedAt": "2026-11-27T02:00:59.415Z",
+   "lastAccrual": 1795868137390,
+   "position": {
+    "side": "YES",
+    "entry": 0.7351163396471586,
+    "margin": 99.06179705600138,
+    "leverage": 1,
+    "notional": 99.06179705600138,
+    "borrowed": 0,
+    "shares": 134.75662519425035,
+    "interest": 0,
+    "openedAt": 0,
+    "fees": 0,
+    "takerRate": 0,
+    "takerExponent": 1
+   },
+   "belief": 0.7808682271826842,
+   "beliefVariance": 0.03712567693373541,
+   "lastYes": 0.735,
+   "spread": 0.010000000000000009,
+   "learning": true,
+   "endDate": "2027-04-01T03:59:00Z"
+  }
+ ],
+ "watching": 14,
+ "history": [
+  {
+   "openedAt": "2026-11-27T01:01:04.241Z",
+   "closedAt": "2026-11-27T02:00:59.863Z",
+   "market": "Spread: Cowboys (-8.5)",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.669991761095383,
+   "exitYes": 0.0005,
+   "outcome": "NO",
+   "margin": 98.58882090844425,
+   "pnl": 48.56048246098733,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-24T15:15:35.877Z",
+   "closedAt": "2026-11-27T01:01:04.597Z",
+   "market": "Yokohama: Ryo Ono vs Lennon Roark Jones",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.54246875,
+   "exitYes": 0.475,
+   "outcome": "NO",
+   "margin": 97.67181822693813,
+   "pnl": 82.37877128063833,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-24T11:30:50.120Z",
+   "closedAt": "2026-11-24T12:30:51.344Z",
+   "market": "Counter-Strike: PVISION vs FlyQuest (BO1) - PGL Major Singapore Stage 1",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.76814875,
+   "exitYes": 0.0005,
+   "outcome": "NO",
+   "margin": 97.3222843329177,
+   "pnl": 29.37490072781135,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-24T07:15:34.627Z",
+   "closedAt": "2026-11-24T08:15:43.711Z",
+   "market": "Counter-Strike: FaZe vs Wildcard (BO1) - PGL Major Singapore Stage 1",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.61183875,
+   "exitYes": 0.0005,
+   "outcome": "NO",
+   "margin": 83.30949533058366,
+   "pnl": 52.85300717613673,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-24T04:45:33.421Z",
+   "closedAt": "2026-11-24T05:45:37.587Z",
+   "market": "Ducks vs. Kraken",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.5615974302894438,
+   "exitYes": 0.0005,
+   "outcome": "NO",
+   "margin": 96.08358459120763,
+   "pnl": 75.00620216527159,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-24T02:15:35.007Z",
+   "closedAt": "2026-11-24T04:00:58.339Z",
+   "market": "Cavaliers vs. Bulls",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.83721875,
+   "exitYes": 0.0005,
+   "outcome": "NO",
+   "margin": 95.9705856863914,
+   "pnl": 18.659653646389188,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-23T15:01:01.303Z",
+   "closedAt": "2026-11-24T02:00:57.856Z",
+   "market": "Trail Blazers vs. 76ers",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.60213875,
+   "exitYes": 0.935,
+   "outcome": "CLOSED",
+   "margin": 66.18986481469905,
+   "pnl": -59.92842185462336,
+   "reason": "stop-loss: margin down 90.5% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-23T15:01:01.303Z",
+   "closedAt": "2026-11-23T17:30:52.162Z",
+   "market": "Will the price of Bitcoin be above $64,000 on November 23?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.8165742506392322,
+   "exitYes": 0.0005,
+   "outcome": "NO",
+   "margin": 96.28682352749776,
+   "pnl": 21.62875298268773,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-15T05:30:47.104Z",
+   "closedAt": "2026-11-23T14:15:38.190Z",
+   "market": "Will Jensen Huang rejoin NVIDIA by December 31, 2026?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.88332991,
+   "exitYes": 0.9985,
+   "outcome": "CLOSED",
+   "margin": 97.78973403524094,
+   "pnl": -97.68566063069701,
+   "reason": "stop-loss: margin down 99.9% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-14T21:01:01.696Z",
+   "closedAt": "2026-11-23T14:15:38.124Z",
+   "market": "Will there be no new be CEO of NVIDIA by December 31, 2028?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.902386312088214,
+   "exitYes": 0.9905,
+   "outcome": "CLOSED",
+   "margin": 98.2293234101258,
+   "pnl": -97.30084274650144,
+   "reason": "stop-loss: margin down 99.0% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-13T08:12:36.625Z",
+   "closedAt": "2026-11-22T11:37:08.387Z",
+   "market": "Louisiana-Lafayette Ragin' Cajuns vs. UNCW Seahawks",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.5324887500000001,
+   "exitYes": 0.495,
+   "outcome": "SPLIT",
+   "margin": 99.01467627120284,
+   "pnl": -6.041185027300671,
+   "reason": "market resolved",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "closedAt": "2026-11-15T05:30:47.661Z",
+   "market": "UFC 334: Josh Hokit vs. Ciryl Gane (Heavyweight, Main Card)",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.65158875,
+   "exitYes": 0.615,
+   "outcome": "CLOSED",
+   "margin": 100,
+   "pnl": -43.49791183472705,
+   "reason": "stop-loss: margin down 43.5% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-14T03:31:00.803Z",
+   "closedAt": "2026-11-14T21:01:02.368Z",
+   "market": "Will Bitcoin dip to $60,000 by December 31, 2026?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.54745625,
+   "exitYes": 0.63,
+   "outcome": "CLOSED",
+   "margin": 98.56963034046734,
+   "pnl": -36.68942299183841,
+   "reason": "stop-loss: margin down 37.2% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-13T13:46:35.195Z",
+   "closedAt": "2026-11-13T15:31:22.039Z",
+   "market": "Will Bitcoin dip to $67,500 in November?",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.40710624999999995,
+   "exitYes": 0.795,
+   "outcome": "CLOSED",
+   "margin": 59.8624699357565,
+   "pnl": -32.131213133615276,
+   "reason": "stop-loss: margin down 53.7% and thesis weakened",
+   "learning": true
+  },
+  {
+   "openedAt": "2026-11-12T21:59:56.133Z",
+   "closedAt": "2026-11-13T08:12:36.929Z",
+   "market": "Commanders vs. Giants",
+   "side": "NO",
+   "leverage": 1,
+   "entry": 0.5474632500000001,
+   "exitYes": 0.485,
+   "outcome": "YES",
+   "margin": 100,
+   "pnl": -100,
+   "reason": "market resolved",
+   "learning": true
+  }
+ ],
+ "log": [
+  {
+   "at": "2026-11-28T11:15:43.904Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T10:15:37.189Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-28T09:01:00.287Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T07:45:46.582Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T06:45:43.370Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T05:45:41.849Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T04:30:55.403Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T03:15:41.758Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T02:01:09.753Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T01:01:09.657Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-28T00:00:58.475Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T22:45:46.144Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T21:30:52.660Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T20:30:50.210Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T19:15:46.158Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T18:15:45.487Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T17:15:37.361Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T16:15:36.563Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T15:32:04.322Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1305 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-27T15:01:08.203Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T13:45:50.940Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-27T12:30:59.444Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-27T11:30:51.827Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-27T10:15:46.949Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-27T09:15:39.524Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-27T08:01:06.688Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-27T07:01:00.329Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-27T05:45:38.224Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-27T04:30:51.033Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-27T03:30:50.033Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-27T02:15:40.787Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-27T02:01:01.228Z",
+   "kind": "LEARN",
+   "text": "Will the average Ornn B200 rental price in March 2027 be above $8.00? — YES 1x @ 73.5c · margin 99.06 · YES edge 2.0 pts · Kelly 8.0% × 0.25 · 1x (edge/vol 0.40)"
+  },
+  {
+   "at": "2026-11-27T02:00:59.863Z",
+   "kind": "SETTLE",
+   "text": "Spread: Cowboys (-8.5) — NO resolved NO · +48.56 · market resolved"
+  },
+  {
+   "at": "2026-11-27T01:15:38.305Z",
+   "kind": "INFO",
+   "text": "watching 18 markets"
+  },
+  {
+   "at": "2026-11-27T01:01:05.321Z",
+   "kind": "LEARN",
+   "text": "Spread: Cowboys (-8.5) — NO 1x @ 67.0c · margin 98.59 · NO edge 1.6 pts · Kelly 6.5% × 0.25 · 1x (edge/vol 0.31)"
+  },
+  {
+   "at": "2026-11-27T01:01:04.597Z",
+   "kind": "SETTLE",
+   "text": "Yokohama: Ryo Ono vs Lennon Roark Jones — NO resolved NO · +82.38 · market resolved"
+  },
+  {
+   "at": "2026-11-27T00:15:37.033Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-26T23:01:01.730Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-26T22:00:56.516Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-26T20:45:40.027Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-26T19:45:37.846Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T18:45:36.486Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T17:30:53.293Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T16:15:38.422Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T15:17:26.673Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1332 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-26T15:01:02.760Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T13:45:48.063Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T12:30:59.549Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T11:15:39.214Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T10:01:01.461Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-26T09:01:00.479Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-26T07:45:39.517Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-26T06:45:38.306Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-26T05:45:37.499Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-26T04:45:36.443Z",
+   "kind": "INFO",
+   "text": "watching 13 markets"
+  },
+  {
+   "at": "2026-11-26T03:30:55.424Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-26T02:30:51.536Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T01:15:40.012Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-26T00:15:36.891Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T23:15:36.351Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T22:01:06.162Z",
+   "kind": "INFO",
+   "text": "watching 11 markets"
+  },
+  {
+   "at": "2026-11-25T21:00:58.924Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-25T20:00:56.788Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T18:45:39.494Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T17:45:33.617Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T16:30:50.728Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T15:30:49.667Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T15:17:16.735Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1285 resolved markets · evidence gate closed · 56 out-of-sample trades, mean 8.5% [-14.3%, 30.6%]"
+  },
+  {
+   "at": "2026-11-25T14:30:48.774Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-25T13:30:48.216Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T12:15:35.072Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T11:01:00.082Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T10:00:58.346Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T08:45:36.475Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-25T07:45:33.893Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-25T06:30:55.661Z",
+   "kind": "INFO",
+   "text": "watching 17 markets"
+  },
+  {
+   "at": "2026-11-25T05:30:49.178Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T04:30:44.920Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T03:15:35.076Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-25T02:15:34.365Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-25T01:01:07.422Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-25T00:01:04.615Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-24T22:45:37.566Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T21:30:50.886Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T20:30:49.454Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T19:15:45.591Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T18:15:35.937Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T17:15:33.500Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T16:01:01.657Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T15:16:49.408Z",
+   "kind": "LEARN",
+   "text": "Yokohama: Ryo Ono vs Lennon Roark Jones — NO 1x @ 54.2c · margin 97.67 · NO edge 2.4 pts · Kelly 5.2% × 0.25 · 1x (edge/vol 0.47)"
+  },
+  {
+   "at": "2026-11-24T15:16:49.407Z",
+   "kind": "INFO",
+   "text": "Yokohama: Ryo Ono vs Lennon Roark Jones: order book unavailable (HTTP 404), quote used"
+  },
+  {
+   "at": "2026-11-24T15:16:48.556Z",
+   "kind": "TRAIN",
+   "text": "retrained on 1294 resolved markets · evidence gate closed · 0 out-of-sample trades, mean 0.0% [0.0%, 0.0%]"
+  },
+  {
+   "at": "2026-11-24T15:01:00.099Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-24T14:00:59.187Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-24T13:00:57.533Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-24T12:30:51.344Z",
+   "kind": "SETTLE",
+   "text": "Counter-Strike: PVISION vs FlyQuest (BO1) - PGL Major Singapore Stage 1 — NO resolved NO · +29.37 · market resolved"
+  },
+  {
+   "at": "2026-11-24T12:00:56.882Z",
+   "kind": "INFO",
+   "text": "watching 16 markets"
+  },
+  {
+   "at": "2026-11-24T11:30:53.058Z",
+   "kind": "LEARN",
+   "text": "Counter-Strike: PVISION vs FlyQuest (BO1) - PGL Major Singapore Stage 1 — NO 1x @ 76.8c · margin 97.32 · NO edge 1.3 pts · Kelly 7.0% × 0.25 · 1x (edge/vol 0.27)"
+  },
+  {
+   "at": "2026-11-24T10:45:47.043Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  },
+  {
+   "at": "2026-11-24T09:30:57.053Z",
+   "kind": "INFO",
+   "text": "watching 15 markets"
+  }
+ ],
+ "trainings": [
+  {
+   "at": "2026-11-27T15:30:54.943Z",
+   "markets": 1305,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-26T15:15:46.252Z",
+   "markets": 1332,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-25T15:15:38.453Z",
+   "markets": 1285,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0.08539087374813455,
+   "ci": [
+    -0.1425833005322883,
+    0.3063057123539513
+   ],
+   "trades": 56
+  },
+  {
+   "at": "2026-11-24T15:15:35.877Z",
+   "markets": 1294,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-23T15:01:01.303Z",
+   "markets": 1286,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-22T15:01:00.643Z",
+   "markets": 1300,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-21T15:00:54.049Z",
+   "markets": 1299,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-20T14:45:35.469Z",
+   "markets": 1326,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-19T14:30:56.355Z",
+   "markets": 1286,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0.1096983849526607,
+   "ci": [
+    -0.10995959932743492,
+    0.31967746366896405
+   ],
+   "trades": 58
+  },
+  {
+   "at": "2026-11-18T14:30:56.130Z",
+   "markets": 1296,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-17T14:15:43.264Z",
+   "markets": 1322,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-16T14:00:56.304Z",
+   "markets": 1298,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-15T14:00:53.748Z",
+   "markets": 1334,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-14T13:46:28.324Z",
+   "markets": 1330,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-13T22:00:57.839Z",
+   "markets": 816,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  },
+  {
+   "at": "2026-11-12T21:59:56.133Z",
+   "markets": 1278,
+   "open": false,
+   "robust": false,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "trades": 0
+  }
+ ],
+ "forward": {
+  "learning": {
+   "trades": 15,
+   "wins": 7,
+   "pnl": -144.812887779381,
+   "meanReturn": -0.12186156775511865,
+   "ci": [
+    -0.4505698627358899,
+    0.20202721652462563
+   ],
+   "days": 15.594245196759259,
+   "convincing": false
+  },
+  "gated": {
+   "trades": 0,
+   "wins": 0,
+   "pnl": 0,
+   "meanReturn": 0,
+   "ci": [
+    0,
+    0
+   ],
+   "days": 0,
+   "convincing": false
+  }
+ }
+}
